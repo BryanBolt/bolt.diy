@@ -1,5 +1,5 @@
 // Écrans DOM : menus, options, aide, lobby. Le rendu du jeu lui-même reste sur le canvas.
-import { ROSTER, getChar, PALETTE } from '../sim/chars';
+import { ROSTER, getChar, PALETTE, COMMANDS } from '../sim/chars';
 import { STAGES } from '../sim/stages';
 import { POSES, drawStickman } from '../render/stickman';
 import type { Fighter } from '../sim/types';
@@ -51,7 +51,7 @@ export function unlockHint(charId: string): string {
 
 // ---- Portraits (stickman statique) ----
 const portraitFighter = (charId: string, color: number): Fighter =>
-  ({ id: 0, charId, name: '', team: 0, slot: 0, controller: 'player', ai: null, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, facing: 1, hp: 1, hpMax: 1, ki: 0, superMeter: 0, guardMeter: 0, state: 'idle', stateFrame: 0, moveId: null, moveHits: [], multiLeft: 0, chainIndex: 0, freeze: 0, invuln: 0, armor: false, comboHits: 0, comboTimer: 0, comboDamage: 0, guardFrames: 0, lowGuard: false, prevInput: 0, bufferedInput: 0, bufferTimer: 0, tapTimer: 0, tapDir: 0, runFrames: 0, airJumps: 0, heavyCharge: 0, chargeBonus: 0, hitFrames: 0, lastHitBy: 0, koTimer: 0, revive: 0, lives: 0, stats: getChar(charId).stats, bonuses: [], status: { burn: 0, burnDps: 0, frozen: 0, poison: 0 }, color, level: 0, kills: 0, phoenixUsed: false, nextMoveFrame: 0, wantsLeave: false, weapon: 0, rage: false }) as Fighter;
+  ({ id: 0, charId, name: '', team: 0, slot: 0, controller: 'player', ai: null, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, facing: 1, hp: 1, hpMax: 1, ki: 0, superMeter: 0, guardMeter: 0, state: 'idle', stateFrame: 0, moveId: null, moveHits: [], multiLeft: 0, chainIndex: 0, freeze: 0, invuln: 0, armor: false, comboHits: 0, comboTimer: 0, comboDamage: 0, guardFrames: 0, lowGuard: false, prevInput: 0, bufferedInput: 0, bufferTimer: 0, tapTimer: 0, tapDir: 0, runFrames: 0, airJumps: 0, heavyCharge: 0, chargeBonus: 0, hitFrames: 0, lastHitBy: 0, koTimer: 0, revive: 0, lives: 0, stats: getChar(charId).stats, bonuses: [], status: { burn: 0, burnDps: 0, frozen: 0, poison: 0 }, color, level: 0, kills: 0, phoenixUsed: false, nextMoveFrame: 0, wantsLeave: false, weapon: 0, weaponKind: '', rage: false, boss: false, hist: [], gunCd: 0, lastCmd: '', lastCmdFrame: -999, backHold: 0 }) as Fighter;
 
 export function drawPortrait(canvas: HTMLCanvasElement, charId: string, color: number, time: number, locked = false): void {
   const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -172,7 +172,7 @@ export function howToHtml(charId: string): string {
       <p class="small">Pose le pouce gauche n'importe où à gauche : un joystick apparaît (à fond = courir). Boutons à droite : <kbd>A</kbd> attaque, <kbd>B</kbd> lourd, <kbd>X</kbd> saut, <kbd>Y</kbd> garde, <kbd>Ki</kbd>, <kbd>★</kbd> super. Tu peux glisser d'un bouton à l'autre.</p>
       <h3>Système</h3>
       <p class="small">
-        <b>Enchaînements</b> : attaque ×3, puis lourd = finisseur. <b>Avant + lourd</b> = lanceur, puis saut + attaques aériennes pour jongler.<br>
+        <b>Enchaînements</b> : attaque ×3, puis lourd = finisseur, ou attaque ×4 = rafale du dragon. <b>Avant + lourd</b> = lanceur, puis saut + attaques aériennes pour jongler.<br>
         <b>Arrière/Bas + lourd</b> = coup bas (passe sous la garde haute). <b>Course + attaque</b> = attaque de course.<br>
         <b>Garde</b> : bloque de face. <b>Bas + garde</b> = garde basse (bloque les coups bas, pas les plongeons).<br>
         <b>Parade parfaite</b> : garde juste avant l'impact (7 frames) → l'ennemi est déséquilibré, +20 Ki, les projectiles sont renvoyés.<br>
@@ -198,6 +198,16 @@ export function howToHtml(charId: string): string {
       </table>
     </div>
   </div>
+  <h3 style="margin-top:18px">Commandes de combat (tous les héros)</h3>
+  <p class="small muted">Directions relatives à ton regard : → avant, ← arrière, ↓ vers l'écran, ↑ vers le fond. Les diagonales sont tolérées et tu peux finir la saisie jusqu'à ~9 images après avoir appuyé sur le bouton. Sur manette ou tactile, le raccourci <b>Spécial + direction</b> fait la même chose. Le mode Entraînement affiche tes entrées et le nom de la commande réussie.</p>
+  <table class="moves">
+    <tr><th>Coup</th><th>Saisie</th><th>Raccourci</th><th>Effet</th><th>Coût</th></tr>
+    ${COMMANDS.map((c) => `<tr><td><b>${esc(c.name)}</b></td><td><kbd>${esc(c.input)}</kbd></td><td class="small muted">${esc(c.assist)}</td><td class="small muted">${esc(c.note)}</td><td class="small">${esc(c.cost)}</td></tr>`).join('')}
+  </table>
+  <h3>Armes</h3>
+  <p class="small muted">Ramasse-les au sol (halo doré) ou dans les caisses. <b>Batte</b> et <b>Nunchaku</b> : coups légers plus longs et plus forts. <b>Pistolet</b> et <b>Kalachnikov</b> : Attaque tire (maintenir pour la rafale), Lourd lance l'arme. Les munitions sont affichées à côté de ta jauge de Super.</p>
+  <h3>Réanimation</h3>
+  <p class="small muted">Un allié KO se réanime en maintenant <b>Attaque</b> à côté de lui. KO toi-même ? Appuie sur <b>Attaque</b> pour te réanimer contre 40 pièces communes, ou attends : tu reviens avec une vie.</p>
   <div class="row" style="margin-top:14px"><button class="btn ghost" data-action="back">← Retour</button></div>`;
 }
 
@@ -247,11 +257,12 @@ function labelFor(k: string): string {
   return L[k] ?? k;
 }
 
-export function menuHtml(profile: Profile, hasTouch: boolean, version: string, noNet = false): string {
+export function menuHtml(profile: Profile, hasTouch: boolean, version: string, noNet = false, resume: { online?: string; local?: string } = {}): string {
   return `<div class="row between" style="align-items:flex-end">
       <h1 class="logo">AI <span>FIGHTER</span> 2<small>BEAT'EM UP · 1 À 4 JOUEURS</small></h1>
       <div class="small muted" style="text-align:right">Stages : ${profile.stageReached}/6<br>Record : ${profile.bestScore} pts</div>
     </div>
+    ${resume.online || resume.local ? `<div class="resume">${resume.online ? `<button class="btn primary big" data-action="resume-online">↩ Reprendre la partie en ligne <span class="sub">salon ${esc(resume.online)} · tes coéquipiers t'attendent, une IA joue à ta place</span></button>` : ''}${resume.local ? `<button class="btn primary big" data-action="resume-local">↩ Reprendre la partie locale <span class="sub">${esc(resume.local)} · reprise là où tu t'étais arrêté</span></button>` : ''}</div>` : ''}
     <div class="grid menu" style="margin-top:18px">
       <button class="btn menu-item big" data-action="local"><span class="ico">🎮</span>Jouer en local<span class="sub">Solo ou jusqu'à 4 sur cet écran : claviers, manettes${hasTouch ? ', tactile' : ''}</span></button>
       <button class="btn menu-item big ${noNet ? '' : 'primary'}" data-action="online"><span class="ico">📡</span>Jouer en ligne<span class="sub">${noNet ? 'Indisponible sur cette page hébergée : il faut la version avec serveur' : 'Chacun sur son téléphone / PC, avec un code de salon'}</span></button>

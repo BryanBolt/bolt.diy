@@ -6,7 +6,8 @@ import { BONUS_BY_ID } from '../sim/bonuses';
 import type { Fx } from './fx';
 import { project, type Camera } from './camera';
 import { STAGES } from '../sim/stages';
-import { SHOP_ITEMS } from '../sim/types';
+import { SHOP_ITEMS, WEAPONS } from '../sim/types';
+import { REVIVE_FRAMES } from '../sim/constants';
 
 const FONT = '"Segoe UI", system-ui, -apple-system, sans-serif';
 
@@ -134,6 +135,8 @@ export function drawHud(ctx: CanvasRenderingContext2D, w: World, fx: Fx, cam: Ca
     }
   }
   ctx.textAlign = 'left';
+  // --- entraînement : historique des directions et dernière commande ---
+  if (w.mode === 'training') drawTrainingPad(ctx, w, info);
   // --- compteurs de combo ---
   for (const [id, c] of fx.comboPops) {
     const f = w.fighters.find((x) => x.id === id);
@@ -189,6 +192,34 @@ export function drawHud(ctx: CanvasRenderingContext2D, w: World, fx: Fx, cam: Ca
     ctx.textAlign = 'right';
     ctx.fillText(`${info.fps} fps${info.online ? `  ·  ping ${Math.round(info.ping)} ms` : ''}  ·  f${w.frame}`, VIEW_W - 12, VIEW_H - 8);
     ctx.textAlign = 'left';
+  }
+}
+
+const ARROWS: Record<number, string> = { 0: '·', 1: '→', 2: '←', 4: '↓', 8: '↑', 5: '↘', 6: '↙', 9: '↗', 10: '↖' };
+
+function drawTrainingPad(ctx: CanvasRenderingContext2D, w: World, info: HudInfo): void {
+  const f = w.fighters.find((x) => x.slot >= 0 && info.localSlots.includes(x.slot)) ?? w.fighters.find((x) => x.slot >= 0);
+  if (!f) return;
+  const y = VIEW_H - 84;
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  roundRect(ctx, 20, y - 20, 330, 70, 10);
+  ctx.fill();
+  ctx.font = `bold 11px ${FONT}`;
+  ctx.fillStyle = '#9aa3c7';
+  ctx.fillText('ENTRÉES (relatives au regard)', 30, y - 5);
+  ctx.font = `bold 20px ${FONT}`;
+  const items = f.hist.slice(-9);
+  items.forEach((e, i) => {
+    const age = w.frame - e.f;
+    ctx.globalAlpha = Math.max(0.25, 1 - age / 90);
+    ctx.fillStyle = e.m === 0 ? '#667' : '#fff';
+    ctx.fillText(ARROWS[e.m] ?? '·', 32 + i * 34, y + 22);
+  });
+  ctx.globalAlpha = 1;
+  if (w.frame - f.lastCmdFrame < 120 && f.lastCmd) {
+    ctx.font = `900 15px ${FONT}`;
+    ctx.fillStyle = '#8fe3ff';
+    ctx.fillText(`✔ ${f.lastCmd}`, 200, y - 5);
   }
 }
 
@@ -251,6 +282,12 @@ function drawPlayerPanel(ctx: CanvasRenderingContext2D, f: Fighter, x: number, y
     const icons = f.bonuses.slice(-8).map((b) => BONUS_BY_ID[b]?.icon ?? '•').join(' ');
     ctx.fillText(icons, x + 46 + Math.min(f.lives, 3) * 10 + (world.mode === 'duel' ? 0 : 8), y + 50);
   }
+  if (f.weapon > 0 && f.weaponKind && !ko) {
+    const wp = WEAPONS[f.weaponKind];
+    ctx.font = `bold 11px ${FONT}`;
+    ctx.fillStyle = '#ffd166';
+    ctx.fillText(`${wp.icon} ${wp.name} ${f.weapon}`, x + 46 + (w - 50) * 0.58, y + 62);
+  }
   if (full && !ko) {
     ctx.font = `bold 10px ${FONT}`;
     ctx.fillStyle = '#ffd166';
@@ -260,7 +297,7 @@ function drawPlayerPanel(ctx: CanvasRenderingContext2D, f: Fighter, x: number, y
     ctx.font = `900 12px ${FONT}`;
     ctx.fillStyle = '#ff5f5f';
     const canRevive = world.mode !== 'duel' && f.revive > 0;
-    ctx.fillText(canRevive ? `RÉANIMATION ${Math.round((f.revive / 100) * 100)} %` : f.lives > 0 || world.mode === 'duel' ? 'K.O.' : 'ÉLIMINÉ', x + 46, y + 62);
+    ctx.fillText(canRevive ? `RÉANIMATION ${Math.round((f.revive / REVIVE_FRAMES) * 100)} %` : f.lives > 0 || world.mode === 'duel' ? 'K.O.' : 'K.O. (attends un allié)', x + 46, y + 62);
   }
   ctx.globalAlpha = 1;
 }

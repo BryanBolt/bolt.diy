@@ -189,6 +189,8 @@ export class Synth {
       case 'ko': N(0.4, 0.8, 600, 0.6); T(200, 0.5, 'sawtooth', 0.4, -170); T(50, 0.6, 'sine', 0.7, -20); this.grunt(80, 0.4, 0.2, d); break;
       case 'pickup': T(880, 0.08, 'square', 0.12); T(1320, 0.12, 'square', 0.12, 0, 0.07); break;
       case 'weapon': T(300, 0.06, 'square', 0.15); T(450, 0.08, 'square', 0.15, 0, 0.06); T(600, 0.12, 'square', 0.15, 0, 0.12); break;
+      case 'ak': N(0.07, 0.6, 1800, 0.7); T(150, 0.07, 'square', 0.3, -90); N(0.04, 0.35, 5000, 1.2); break;
+      case 'pistol': N(0.11, 0.75, 1400, 0.7); T(110, 0.14, 'square', 0.4, -70); N(0.06, 0.4, 4200, 1.2, 0.01); break;
       case 'throw': N(0.2, 0.3, 900, 0.7); T(400, 0.15, 'triangle', 0.1, -200); break;
       case 'crate': N(0.08, 0.4, 700, 1); break;
       case 'cratebreak': N(0.2, 0.5, 500, 0.8); T(200, 0.1, 'square', 0.1, -100); N(0.15, 0.3, 1800, 1.5, 0.04); break;

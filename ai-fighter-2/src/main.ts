@@ -4,15 +4,16 @@ import { InputManager } from './input/manager';
 import { Renderer } from './render/renderer';
 import { Synth } from './audio/synth';
 import { TouchOverlay } from './ui/touch';
-import { Session } from './net/session';
+import { Session, type ReplayData } from './net/session';
 import { NetClient, defaultServerUrl } from './net/client';
-import { loadSettings, saveSettings, loadProfile, saveProfile, resetAll, type Profile } from './core/storage';
+import { loadSettings, saveSettings, loadProfile, saveProfile, resetAll, saveOnlineResume, loadOnlineResume, saveLocalGame, loadLocalGame, type Profile } from './core/storage';
 import { ROSTER, getChar } from './sim/chars';
 import { STAGES } from './sim/stages';
 import { IN } from './sim/types';
 import type { SimConfig, SimEvent } from './sim/types';
 import type { LobbyOptions, LobbyState, GameMode } from '../shared/protocol';
-import { DEFAULT_OPTIONS, normalizeRoomCode } from '../shared/protocol';
+import { DEFAULT_OPTIONS, normalizeRoomCode, decodeRle } from '../shared/protocol';
+import type { ServerMsg } from '../shared/protocol';
 import * as S from './ui/screens';
 import type { LobbyCard } from './ui/screens';
 import type { HudInfo } from './render/hud';
@@ -21,7 +22,7 @@ import { KEYMAP_P1, KEYMAP_P2, PADMAP_DEFAULT, PAD_BUTTON_NAMES } from './input/
 import { drawQr } from './ui/qr';
 import { VIEW_W } from './sim/constants';
 
-const VERSION = '2.0.0';
+const VERSION = '2.1.0';
 
 type AppState = 'menu' | 'local-lobby' | 'online' | 'online-lobby' | 'options' | 'howto' | 'game';
 
@@ -49,6 +50,14 @@ let endShown = false;
 let endTimer = 0;
 let rotateHint: HTMLDivElement | null = null;
 let lastMenuBits = 0;
+let currentSeed = 0;
+let reconnecting = false;
+let resumeWaiter: ((ok: boolean) => void) | null = null;
+let catchupEl: HTMLDivElement | null = null;
+let recoEl: HTMLDivElement | null = null;
+let resyncing = false;
+let resyncCount = 0;
+let lastResyncAt = 0;
 let demo: Session | null = null;
 let demoTimer = 0;
 const demoHud: HudInfo = { localSlots: [], waitingSlots: [], stalledMs: 0, desync: false, ping: 0, fps: 60, online: false, names: new Map(), showDebug: false, hidden: true };
@@ -84,11 +93,15 @@ function goMenu(): void {
   touch.show(false);
   input.clear();
   synth.startMusic('menu');
-  const el = S.show(S.menuHtml(loadProfile(), hasTouch, VERSION, noNet));
+  const onlineResume = noNet ? null : loadOnlineResume();
+  const localSave = loadLocalGame();
+  const el = S.show(S.menuHtml(loadProfile(), hasTouch, VERSION, noNet, { online: onlineResume?.code, local: localSave ? localSave.label : undefined }));
   el.addEventListener('click', (e) => {
     const a = actionOf(e);
     synth.unlock();
-    if (a === 'local') goLocalLobby();
+    if (a === 'resume-online') resumeOnline();
+    else if (a === 'resume-local') resumeLocal();
+    else if (a === 'local') goLocalLobby();
     else if (a === 'online') { if (noNet) S.toast('Le jeu en ligne demande la version avec serveur (voir le README du dépôt). Ici : solo et multijoueur local sur cet appareil.', 7000); else goOnline(); }
     else if (a === 'howto') goHowTo(settings().lastChar);
     else if (a === 'options') goOptions();
@@ -390,17 +403,154 @@ async function ensureNet(): Promise<void> {
   net.ping();
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+function showReco(text: string | null): void {
+  if (!text) { recoEl?.remove(); recoEl = null; return; }
+  if (!recoEl) { recoEl = document.createElement('div'); recoEl.className = 'reco'; document.body.appendChild(recoEl); }
+  recoEl.textContent = text;
+}
+
+/** Retour dans la partie en ligne (page rechargée, appli fermée, coupure…). */
+async function resumeOnline(): Promise<void> {
+  const info = loadOnlineResume();
+  if (!info) { S.toast('Aucune partie à reprendre.'); goMenu(); return; }
+  gameOnline = true;
+  S.toast('Reconnexion à la partie…', 4000);
+  try {
+    await ensureNet();
+  } catch {
+    S.toast("Impossible de joindre le serveur. Réessaie dans quelques secondes (tes coéquipiers t'attendent).", 6000);
+    return;
+  }
+  const ok = await new Promise<boolean>((resolve) => {
+    resumeWaiter = resolve;
+    net!.send({ t: 'rejoin', code: info.code, token: info.token });
+    setTimeout(() => resolve(false), 10000);
+  });
+  resumeWaiter = null;
+  if (!ok && state !== 'game') S.toast("Impossible de reprendre la partie.", 5000);
+}
+
+/** Coupure pendant une partie : on retente tout seul, la partie continue avec une IA à ta place. */
+async function autoReconnect(): Promise<void> {
+  if (reconnecting) return;
+  const info = loadOnlineResume();
+  if (!info) { endSession(); goMenu(); return; }
+  reconnecting = true;
+  for (let attempt = 1; attempt <= 14 && state === 'game'; attempt++) {
+    showReco(`Connexion perdue : une IA joue à ta place. Reconnexion… (${attempt}/14)`);
+    await sleep(Math.min(1200 * attempt, 5000));
+    try {
+      net?.close();
+      net = new NetClient();
+      await net.connect(settings().serverUrl || defaultServerUrl());
+      bindNet(net);
+    } catch { continue; }
+    const ok = await new Promise<boolean>((resolve) => {
+      resumeWaiter = resolve;
+      net!.send({ t: 'rejoin', code: info.code, token: info.token });
+      setTimeout(() => resolve(false), 8000);
+    });
+    resumeWaiter = null;
+    if (ok) { reconnecting = false; showReco(null); return; }
+    if (!loadOnlineResume()) break; // le serveur a répondu « partie terminée »
+  }
+  reconnecting = false;
+  showReco(null);
+  if (state === 'game') {
+    S.toast('Impossible de se reconnecter. Tu pourras reprendre depuis le menu tant que la partie dure.', 7000);
+    endSession();
+    goMenu();
+  }
+}
+
+function handleResume(m: Extract<ServerMsg, { t: 'resume' }>): void {
+  mySlot = m.slot;
+  gameOnline = true;
+  const cards: LobbyCard[] = m.players.map((p) => ({ ...p, local: p.slot === mySlot }));
+  const config = buildConfig(cards, m.options);
+  for (const p of m.players) names.set(p.slot, p.name);
+  lobby = { code: '', players: m.players, options: m.options, inGame: true };
+  const log: Record<number, number[]> = {};
+  for (const e of m.log) log[e.slot] = decodeRle(e.rle);
+  if (!input.deviceFor(mySlot) || !input.deviceFor(mySlot)!.connected()) {
+    const pad = [...input.pads.values()][0];
+    input.assign(mySlot, pad ?? (hasTouch && !matchMedia('(pointer:fine)').matches ? input.touch : input.keyboard1));
+  }
+  resyncing = false;
+  startGame(config, m.seed, [mySlot], m.players.map((p) => p.slot), m.delay, net, { log, events: m.events, resumeFrom: m.from >= 0 ? m.from : undefined });
+  resumeWaiter?.(true);
+}
+
+/** Reprise d'une partie locale sauvegardée automatiquement (après un plantage ou une fermeture). */
+function resumeLocal(): void {
+  const save = loadLocalGame();
+  if (!save) { S.toast('Aucune partie locale à reprendre.'); return; }
+  gameOnline = false;
+  input.clear();
+  const all = input.allDevices();
+  for (const slot of save.allSlots) {
+    const id = save.devs[slot];
+    input.assign(slot, all.find((d) => d.id === id && d.connected()) ?? input.keyboard1);
+  }
+  const log: Record<number, number[]> = {};
+  for (const e of save.log) log[e.slot] = decodeRle(e.rle);
+  localOptions = { ...localOptions };
+  startGame(save.config as SimConfig, save.seed, save.localSlots, save.allSlots, 0, null, { log, events: save.events, pauseWhenDone: true });
+}
+
+function autosaveLocal(): void {
+  if (!session || gameOnline || session.catching || !lastStartConfig) return;
+  const w = session.world;
+  if (w.mode === 'training' || w.phase === 'matchEnd' || w.phase === 'gameOver') return;
+  const lg = session.exportLog();
+  const devs: Record<number, string> = {};
+  for (const s of lastStartConfig.allSlots) devs[s] = input.deviceFor(s)?.id ?? 'kb1';
+  const stage = w.stage?.name ?? '';
+  saveLocalGame({ v: 1, ts: Date.now(), label: `${S.MODE_LABEL[w.mode]}${stage && w.mode !== 'duel' ? ' · ' + stage : ''}`, config: lastStartConfig.config, seed: currentSeed, localSlots: lastStartConfig.localSlots, allSlots: lastStartConfig.allSlots, devs, log: lg.slots, events: lg.events });
+}
+
 function bindNet(n: NetClient): void {
   n.onClose = (reason) => {
-    if (state === 'online-lobby' || (state === 'game' && gameOnline)) {
+    if (net === n) net = null;
+    if (state === 'game' && gameOnline) { void autoReconnect(); return; }
+    if (state === 'online-lobby') {
       S.toast(`Connexion perdue (${reason}).`, 4000);
-      if (state === 'game') { endSession(); }
       goMenu();
     }
-    net = null;
   };
-  n.on('error', (m) => { if (m.t === 'error') { S.toast(m.message, 4000); const st = document.getElementById('online-status'); if (st) st.textContent = m.message; } });
-  n.on('joined', (m) => { if (m.t === 'joined') { mySlot = m.slot; chat = []; history.replaceState(null, '', `?salon=${m.code}`); } });
+  n.on('error', (m) => {
+    if (m.t !== 'error') return;
+    S.toast(m.message, 5000);
+    const st = document.getElementById('online-status');
+    if (st) st.textContent = m.message;
+    if (m.code === 'gone') { saveOnlineResume(null); resumeWaiter?.(false); }
+  });
+  n.on('resume', (m) => { if (m.t === 'resume') handleResume(m); });
+  // désynchronisation détectée par le serveur : on se reconstruit depuis son journal (il fait foi)
+  n.on('desync', () => {
+    if (state !== 'game' || !gameOnline || !session || resyncing || session.catching) return;
+    if (resyncCount >= 4 || performance.now() - lastResyncAt < 6000) return;
+    resyncing = true;
+    resyncCount++;
+    lastResyncAt = performance.now();
+    session.frozen = true; // plus aucune entrée envoyée : tout ce qu'on a envoyé est déjà dans le journal du serveur
+    showReco('Resynchronisation de la partie…');
+    n.send({ t: 'resync' });
+    setTimeout(() => { if (resyncing && session) { resyncing = false; session.frozen = false; } showReco(null); }, 8000);
+  });
+  n.on('drop', (m) => { if (m.t === 'drop') S.toast(`${names.get(m.slot) ?? 'Un joueur'} a perdu la connexion : une IA le remplace, il pourra revenir.`, 4500); });
+  n.on('rejoin', (m) => { if (m.t === 'rejoin') S.toast(`${names.get(m.slot) ?? 'Un joueur'} revient dans la partie !`, 4000); });
+  n.on('joined', (m) => {
+    if (m.t !== 'joined') return;
+    mySlot = m.slot;
+    chat = [];
+    history.replaceState(null, '', `?salon=${m.code}`);
+    saveOnlineResume({ code: m.code, token: m.token, slot: m.slot, url: settings().serverUrl, ts: Date.now() });
+  });
   n.on('lobby', (m) => { if (m.t === 'lobby') { lobby = m.state; if (state === 'online' || state === 'online-lobby') { state = 'online-lobby'; renderOnlineLobby(); } } });
   n.on('chat', (m) => { if (m.t === 'chat') { const p = lobby?.players.find((x) => x.slot === m.slot); chat.push({ name: p?.name ?? `P${m.slot + 1}`, text: m.text }); if (chat.length > 30) chat.shift(); if (state === 'online-lobby') renderOnlineLobby(); else S.toast(`${p?.name ?? 'Joueur'} : ${m.text}`); } });
   n.on('start', (m) => {
@@ -411,6 +561,7 @@ function bindNet(n: NetClient): void {
     startGame(config, m.seed, [mySlot], m.players.map((p) => p.slot), m.delay, n);
   });
   n.on('end', () => {
+    saveOnlineResume(null);
     if (state === 'game') { endSession(); state = 'online-lobby'; renderOnlineLobby(); }
   });
   setInterval(() => n.ping(), 3000);
@@ -435,7 +586,7 @@ function renderOnlineLobby(): void {
     synth.unlock();
     const slot = Number(d.slot);
     const mine = slot === mySlot && me;
-    if (a === 'back') { net?.send({ t: 'leave' }); net?.close(); net = null; history.replaceState(null, '', location.pathname); goMenu(); }
+    if (a === 'back') { saveOnlineResume(null); net?.send({ t: 'leave' }); net?.close(); net = null; history.replaceState(null, '', location.pathname); goMenu(); }
     else if (a === 'prev-char' && mine) net?.send({ t: 'lobby', charId: cycleId(me.charId, -1), ready: false });
     else if (a === 'next-char' && mine) net?.send({ t: 'lobby', charId: cycleId(me.charId, 1), ready: false });
     else if (a === 'color' && mine) net?.send({ t: 'lobby', color: Number(d.color) });
@@ -495,8 +646,11 @@ function tickOnlineLobby(): void {
 // Partie
 // ---------------------------------------------------------------------------
 
-function startGame(config: SimConfig, seed: number, localSlots: number[], allSlots: number[], delay: number, n: NetClient | null): void {
+function startGame(config: SimConfig, seed: number, localSlots: number[], allSlots: number[], delay: number, n: NetClient | null, replay?: ReplayData): void {
   endSession();
+  currentSeed = seed;
+  if (!replay) resyncCount = 0;
+  showReco(null);
   state = 'game';
   S.hide();
   lastStartConfig = { config, localSlots, allSlots };
@@ -505,10 +659,11 @@ function startGame(config: SimConfig, seed: number, localSlots: number[], allSlo
   hud.online = !!n;
   demo?.dispose();
   demo = null;
-  session = new Session({ config, seed, localSlots, allSlots, delay, input, net: n ?? undefined });
+  session = new Session({ config, seed, localSlots, allSlots, delay, input, net: n ?? undefined, replay });
+  if (import.meta.env.DEV) session.debugLog = new Map();
   renderer.fx = new (renderer.fx.constructor as new () => typeof renderer.fx)();
   applySettings();
-  renderer.fx.onPhase('intro', session.world);
+  if (!replay) renderer.fx.onPhase('intro', session.world);
   const usesTouch = localSlots.some((s) => input.deviceFor(s)?.kind === 'touch');
   touch.show(usesTouch);
   if (usesTouch) requestLandscape();
@@ -529,10 +684,11 @@ function endSession(): void {
 
 function quitToLobby(): void {
   endSession();
+  saveLocalGame(null);
   if (gameOnline && net) {
     const me = lobby?.players.find((p) => p.slot === mySlot);
     if (me?.isHost) net.send({ t: 'end' });
-    else { net.send({ t: 'leave' }); net.close(); net = null; goMenu(); return; }
+    else { saveOnlineResume(null); net.send({ t: 'leave' }); net.close(); net = null; goMenu(); return; }
     state = 'online-lobby';
     renderOnlineLobby();
   } else {
@@ -575,7 +731,7 @@ function showEndMenu(): void {
       if (gameOnline) net?.send({ t: 'start', seed: (Math.random() * 0xffffffff) >>> 0 });
       else if (lastStartConfig) startGame(lastStartConfig.config, (Math.random() * 0xffffffff) >>> 0, lastStartConfig.localSlots, lastStartConfig.allSlots, 0, null);
     } else if (a === 'lobby') quitToLobby();
-    else if (a === 'menu') { endSession(); if (gameOnline && net) { net.send({ t: 'leave' }); net.close(); net = null; } goMenu(); }
+    else if (a === 'menu') { endSession(); saveLocalGame(null); if (gameOnline && net) { saveOnlineResume(null); net.send({ t: 'leave' }); net.close(); net = null; } goMenu(); }
   });
 }
 
@@ -597,6 +753,7 @@ function handleEvents(events: SimEvent[]): void {
       const killer = t ? w.fighters.find((f) => f.id === t.lastHitBy) : null;
       if (killer && killer.slot >= 0 && session.localSlots.includes(killer.slot) && t && t.team !== 0) { patch.totalKo = (patch.totalKo ?? profile.totalKo) + 1; changed = true; }
     } else if (e.t === 'phase') {
+      if (e.phase === 'matchEnd' || e.phase === 'gameOver') saveLocalGame(null);
       if (e.phase === 'stageClear' && w.mode === 'campaign') {
         const reached = Math.max(profile.stageReached, w.stageIndex + 1);
         if (reached > profile.stageReached) {
@@ -684,6 +841,22 @@ function loop(now: number): void {
   session.timeScale = w.slowmo > 0 ? 0.35 : 1;
   const steps = session.update(now);
   if (session.events.length) { handleEvents(session.events); session.events = []; }
+  // reconstruction de la partie (reprise) : barre de progression
+  if (session.catching) {
+    if (!catchupEl) {
+      catchupEl = document.createElement('div');
+      catchupEl.className = 'catchup';
+      catchupEl.innerHTML = '<b style="font-size:20px">Reprise de la partie…</b><div class="bar"><i></i></div><span class="small muted" id="catchpct"></span>';
+      document.body.appendChild(catchupEl);
+    }
+    const pct = Math.round(session.progress() * 100);
+    (catchupEl.querySelector('i') as HTMLElement).style.width = `${pct}%`;
+    (catchupEl.querySelector('#catchpct') as HTMLElement).textContent = `${pct} %`;
+  } else if (catchupEl) { catchupEl.remove(); catchupEl = null; }
+  // connexion morte sans coupure franche (téléphone en veille, Wi-Fi perdu) : on force la reconnexion
+  if (gameOnline && net && !reconnecting && performance.now() - net.lastRx > 9000) net.kill('délai dépassé');
+  // sauvegarde automatique des parties locales
+  if (!gameOnline && !session.catching && w.frame > 0 && w.frame % 300 === 0 && !w.paused) autosaveLocal();
   synth.intensity = w.mode !== 'duel' && w.fighters.some((f) => f.ai?.kind === 'boss' && f.state !== 'ko') ? 1 : 0;
   renderer.fx.update(steps);
   hud.waitingSlots = session.waitingSlots;
@@ -702,6 +875,13 @@ function loop(now: number): void {
   }
 }
 
+// sauvegarde quand la page se cache ou se ferme ; reconnexion quand elle revient
+window.addEventListener('pagehide', () => autosaveLocal());
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) autosaveLocal();
+  else if (state === 'game' && gameOnline && (!net || !net.connectedFlag) && !reconnecting) void autoReconnect();
+});
+
 // bouton pause tactile
 touch.onPause = () => { if (session) session.queue(session.localSlots[0], IN.PAUSE); };
 
@@ -714,9 +894,14 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) navigator.serviceWorke
 
 applySettings();
 // accès de débogage en développement (tests automatisés)
-if (import.meta.env.DEV) (window as unknown as { __aif2: unknown }).__aif2 = { get session() { return session; }, get net() { return net; } };
+if (import.meta.env.DEV) (window as unknown as { __aif2: unknown }).__aif2 = { get session() { return session; }, get net() { return net; }, get resyncs() { return resyncCount; } };
 const params = new URLSearchParams(location.search);
 const salon = params.get('salon');
-if (salon) goOnline(normalizeRoomCode(salon));
+const resumeInfo = salon ? loadOnlineResume() : null;
+if (salon && resumeInfo && resumeInfo.code === normalizeRoomCode(salon) && !noNet) {
+  // lien de salon d'une partie dont j'ai déjà une place : on reprend au lieu de rejoindre
+  goMenu();
+  void resumeOnline();
+} else if (salon) goOnline(normalizeRoomCode(salon));
 else goMenu();
 requestAnimationFrame(loop);

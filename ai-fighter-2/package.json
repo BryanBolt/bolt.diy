@@ -1,6 +1,6 @@
 {
   "name": "ai-fighter-2",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
   "description": "AI Fighter 2 - beat'em up stickman multijoueur (local + en ligne), clavier / manette / tactile",
   "type": "module",

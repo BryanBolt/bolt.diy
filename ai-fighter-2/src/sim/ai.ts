@@ -180,6 +180,11 @@ export function aiInput(w: World, f: Fighter): number {
       }
       // en portée
       if (isBoss && superReady && r < 0.6) { inp |= IN.SUPER; break; }
+      // saisie sur une cible qui se protège
+      if (isBoss && (target.state === 'guard' || target.state === 'block') && adx < 56 && r < 0.5) { inp |= IN.LIGHT | IN.HEAVY; break; }
+      // commandes via raccourcis (Spécial + direction)
+      if (isBoss && kiReady && r < 0.2 && target.y > 20) { inp |= IN.SPECIAL | IN.UP; break; }
+      if (isBoss && f.ki >= 15 && r < 0.14) { inp |= IN.SPECIAL | (dirTo > 0 ? IN.RIGHT : IN.LEFT); break; }
       if (target.state === 'launch' && isBoss && r < 0.5) { inp |= IN.JUMP; break; }
       if (f.y > 0) { inp |= r < 0.5 ? IN.LIGHT : IN.HEAVY; break; }
       switch (kind) {

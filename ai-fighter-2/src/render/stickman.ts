@@ -27,15 +27,19 @@ export const POSES: Record<string, Pose> = {
   fall: P(-4, -8, [-40, -40], [-30, -60], [-20, 30], [25, 20]),
   hit: P(-16, -14, [-25, -30], [-40, -20], [-10, 10], [20, 0]),
   launch: P(-45, -30, [-60, -40], [-80, -30], [40, 20], [70, 10], 10),
-  down: P(88, 10, [60, 20], [40, 0], [-15, 20], [10, 30], -46),
-  ko: P(92, 20, [50, 10], [30, 0], [-10, 15], [20, 25], -47),
-  getup: P(45, 0, [40, -60], [60, -80], [-50, 90], [40, 50], -24),
+  down: P(90, 8, [75, 5], [88, 0], [-86, 4], [-78, 10], -44),
+  ko: P(90, 14, [70, 8], [100, -6], [-90, 0], [-70, 14], -45),
+  getup: P(50, 4, [60, -40], [75, -60], [-70, 80], [40, 50], -24),
   stagger: P(-22, -20, [-30, -40], [30, -70], [-25, 15], [30, 0], 2),
   parry: P(10, 0, [30, -60], [95, -20], [-25, 12], [25, -8]),
   frozen: P(2, 0, [20, -40], [30, -60], [-10, 5], [12, -4]),
   win: P(-6, -10, [-30, -20], [185, -5], [-10, 5], [10, -5]),
   revive: P(28, 15, [70, -20], [80, -30], [-60, 100], [45, 60], -26),
   crouch: P(12, 2, [30, -60], [45, -80], [-60, 75], [55, 25], -24),
+  shoot0: P(4, 0, [70, -10], [78, -8], [-14, 8], [18, -6]),
+  shoot1: P(0, 0, [88, 0], [92, 0], [-18, 10], [22, -8], 0, -3),
+  grab0: P(14, 4, [50, -20], [60, -20], [-14, 8], [22, -6]),
+  grab1: P(24, 6, [88, 4], [92, 4], [-22, 12], [30, -10], 0, 6),
   // coups : [préparation, frappe]
   jab0: P(2, 0, [30, -60], [-25, -90], [-12, 6], [14, -4]),
   jab1: P(10, 0, [20, -50], [98, -2], [-16, 8], [22, -6]),
@@ -73,7 +77,7 @@ export const POSES: Record<string, Pose> = {
   counter1: P(18, 4, [-20, -40], [105, 0], [-25, 12], [32, -8], 0, 6),
 };
 
-const ANIM_KEYS = ['jab', 'cross', 'kick', 'heavy', 'uppercut', 'sweep', 'knee', 'airkick', 'dive', 'special', 'rising', 'super', 'charge', 'slam', 'lasso', 'backstab', 'counter'];
+const ANIM_KEYS = ['shoot', 'grab', 'jab', 'cross', 'kick', 'heavy', 'uppercut', 'sweep', 'knee', 'airkick', 'dive', 'special', 'rising', 'super', 'charge', 'slam', 'lasso', 'backstab', 'counter'];
 
 function lerpPose(a: Pose, b: Pose, t: number): Pose {
   const l = (x: number, y: number) => lerp(x, y, t);
@@ -130,11 +134,11 @@ export function poseFor(f: Fighter, time: number): Pose {
     case 'hit':
       return lerpPose(POSES.hit, POSES.idle, Math.min(1, f.stateFrame / Math.max(1, f.hitFrames)) * 0.5);
     case 'launch':
-      return { ...POSES.launch, lean: POSES.launch.lean - f.stateFrame * 1.5 };
+      return { ...POSES.launch, lean: Math.max(-95, POSES.launch.lean - f.stateFrame * 2) };
     case 'down':
       return POSES.down;
     case 'ko':
-      return f.y > 0.5 ? { ...POSES.launch, lean: -70 - f.stateFrame * 2 } : POSES.ko;
+      return f.y > 0.5 ? { ...POSES.launch, lean: Math.max(-100, -60 - f.stateFrame * 2) } : POSES.ko;
     case 'getup':
       return lerpPose(POSES.getup, POSES.idle, easeOut(f.stateFrame / 14));
     case 'stagger': {
@@ -170,11 +174,33 @@ function attackPose(f: Fighter, time: number): Pose {
   const c = getChar(f.charId);
   const m = f.moveId ? c.moves[f.moveId] : null;
   if (!m) return POSES.idle;
-  const key = ANIM_KEYS.includes(m.anim) ? m.anim : 'jab';
-  const p0 = POSES[key + '0'] ?? POSES.jab0;
-  const p1 = POSES[key + '1'] ?? POSES.jab1;
   const fr = f.stateFrame;
   const activeEnd = m.startup + m.active;
+  if (m.id === 'shoot') return { ...POSES.shoot1, hipX: -Math.max(0, 3 - fr) };
+  if (m.anim === 'tatsu') {
+    const p = { ...POSES.airkick1 };
+    p.spin = (fr % 14) / 14 * 360 * (fr > 4 ? 1 : 0);
+    p.hipY = 8;
+    return p;
+  }
+  if (m.anim === 'flurrykick') {
+    const t = Math.floor(fr / 3) % 2;
+    const p = { ...POSES.kick1 };
+    p.legR = t ? [98, 2] : [-20, 20];
+    p.legL = t ? [-20, 20] : [96, 2];
+    p.lean = -10;
+    return p;
+  }
+  if (m.anim === 'flash') {
+    const p = { ...POSES.rising1 };
+    p.spin = -Math.min(360, Math.max(0, (fr - 4) * 30));
+    p.hipY = 14;
+    return p;
+  }
+  const key = ANIM_KEYS.includes(m.anim) ? m.anim : 'jab';
+  if (m.anim === 'jab' && m.multi) { const p = { ...POSES.jab1 }; p.armR = fr % 4 < 2 ? [98, -2] : [30, -50]; p.armL = fr % 4 < 2 ? [30, -50] : [98, -2]; if (fr > m.startup && fr <= m.startup + m.active) return p; }
+  const p0 = POSES[key + '0'] ?? POSES.jab0;
+  const p1 = POSES[key + '1'] ?? POSES.jab1;
   if (key === 'super') {
     // alternance rapide pendant les frames actives
     if (fr <= m.startup) return lerpPose(POSES.idle, p0, easeOut(fr / Math.max(1, m.startup)));
@@ -219,6 +245,11 @@ export function colorsFor(f: Fighter): { main: string; dark: string; glow: strin
 }
 
 export function drawStickman(ctx: CanvasRenderingContext2D, f: Fighter, pose: Pose, o: DrawOpts): void {
+  drawBody(ctx, f, pose, o, false);
+  if (o.flash && o.flash > 0) drawBody(ctx, f, pose, { ...o, alpha: (o.alpha ?? 1) * Math.min(0.85, o.flash) }, true);
+}
+
+function drawBody(ctx: CanvasRenderingContext2D, f: Fighter, pose: Pose, o: DrawOpts, tint: boolean): void {
   const c = getChar(f.charId);
   const sk = skeletonStyle(c);
   const col = colorsFor(f);
@@ -260,8 +291,8 @@ export function drawStickman(ctx: CanvasRenderingContext2D, f: Fighter, pose: Po
   const lL = limb(hipX, hipY, pose.legL[0], TH, pose.legL[0] + pose.legL[1], SH);
   const lR = limb(hipX, hipY, pose.legR[0], TH, pose.legR[0] + pose.legR[1], SH);
 
-  const main = o.ghost ? col.glow : col.main;
-  const dark = o.outline ?? (o.ghost ? col.main : f.rage ? '#4a0a0a' : '#141622');
+  const main = tint ? '#ffffff' : o.ghost ? col.glow : col.main;
+  const dark = tint ? '#ffffff' : (o.outline ?? (o.ghost ? col.main : f.rage ? '#4a0a0a' : f.boss ? '#3a2a00' : '#141622'));
 
   const strokePath = (pts: number[][], width: number, color: string) => {
     ctx.beginPath();
@@ -280,14 +311,14 @@ export function drawStickman(ctx: CanvasRenderingContext2D, f: Fighter, pose: Po
   const body = [[hipX, hipY], [neckX, neckY]];
 
   // cape / accessoires arrière
-  drawAccessoryBack(ctx, sk.accessory, neckX, neckY, shoulderX, shoulderY, fx, S, col, o.time, f);
+  if (!tint) drawAccessoryBack(ctx, sk.accessory, neckX, neckY, shoulderX, shoulderY, fx, S, col, o.time, f);
 
   // contours
   for (const pts of back) strokePath(pts, thick + 3.5 * S, dark);
   strokePath(body, thick + 4.5 * S, dark);
   for (const pts of front) strokePath(pts, thick + 3.5 * S, dark);
   // remplissage couleur
-  const backColor = o.ghost ? main : shade(main, -0.22);
+  const backColor = o.ghost || tint ? main : shade(main, -0.22);
   for (const pts of back) strokePath(pts, thick, backColor);
   strokePath(body, thick + 1.2 * S, main);
   for (const pts of front) strokePath(pts, thick, main);
@@ -298,16 +329,8 @@ export function drawStickman(ctx: CanvasRenderingContext2D, f: Fighter, pose: Po
     ctx.fillStyle = dark;
     ctx.fill();
   }
-  // arme (batte) dans la main avant
-  if (f.weapon > 0) {
-    const ang = (pose.armR[0] + pose.armR[1]) * DEG;
-    const hx = aR[2], hy = aR[3];
-    const ex = hx + Math.sin(ang) * 46 * S * fx, ey = hy + Math.cos(ang) * 46 * S;
-    ctx.beginPath(); ctx.moveTo(hx - Math.sin(ang) * 8 * S * fx, hy - Math.cos(ang) * 8 * S); ctx.lineTo(ex, ey);
-    ctx.lineWidth = thick + 3 * S; ctx.strokeStyle = dark; ctx.lineCap = 'round'; ctx.stroke();
-    ctx.lineWidth = thick; ctx.strokeStyle = '#c98a4b'; ctx.stroke();
-    ctx.beginPath(); ctx.moveTo((hx + ex) / 2, (hy + ey) / 2); ctx.lineTo(ex, ey); ctx.lineWidth = thick + 1.5 * S; ctx.stroke();
-  }
+  // arme tenue dans la main avant
+  if (f.weapon > 0 && f.weaponKind && !tint) drawHeldWeapon(ctx, f.weaponKind, aR[2], aR[3], (pose.armR[0] + pose.armR[1]) * DEG, fx, S, thick, o.time);
   // tête
   ctx.beginPath();
   ctx.arc(headX, headY, headR + 2.2 * S, 0, Math.PI * 2);
@@ -315,10 +338,11 @@ export function drawStickman(ctx: CanvasRenderingContext2D, f: Fighter, pose: Po
   ctx.fill();
   ctx.beginPath();
   ctx.arc(headX, headY, headR, 0, Math.PI * 2);
-  ctx.fillStyle = o.ghost ? main : '#f3e9dc';
+  ctx.fillStyle = o.ghost || tint ? main : '#f3e9dc';
   ctx.fill();
   // yeux
   const ko = f.state === 'ko';
+  if (tint) { ctx.restore(); return; }
   ctx.strokeStyle = '#141622';
   ctx.lineWidth = 1.6 * S;
   const ex = headX + fx * headR * 0.35;
@@ -343,14 +367,6 @@ export function drawStickman(ctx: CanvasRenderingContext2D, f: Fighter, pose: Po
     ctx.stroke();
   }
   drawAccessoryFront(ctx, sk.accessory, headX, headY, headR, fx, S, col, o.time, f);
-  // flash d'impact
-  if (o.flash && o.flash > 0) {
-    ctx.globalCompositeOperation = 'source-atop';
-    ctx.globalAlpha = (o.alpha ?? 1) * o.flash;
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(-80 * S, -140 * S, 160 * S, 160 * S);
-    ctx.globalCompositeOperation = 'source-over';
-  }
   ctx.restore();
 }
 
@@ -455,4 +471,53 @@ function drawAccessoryFront(ctx: CanvasRenderingContext2D, acc: string, hx: numb
     default:
       break;
   }
+}
+
+
+function drawHeldWeapon(ctx: CanvasRenderingContext2D, kind: string, hx: number, hy: number, ang: number, fx: number, S: number, thick: number, time: number): void {
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  const dx = Math.sin(ang) * fx, dy = Math.cos(ang);
+  if (kind === 'bat') {
+    const ex = hx + dx * 46 * S, ey = hy + dy * 46 * S;
+    ctx.beginPath(); ctx.moveTo(hx - dx * 8 * S, hy - dy * 8 * S); ctx.lineTo(ex, ey);
+    ctx.lineWidth = thick + 3 * S; ctx.strokeStyle = '#141622'; ctx.stroke();
+    ctx.lineWidth = thick; ctx.strokeStyle = '#c98a4b'; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo((hx + ex) / 2, (hy + ey) / 2); ctx.lineTo(ex, ey); ctx.lineWidth = thick + 1.5 * S; ctx.stroke();
+  } else if (kind === 'nunchaku') {
+    const mx = hx + dx * 20 * S, my = hy + dy * 20 * S;
+    const sw = Math.sin(time * 0.5) * 10 * S;
+    const ex = mx + dx * 20 * S - dy * sw, ey = my + dy * 20 * S + dx * sw;
+    for (const [w, c] of [[thick + 2.5 * S, '#141622'], [thick - 1 * S, '#8a5a2b']] as [number, string][]) {
+      ctx.lineWidth = w; ctx.strokeStyle = c;
+      ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(mx, my); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(mx, my); ctx.lineTo(ex, ey); ctx.stroke();
+    }
+    ctx.strokeStyle = '#cfd6e0'; ctx.lineWidth = 1.2 * S;
+    ctx.beginPath(); ctx.moveTo(mx, my); ctx.lineTo(mx + dx * 2 * S, my + dy * 2 * S); ctx.stroke();
+  } else {
+    // armes à feu : orientées vers l'avant
+    const long = kind === 'ak';
+    const len = (long ? 40 : 18) * S;
+    const gx = hx + (long ? -4 : 0) * S * fx, gy = hy;
+    ctx.fillStyle = '#141622';
+    ctx.strokeStyle = '#141622';
+    ctx.lineWidth = 2;
+    // canon + corps
+    ctx.fillRect(Math.min(gx, gx + fx * len), gy - 3.5 * S, len, 7 * S);
+    ctx.fillStyle = long ? '#3a3f4a' : '#2a2f3a';
+    ctx.fillRect(Math.min(gx, gx + fx * len) + 1, gy - 2.5 * S, len - 2, 5 * S);
+    if (long) {
+      // crosse en bois, chargeur courbe
+      ctx.fillStyle = '#8a5a2b';
+      ctx.fillRect(Math.min(gx, gx - fx * 12 * S), gy - 3 * S, 12 * S, 6 * S);
+      ctx.fillStyle = '#141622';
+      ctx.beginPath(); ctx.moveTo(gx + fx * 16 * S, gy + 3 * S); ctx.lineTo(gx + fx * 22 * S, gy + 14 * S); ctx.lineTo(gx + fx * 17 * S, gy + 15 * S); ctx.lineTo(gx + fx * 12 * S, gy + 3 * S); ctx.fill();
+    } else {
+      ctx.fillRect(gx - fx * 1 * S, gy, 5 * S * fx || 5 * S, 9 * S);
+    }
+    if (time % 3 < 1.2 && false) { /* réservé : lueur de bouche */ }
+  }
+  ctx.restore();
 }

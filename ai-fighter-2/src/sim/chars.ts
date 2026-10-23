@@ -224,6 +224,67 @@ export const ROSTER: CharDef[] = [
 
 export const CHARS: Record<string, CharDef> = Object.fromEntries(ROSTER.map((c) => [c.id, c]));
 
+// ---------------------------------------------------------------------------
+// Commandes de combat (communes à tous les héros, façon jeux de combat) :
+// quarts de cercle, dragon montant, tourbillon, saisies, poing éclair…
+// Les notations suivent le pavé numérique, relatives au regard du combattant :
+// 6 = avant, 4 = arrière, 2 = bas (vers l'écran), 8 = haut (vers le fond), 3 = bas-avant.
+// ---------------------------------------------------------------------------
+export interface CommandInfo {
+  id: string;
+  name: string;
+  input: string; // saisie lisible
+  assist: string; // raccourci manette/tactile
+  note: string;
+  cost: string;
+}
+
+export const COMMANDS: CommandInfo[] = [
+  { id: 'c_fire', name: 'Boule de Ki', input: '↓ ↘ → + Attaque', assist: 'Spécial + avant', note: 'Projectile (feu, glace ou sphère selon le héros)', cost: '12 Ki' },
+  { id: 'c_superfire', name: 'Grande boule de Ki', input: '↓ ↘ → ↓ ↘ → + Attaque', assist: 'Spécial + avant, jauge Super ≥ 50', note: 'Énorme projectile perçant', cost: '50 Super' },
+  { id: 'c_dp', name: 'Dragon montant', input: '→ ↓ ↘ + Attaque', assist: 'Spécial + haut', note: 'Anti-aérien invincible au départ, projette en l\'air', cost: '15 Ki' },
+  { id: 'c_tatsu', name: 'Tourbillon', input: '↓ ↙ ← + Lourd', assist: 'Spécial + arrière', note: 'Pied tournoyant à 4 coups qui avance', cost: '15 Ki' },
+  { id: 'c_hundred', name: 'Cent pieds', input: '↓ ↘ → + Lourd', assist: '—', note: 'Rafale de 6 coups de pied', cost: '20 Ki' },
+  { id: 'c_sonic', name: 'Onde basse', input: '← → + Attaque', assist: '—', note: 'Projectile rapide à ras du sol', cost: 'gratuit' },
+  { id: 'c_flash', name: 'Salto éclair', input: '↓ ↑ + Lourd', assist: '—', note: 'Salto invincible, projette en l\'air', cost: 'gratuit' },
+  { id: 'c_grab', name: 'Saisie', input: 'Attaque + Lourd', assist: '—', note: 'Imparable par la garde, projette l\'adversaire', cost: 'gratuit' },
+  { id: 'c_piledriver', name: 'Piledriver (360°)', input: 'tour complet + Attaque', assist: '—', note: 'Saisie dévastatrice au corps à corps', cost: '30 Super' },
+  { id: 'c_onein', name: 'Poing d\'un pouce', input: '↘ + Attaque', assist: '—', note: 'Frappe très courte, très puissante, brise-garde', cost: '10 Ki' },
+  { id: 'c_ewgf', name: 'Poing éclair', input: '→ N ↓ ↘ + Attaque', assist: '—', note: 'Lanceur ultra rapide, ouvre les jongles', cost: '10 Ki' },
+  { id: 'c_hop', name: 'Coup-sauté', input: '↘ + Lourd', assist: '—', note: 'Frappe haute (il faut garder debout) qui lance', cost: 'gratuit' },
+  { id: 'c_side', name: 'Coup latéral', input: '→ + Attaque', assist: '—', note: 'Longue allonge, continue en enchaînement', cost: 'gratuit' },
+  { id: 'c_flurry', name: 'Rafale du dragon', input: 'Attaque ×4', assist: '—', note: '6 coups de poing éclair en fin d\'enchaînement', cost: 'gratuit' },
+  { id: 'c_airflying', name: 'Coup volant', input: 'En l\'air : → + Attaque', assist: '—', note: 'Longue glissade aérienne', cost: 'gratuit' },
+];
+
+function commandMoves(c: CharDef): Record<string, MoveDef> {
+  const sp = c.moves[c.special]?.projectile;
+  const kind = sp && (sp.kind === 'fire' || sp.kind === 'ice' || sp.kind === 'orb') ? sp.kind : 'ki';
+  const m: Record<string, MoveDef> = {};
+  m.c_fire = mv('special', { id: 'c_fire', hit: { x: 0, w: 0, y0: 0, y1: 0, z: 0 }, damage: 0, name: 'Boule de Ki', anim: 'special', startup: 11, active: 3, recovery: 22, kiCost: 12, burnTarget: kind === 'fire' ? 100 : undefined, freezeTarget: kind === 'ice' ? 45 : undefined, projectile: { kind, speed: 8.5, life: 80, damage: 13, radius: 18, y: 55 } });
+  m.c_superfire = mv('special', { id: 'c_superfire', hit: { x: 0, w: 0, y0: 0, y1: 0, z: 0 }, damage: 0, name: 'Grande boule de Ki', anim: 'super', startup: 16, active: 4, recovery: 30, superCost: 50, invuln: true, projectile: { kind: kind === 'ki' ? 'orb' : kind, speed: 7, life: 110, damage: 24, radius: 46, y: 60, pierce: true } });
+  m.c_dp = mv('launcher', { id: 'c_dp', name: 'Dragon montant', anim: 'rising', startup: 5, active: 12, recovery: 30, damage: 14, hit: { x: 16, w: 64, y0: 0, y1: 150, z: 36 }, launch: true, kbx: 2, kby: 12, hitstop: 8, lunge: 3, lungeAir: 11, invuln: true, kiCost: 15, multi: { hits: 2, every: 6 } });
+  m.c_tatsu = mv('heavy', { id: 'c_tatsu', name: 'Tourbillon', anim: 'tatsu', startup: 8, active: 22, recovery: 18, damage: 7, hit: { x: 6, w: 76, y0: 0, y1: 100, z: 36 }, kbx: 3, kby: 2, hitstun: 20, hitstop: 4, knockdown: false, lunge: 4.5, selfKnock: true, kiCost: 15, multi: { hits: 4, every: 5 } });
+  m.c_hundred = mv('heavy', { id: 'c_hundred', name: 'Cent pieds', anim: 'flurrykick', startup: 6, active: 18, recovery: 22, damage: 4, hit: { x: 30, w: 76, y0: 0, y1: 90, z: 32 }, kbx: 1.4, kby: 0, hitstun: 18, hitstop: 3, knockdown: false, lunge: 0, kiCost: 20, multi: { hits: 6, every: 3 } });
+  m.c_sonic = mv('special', { id: 'c_sonic', hit: { x: 0, w: 0, y0: 0, y1: 0, z: 0 }, damage: 0, name: 'Onde basse', anim: 'special', startup: 7, active: 2, recovery: 18, kiCost: 0, projectile: { kind: 'ki', speed: 13, life: 60, damage: 9, radius: 13, y: 28 } });
+  m.c_flash = mv('launcher', { id: 'c_flash', name: 'Salto éclair', anim: 'flash', startup: 5, active: 10, recovery: 26, damage: 13, hit: { x: 10, w: 60, y0: 20, y1: 140, z: 36 }, launch: true, kbx: 2, kby: 11, hitstop: 8, lungeAir: 12, lunge: -1.5, invuln: true });
+  m.c_grab = mv('heavy', { id: 'c_grab', name: 'Saisie', anim: 'grab', startup: 6, active: 3, recovery: 28, damage: 16, hit: { x: 22, w: 46, y0: 10, y1: 100, z: 26 }, unblockable: true, knockdown: true, kbx: 8, kby: 8, hitstop: 10 });
+  m.c_piledriver = mv('heavy', { id: 'c_piledriver', name: 'Piledriver', anim: 'slam', startup: 8, active: 3, recovery: 40, damage: 30, hit: { x: 20, w: 46, y0: 10, y1: 100, z: 26 }, unblockable: true, knockdown: true, kbx: 3, kby: 4, hitstop: 16, superCost: 30, invuln: true });
+  m.c_onein = mv('heavy', { id: 'c_onein', name: "Poing d'un pouce", anim: 'cross', startup: 9, active: 3, recovery: 20, damage: 19, hit: { x: 14, w: 42, y0: 20, y1: 100, z: 28 }, kbx: 12, kby: 3, knockdown: true, hitstop: 12, kiCost: 10, guardBreak: true });
+  m.c_ewgf = mv('launcher', { id: 'c_ewgf', name: 'Poing éclair', anim: 'uppercut', startup: 8, active: 3, recovery: 24, damage: 14, hit: { x: 30, w: 58, y0: 0, y1: 120, z: 32 }, launch: true, kbx: 2.5, kby: 11, hitstop: 10, lunge: 6, kiCost: 10 });
+  m.c_hop = mv('launcher', { id: 'c_hop', name: 'Coup-sauté', anim: 'knee', startup: 12, active: 3, recovery: 20, damage: 12, hit: { x: 28, w: 58, y0: 40, y1: 115, z: 32 }, launch: true, kbx: 2, kby: 9, hitstop: 8, overhead: true, lunge: 2 });
+  m.c_side = mv('light', { id: 'c_side', name: 'Coup latéral', anim: 'kick', startup: 8, active: 4, recovery: 14, damage: 9, hit: { x: 50, w: 86, y0: 30, y1: 90, z: 30 }, kbx: 6, hitstun: 20, lunge: 3, cancelFrom: 11, next: ['l2', 'l3', 'heavy', 'launcher', 'special', 'special2', 'super'] });
+  m.shoot = mv('light', { id: 'shoot', name: 'Tir', anim: 'shoot', startup: 1, active: 1, recovery: 3, damage: 0, hit: { x: 0, w: 0, y0: 0, y1: 0, z: 0 } });
+  m.c_flurry = mv('light', { id: 'c_flurry', name: 'Rafale du dragon', anim: 'jab', startup: 4, active: 14, recovery: 16, damage: 3, hit: { x: 30, w: 62, y0: 20, y1: 100, z: 30 }, kbx: 0.8, hitstun: 14, hitstop: 2, multi: { hits: 6, every: 2 }, lunge: 1 });
+  m.c_airflying = mv('air', { id: 'c_airflying', name: 'Coup volant', anim: 'airkick', startup: 5, active: 12, recovery: 12, damage: 11, hit: { x: 30, w: 70, y0: -30, y1: 70, z: 30 }, lunge: 6, kbx: 5, hitstun: 22, knockdown: true });
+  return m;
+}
+
+for (const ch of ROSTER) Object.assign(ch.moves, commandMoves(ch));
+// rafale du dragon : prolonge l'enchaînement léger
+for (const ch of ROSTER) { const l3 = ch.moves.l3; if (l3.next) l3.next = [...l3.next, 'c_flurry']; }
+
+
 export function getChar(id: string): CharDef {
   return CHARS[id] ?? CHARS.kai;
 }

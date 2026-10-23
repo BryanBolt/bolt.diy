@@ -50,7 +50,7 @@ export type MoveKind =
   | 'super'
   | 'finisher';
 
-export type ProjectileKind = 'ki' | 'fire' | 'ice' | 'shuriken' | 'bullet' | 'orb' | 'shock' | 'bottle' | 'bat';
+export type ProjectileKind = 'ki' | 'fire' | 'ice' | 'shuriken' | 'bullet' | 'orb' | 'shock' | 'bottle' | 'bat' | 'slug';
 
 export interface ProjectileDef {
   kind: ProjectileKind;
@@ -240,9 +240,18 @@ export interface Fighter {
   phoenixUsed: boolean;
   nextMoveFrame: number; // frame simulée à partir de laquelle on peut ré-attaquer (anti-mash)
   wantsLeave: boolean;
-  weapon: number; // coups restants avec l'arme tenue (0 = mains nues)
+  weapon: number; // coups / munitions restants avec l'arme tenue (0 = mains nues)
+  weaponKind: WeaponKind | '';
   rage: boolean; // boss en furie
+  boss: boolean;
+  hist: { m: number; f: number }[]; // historique des directions (relatives au regard) pour les commandes
+  gunCd: number; // délai entre deux tirs
+  lastCmd: string; // dernière commande réussie (affichage entraînement)
+  lastCmdFrame: number;
+  backHold: number; // frames passées à maintenir « arrière » (pas arrière sans se retourner)
 }
+
+export type WeaponKind = 'bat' | 'nunchaku' | 'ak' | 'pistol';
 
 export interface Projectile {
   id: number;
@@ -262,11 +271,13 @@ export interface Projectile {
   gravity: number;
   homing: number;
   bonus?: BonusId[];
+  wk?: WeaponKind;
 }
 
 export interface Item {
   id: number;
   kind: 'heal' | 'ki' | 'coin' | 'crate' | 'weapon';
+  wk?: WeaponKind;
   x: number;
   y: number;
   z: number;
@@ -290,7 +301,9 @@ export type SimEvent =
   | { t: 'hazard'; kind: HazardKind; state: 'warn' | 'active' | 'end'; x: number; z: number }
   | { t: 'rage'; id: number; x: number; y: number; z: number }
   | { t: 'wall'; x: number; y: number; z: number; dir: number }
-  | { t: 'counter'; x: number; y: number; z: number };
+  | { t: 'counter'; x: number; y: number; z: number }
+  | { t: 'boss'; id: number; name: string; line: string }
+  | { t: 'cmd'; id: number; name: string; x: number; y: number; z: number };
 
 export type Phase =
   | 'intro'
@@ -346,7 +359,15 @@ export const SHOP_ITEMS: { id: string; name: string; desc: string; cost: number;
   { id: 'ki', name: 'Ki plein', desc: 'Jauges de Ki et de Super pleines', cost: 20, icon: '🌀' },
   { id: 'bonus', name: 'Bonus mystère', desc: 'Un bonus roguelite aléatoire', cost: 60, icon: '🎁' },
   { id: 'weapon', name: 'Batte', desc: 'Arme : coups légers plus forts et plus longs (10 coups)', cost: 15, icon: '🏏' },
+  { id: 'ak', name: 'Kalachnikov', desc: 'Fusil d\'assaut : Attaque tire en rafale (30 balles)', cost: 45, icon: '🔫' },
 ];
+
+export const WEAPONS: Record<WeaponKind, { name: string; uses: number; icon: string; gun: boolean }> = {
+  bat: { name: 'Batte', uses: 10, icon: '🏏', gun: false },
+  nunchaku: { name: 'Nunchaku', uses: 14, icon: '🥢', gun: false },
+  ak: { name: 'Kalachnikov', uses: 30, icon: '🔫', gun: true },
+  pistol: { name: 'Pistolet', uses: 12, icon: '🔫', gun: true },
+};
 
 export interface BonusChoice {
   slot: number;

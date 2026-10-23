@@ -20,6 +20,10 @@ Android, iOS, PC, Mac, installable en application (PWA) et jouable hors-ligne en
 | IA qui s'empile | Limite d'attaquants simultanés, flanc, réactions (garde / esquive) qui dépendent de la difficulté, projectiles évités |
 | Pas de réanimation | Un allié KO se réanime en maintenant Attaque à côté de lui ; système de vies ; Phénix |
 | Textes dynamiques via API Claude | Tout est embarqué : aucune clé, aucun réseau requis hors multijoueur |
+| Partie perdue si ça bug | **Reprise de partie** : coupure ou fermeture, tu reviens dans la même partie avec ta place ; une IA joue à ta place pendant ton absence (en ligne et en local) |
+| Peu de coups | 15 **commandes de combat** communes (quarts de cercle, dragon montant, tourbillon, saisies, 360°, poing éclair…) en plus des coups propres à chaque héros |
+| Pas d'armes à feu | **Kalachnikov** (rafale), **pistolet**, **batte**, **nunchaku** au sol, dans les caisses et à la boutique |
+| Boss peu lisibles | Boss agrandis, couronne dorée, anneau au sol, nom au-dessus de la tête, bannière « BOSS » à l'arrivée |
 
 ## Lancer
 
@@ -102,6 +106,8 @@ src/audio/           synthèse WebAudio (effets + musique procédurale par stage
 src/ui/              écrans DOM (menus, salon, options, aide), manette tactile
 tests/               déterminisme, stabilité, lockstep
 ```
+
+**Reprise et déterminisme.** Le serveur garde le journal des entrées de la partie. Un client qui revient reçoit ce journal et rejoue la partie à toute vitesse (quelques secondes pour une partie de 10 minutes) ; la reprise de ses commandes est annoncée 2 secondes à l'avance pour que tous les clients appliquent le changement à la même image. Si le serveur détecte un écart entre clients, chacun se reconstruit automatiquement depuis son journal.
 
 **Pourquoi le lockstep ?** Chaque client simule la partie entière ; seules les entrées (16 bits par
 joueur et par frame) transitent par le serveur, qui ne fait que relayer. Une frame n'est jouée que

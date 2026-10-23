@@ -1,4 +1,5 @@
 import type { ClientMsg, ServerMsg } from '../../shared/protocol';
+import { PROTOCOL_VERSION } from '../../shared/protocol';
 
 type Handler = (msg: ServerMsg) => void;
 
@@ -7,6 +8,7 @@ export class NetClient {
   private ws: WebSocket | null = null;
   private handlers = new Map<string, Handler[]>();
   rtt = 0;
+  lastRx = performance.now();
   connectedFlag = false;
   onClose: ((reason: string) => void) | null = null;
 
@@ -22,7 +24,7 @@ export class NetClient {
       const ws = this.ws;
       ws.onopen = () => {
         this.connectedFlag = true;
-        this.send({ t: 'hello', v: 2 });
+        this.send({ t: 'hello', v: PROTOCOL_VERSION });
         settled = true;
         resolve();
       };
@@ -41,6 +43,7 @@ export class NetClient {
         this.onClose?.(ev.reason || 'déconnecté');
       };
       ws.onmessage = (ev) => {
+        this.lastRx = performance.now();
         let msg: ServerMsg;
         try {
           msg = JSON.parse(String(ev.data));
@@ -78,6 +81,16 @@ export class NetClient {
 
   ping(): void {
     this.send({ t: 'ping', ts: performance.now() });
+  }
+
+  /** Connexion silencieusement morte : on la ferme et on prévient comme pour une vraie coupure. */
+  kill(reason: string): void {
+    const cb = this.onClose;
+    this.onClose = null;
+    try { this.ws?.close(); } catch { /* ignore */ }
+    this.ws = null;
+    this.connectedFlag = false;
+    cb?.(reason);
   }
 
   close(): void {

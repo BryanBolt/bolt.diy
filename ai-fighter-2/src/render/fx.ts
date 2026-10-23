@@ -90,6 +90,9 @@ export class Fx {
             this.superOwner = e.id;
             this.ring(e.x, e.y + 50, e.z, '#ffd166', 160);
             this.burst(e.x, e.y + 50, e.z, 30, '#ffd166', 'spark', 4, 8);
+          } else if (e.kind === 'muzzle') {
+            this.burst(e.x, e.y, e.z, 5, '#ffe38a', 'spark', 3, 5);
+            this.burst(e.x, e.y, e.z, 2, '#ffffff', 'star', 5, 1);
           } else if (e.kind === 'teleport') {
             this.burst(e.x, e.y + 50, e.z, 14, '#a86bff', 'dust', 6, 2);
           } else if (e.kind === 'shock') {
@@ -101,6 +104,13 @@ export class Fx {
           break;
         case 'phase':
           this.onPhase(e.phase, world);
+          break;
+        case 'boss':
+          this.banner = { text: '⚠ BOSS ⚠', sub: e.name, life: 170, max: 170, color: '#ff5f5f' };
+          this.shake = Math.max(this.shake, 5);
+          break;
+        case 'cmd':
+          this.burst(e.x, e.y - 90, e.z, 8, '#8fe3ff', 'spark', 3, 4);
           break;
         case 'counter':
           this.burst(e.x, e.y, e.z, 14, '#ff9f1c', 'spark', 4, 6);

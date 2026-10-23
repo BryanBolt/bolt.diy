@@ -1,6 +1,6 @@
 // Rendu principal : canvas 960x540 virtuel mis à l'échelle, ordre de profondeur, ombres, projectiles, objets.
 import type { World, Fighter, Projectile, Item } from '../sim/types';
-import { VIEW_W, VIEW_H, HURT_HW, HURT_H } from '../sim/constants';
+import { VIEW_W, VIEW_H, HURT_HW, HURT_H, REVIVE_FRAMES, REVIVE_COST } from '../sim/constants';
 import { getChar, PALETTE } from '../sim/chars';
 import { drawStickman, poseFor, colorsFor } from './stickman';
 import { drawStage, themeAccent, drawForeground } from './stage';
@@ -317,7 +317,9 @@ export class Renderer {
       }
       ctx.restore();
     }
-    drawStickman(ctx, f, pose, { x: sx, y: sy, scale: s, facing: f.facing, alpha, flash: this.fx.flash.get(f.id) ?? 0, time: this.time });
+    const bs = f.boss ? 1.28 : 1;
+    drawStickman(ctx, f, pose, { x: sx, y: sy, scale: s * bs, facing: f.facing, alpha, flash: this.fx.flash.get(f.id) ?? 0, time: this.time });
+    if (f.boss && f.state !== 'ko') this.drawBossMarks(f, sx, sy, s * bs);
     // statuts
     if (f.status.burn > 0) {
       for (let i = 0; i < 3; i++) {
@@ -345,20 +347,8 @@ export class Renderer {
       ctx.fill();
       ctx.restore();
     }
-    // réanimation : barre
-    if (f.state === 'ko' && f.revive > 0) {
-      const bw = 50 * s;
-      ctx.fillStyle = 'rgba(0,0,0,0.6)';
-      ctx.fillRect(sx - bw / 2, sy - 50 * s, bw, 6);
-      ctx.fillStyle = '#7cff9a';
-      ctx.fillRect(sx - bw / 2, sy - 50 * s, bw * Math.min(1, f.revive / 100), 6);
-    } else if (f.state === 'ko' && f.team === 0 && w.mode !== 'duel' && f.koTimer < 900) {
-      ctx.font = 'bold 11px system-ui, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillStyle = '#7cff9a';
-      if (Math.floor(this.time / 20) % 2 === 0) ctx.fillText('Maintiens ATTAQUE à côté pour réanimer', sx, sy - 40 * s);
-      ctx.textAlign = 'left';
-    }
+    // réanimation : anneau de progression + consignes lisibles
+    if (f.state === 'ko' && f.team === 0 && w.mode !== 'duel' && w.mode !== 'training') this.drawRevivePrompt(f, w, info, sx, sy, s);
     // charge du coup lourd
     if (f.heavyCharge > 8) {
       const t = f.heavyCharge / 45;
@@ -377,6 +367,77 @@ export class Renderer {
       ctx.textAlign = 'left';
     }
     if (this.showHitboxes) this.drawDebugBoxes(f);
+  }
+
+  private drawBossMarks(f: Fighter, sx: number, sy: number, s: number): void {
+    const ctx = this.ctx;
+    const t = this.time;
+    // anneau doré pulsant au sol
+    ctx.save();
+    ctx.strokeStyle = f.rage ? '#ff3b3b' : '#ffd166';
+    ctx.lineWidth = 3.5;
+    ctx.globalAlpha = 0.6 + Math.sin(t * 0.2) * 0.3;
+    ctx.beginPath(); ctx.ellipse(sx, sy + 2, 40 * s, 13 * s, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+    // couronne + nom au-dessus de la tête
+    const top = sy - 150 * s;
+    ctx.save();
+    ctx.translate(sx, top);
+    ctx.fillStyle = '#ffd166';
+    ctx.strokeStyle = '#141622';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-14, 0); ctx.lineTo(-14, -14); ctx.lineTo(-7, -6); ctx.lineTo(0, -18); ctx.lineTo(7, -6); ctx.lineTo(14, -14); ctx.lineTo(14, 0); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.font = '900 12px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    const label = `BOSS · ${f.name}`;
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+    ctx.strokeText(label, 0, 16);
+    ctx.fillStyle = f.rage ? '#ff6b6b' : '#ffd166';
+    ctx.fillText(label, 0, 16);
+    ctx.restore();
+  }
+
+  private drawRevivePrompt(f: Fighter, w: World, info: HudInfo, sx: number, sy: number, s: number): void {
+    const ctx = this.ctx;
+    const me = f.slot >= 0 && info.localSlots.includes(f.slot);
+    const pulse = 0.6 + Math.sin(this.time * 0.25) * 0.4;
+    // anneau de progression
+    const prog = Math.min(1, f.revive / REVIVE_FRAMES);
+    ctx.save();
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.beginPath(); ctx.ellipse(sx, sy - 24 * s, 40 * s, 40 * s, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = '#7cff9a';
+    ctx.beginPath(); ctx.ellipse(sx, sy - 24 * s, 40 * s, 40 * s, 0, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * prog); ctx.stroke();
+    ctx.restore();
+    if (f.koTimer > 1500) return;
+    let line1: string;
+    let line2 = '';
+    if (me) {
+      if (w.coins >= REVIVE_COST) { line1 = `Appuie sur ATTAQUE : te réanimer (${REVIVE_COST} 🪙)`; line2 = f.lives > 0 ? `ou attends ${Math.max(0, Math.ceil((900 - f.koTimer) / 60))} s : tu reviens avec une vie` : 'ou attends qu\'un allié te soigne'; }
+      else if (f.lives > 0) line1 = `Retour dans ${Math.max(0, Math.ceil((900 - f.koTimer) / 60))} s (une vie)`;
+      else line1 = 'Attends qu\'un allié te réanime';
+    } else {
+      line1 = 'Maintiens ATTAQUE près de lui pour le réanimer';
+    }
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 13px system-ui, sans-serif';
+    const wTxt = Math.max(ctx.measureText(line1).width, ctx.measureText(line2).width) + 18;
+    const by = sy - 92 * s;
+    const bx = Math.max(wTxt / 2 + 8, Math.min(VIEW_W - wTxt / 2 - 8, sx));
+    ctx.fillStyle = `rgba(10,30,15,${0.55 + pulse * 0.2})`;
+    ctx.strokeStyle = '#7cff9a';
+    ctx.lineWidth = 2;
+    const hh = line2 ? 38 : 24;
+    ctx.beginPath(); ctx.roundRect(bx - wTxt / 2, by - 16, wTxt, hh, 8); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#eafff0';
+    ctx.fillText(line1, bx, by);
+    if (line2) { ctx.font = '11px system-ui, sans-serif'; ctx.fillStyle = '#b9e8c6'; ctx.fillText(line2, bx, by + 15); }
+    ctx.restore();
   }
 
   private drawDebugBoxes(f: Fighter): void {
@@ -430,13 +491,23 @@ export class Renderer {
         ctx.stroke();
         break;
       }
+      case 'slug': {
+        ctx.strokeStyle = 'rgba(255,230,140,0.9)';
+        ctx.lineWidth = 3 * s;
+        ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx - Math.sign(p.vx || 1) * 20 * s, sy - p.vy * 1.2); ctx.stroke();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1.5 * s;
+        ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx - Math.sign(p.vx || 1) * 9 * s, sy - p.vy * 0.5); ctx.stroke();
+        break;
+      }
       case 'bat': {
         ctx.translate(sx, sy);
         ctx.rotate(this.time * 0.6 * Math.sign(p.vx || 1));
         ctx.lineCap = 'round';
         ctx.beginPath(); ctx.moveTo(-18 * s, 0); ctx.lineTo(18 * s, 0);
         ctx.lineWidth = 9 * s; ctx.strokeStyle = '#141622'; ctx.stroke();
-        ctx.lineWidth = 6 * s; ctx.strokeStyle = '#c98a4b'; ctx.stroke();
+        ctx.lineWidth = 6 * s; ctx.strokeStyle = p.wk === 'nunchaku' ? '#8a5a2b' : p.wk === 'ak' || p.wk === 'pistol' ? '#3a3f4a' : '#c98a4b'; ctx.stroke();
         break;
       }
       case 'bullet': {
@@ -526,15 +597,37 @@ export class Renderer {
         ctx.fill();
         ctx.stroke();
         break;
-      case 'weapon':
+      case 'weapon': {
+        const wk = it.wk ?? 'bat';
+        // halo pour repérer l'arme au sol
+        const halo = ctx.createRadialGradient(0, -8 * s, 2, 0, -8 * s, 30 * s);
+        halo.addColorStop(0, 'rgba(255,230,140,0.55)');
+        halo.addColorStop(1, 'rgba(255,230,140,0)');
+        ctx.fillStyle = halo;
+        ctx.fillRect(-32 * s, -40 * s, 64 * s, 64 * s);
         ctx.save();
-        ctx.rotate(-0.9);
+        ctx.translate(0, -8 * s);
         ctx.lineCap = 'round';
-        ctx.beginPath(); ctx.moveTo(-14 * s, 0); ctx.lineTo(22 * s, 0);
-        ctx.lineWidth = 9 * s; ctx.strokeStyle = '#141622'; ctx.stroke();
-        ctx.lineWidth = 6 * s; ctx.strokeStyle = '#c98a4b'; ctx.stroke();
+        if (wk === 'ak' || wk === 'pistol') {
+          const L = (wk === 'ak' ? 50 : 24) * s;
+          ctx.fillStyle = '#141622';
+          ctx.fillRect(-L / 2, -4 * s, L, 8 * s);
+          ctx.fillStyle = wk === 'ak' ? '#3a3f4a' : '#2a2f3a';
+          ctx.fillRect(-L / 2 + 1, -3 * s, L - 2, 6 * s);
+          if (wk === 'ak') {
+            ctx.fillStyle = '#8a5a2b'; ctx.fillRect(-L / 2 - 12 * s, -3 * s, 12 * s, 7 * s);
+            ctx.fillStyle = '#141622'; ctx.beginPath(); ctx.moveTo(L * 0.1, 4 * s); ctx.lineTo(L * 0.2, 16 * s); ctx.lineTo(L * 0.1 + 6 * s, 16 * s); ctx.lineTo(L * 0.1 + 6 * s, 4 * s); ctx.fill();
+          } else { ctx.fillStyle = '#141622'; ctx.fillRect(-L / 2, 2 * s, 7 * s, 11 * s); }
+        } else {
+          ctx.rotate(-0.9);
+          ctx.beginPath(); ctx.moveTo(-14 * s, 0); ctx.lineTo(22 * s, 0);
+          ctx.lineWidth = 9 * s; ctx.strokeStyle = '#141622'; ctx.stroke();
+          ctx.lineWidth = 6 * s; ctx.strokeStyle = wk === 'nunchaku' ? '#8a5a2b' : '#c98a4b'; ctx.stroke();
+          if (wk === 'nunchaku') { ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, 12 * s); ctx.lineWidth = 3 * s; ctx.strokeStyle = '#cfd6e0'; ctx.stroke(); }
+        }
         ctx.restore();
         break;
+      }
       case 'coin':
         ctx.fillStyle = '#ffe14d';
         ctx.strokeStyle = '#8a7400';
