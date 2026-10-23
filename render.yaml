@@ -1,0 +1,13 @@
+# Blueprint Render pour AI Fighter 2 (le jeu est dans le dossier ai-fighter-2/).
+services:
+  - type: web
+    name: ai-fighter-2
+    runtime: node
+    rootDir: ai-fighter-2
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
