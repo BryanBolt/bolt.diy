@@ -22,6 +22,7 @@ export interface HudInfo {
   names: Map<number, string>;
   showDebug: boolean;
   hidden?: boolean;
+  speaking?: Set<number>;
 }
 
 const ghostHp = new Map<number, number>();
@@ -255,7 +256,8 @@ function drawPlayerPanel(ctx: CanvasRenderingContext2D, f: Fighter, x: number, y
   ctx.fillStyle = '#fff';
   ctx.strokeStyle = 'rgba(0,0,0,0.7)';
   ctx.lineWidth = 3;
-  const tag = f.slot >= 0 ? `P${f.slot + 1}` : 'IA';
+  const talking = f.slot >= 0 && !!info.speaking?.has(f.slot);
+  const tag = (talking ? '🔊 ' : '') + (f.slot >= 0 ? `P${f.slot + 1}` : 'IA');
   const label = `${tag} · ${f.name}${info.localSlots.includes(f.slot) && info.online ? ' (toi)' : ''}`;
   ctx.strokeText(label, x + 46, y + 12);
   ctx.fillText(label, x + 46, y + 12);

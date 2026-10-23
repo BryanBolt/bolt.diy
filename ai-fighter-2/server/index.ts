@@ -153,6 +153,16 @@ function handle(c: Client, msg: ClientMsg): void {
     case 'leave':
       leaveRoom(c, true);
       return;
+    case 'rtc': {
+      // chat vocal : le serveur ne fait que relayer la signalisation (SDP / ICE) à un joueur du même salon
+      const room = c.room;
+      if (!room || c.slot < 0) return;
+      const data = typeof msg.data === 'string' ? msg.data : '';
+      if (!data || data.length > 6000) return;
+      const target = room.clients.find((x) => x.slot === Number(msg.to));
+      if (target && target !== c) send(target, { t: 'rtc', from: c.slot, data });
+      return;
+    }
     case 'resync': {
       const room = c.room;
       if (!room || !room.inGame || !room.start || c.slot < 0) return;

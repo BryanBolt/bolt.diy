@@ -20,6 +20,7 @@ import type { HudInfo } from './render/hud';
 import type { InputDevice, KeyMap, PadMap } from './input/devices';
 import { KEYMAP_P1, KEYMAP_P2, PADMAP_DEFAULT, PAD_BUTTON_NAMES } from './input/devices';
 import { drawQr } from './ui/qr';
+import { VoiceChat } from './net/voice';
 import { VIEW_W } from './sim/constants';
 
 const VERSION = '2.1.0';
@@ -62,6 +63,7 @@ let demo: Session | null = null;
 let demoTimer = 0;
 const demoHud: HudInfo = { localSlots: [], waitingSlots: [], stalledMs: 0, desync: false, ping: 0, fps: 60, online: false, names: new Map(), showDebug: false, hidden: true };
 const names = new Map<number, string>();
+const voice = new VoiceChat();
 const hud: HudInfo = { localSlots: [], waitingSlots: [], stalledMs: 0, desync: false, ping: 0, fps: 60, online: false, names, showDebug: false };
 
 function settings() {
@@ -90,6 +92,7 @@ function startDemo(): void {
 
 function goMenu(): void {
   state = 'menu';
+  voice.leave();
   touch.show(false);
   input.clear();
   synth.startMusic('menu');
@@ -474,6 +477,7 @@ function handleResume(m: Extract<ServerMsg, { t: 'resume' }>): void {
   const config = buildConfig(cards, m.options);
   for (const p of m.players) names.set(p.slot, p.name);
   lobby = { code: '', players: m.players, options: m.options, inGame: true };
+  voice.setRoster(mySlot, m.players.map((p) => p.slot));
   const log: Record<number, number[]> = {};
   for (const e of m.log) log[e.slot] = decodeRle(e.rle);
   if (!input.deviceFor(mySlot) || !input.deviceFor(mySlot)!.connected()) {
@@ -514,6 +518,7 @@ function autosaveLocal(): void {
 }
 
 function bindNet(n: NetClient): void {
+  voice.attach(n);
   n.onClose = (reason) => {
     if (net === n) net = null;
     if (state === 'game' && gameOnline) { void autoReconnect(); return; }
@@ -551,13 +556,14 @@ function bindNet(n: NetClient): void {
     history.replaceState(null, '', `?salon=${m.code}`);
     saveOnlineResume({ code: m.code, token: m.token, slot: m.slot, url: settings().serverUrl, ts: Date.now() });
   });
-  n.on('lobby', (m) => { if (m.t === 'lobby') { lobby = m.state; if (state === 'online' || state === 'online-lobby') { state = 'online-lobby'; renderOnlineLobby(); } } });
+  n.on('lobby', (m) => { if (m.t === 'lobby') { lobby = m.state; voice.setRoster(mySlot, m.state.players.map((p) => p.slot)); if (state === 'online' || state === 'online-lobby') { state = 'online-lobby'; renderOnlineLobby(); } } });
   n.on('chat', (m) => { if (m.t === 'chat') { const p = lobby?.players.find((x) => x.slot === m.slot); chat.push({ name: p?.name ?? `P${m.slot + 1}`, text: m.text }); if (chat.length > 30) chat.shift(); if (state === 'online-lobby') renderOnlineLobby(); else S.toast(`${p?.name ?? 'Joueur'} : ${m.text}`); } });
   n.on('start', (m) => {
     if (m.t !== 'start') return;
     const cards: LobbyCard[] = m.players.map((p) => ({ ...p, local: p.slot === mySlot }));
     const config = buildConfig(cards, m.options);
     for (const p of m.players) names.set(p.slot, p.name);
+    voice.setRoster(mySlot, m.players.map((p) => p.slot));
     startGame(config, m.seed, [mySlot], m.players.map((p) => p.slot), m.delay, n);
   });
   n.on('end', () => {
@@ -639,6 +645,7 @@ function tickOnlineLobby(): void {
     }
   }
   for (const cv of S.ui.querySelectorAll<HTMLCanvasElement>('canvas[data-portrait]')) S.drawPortrait(cv, cv.dataset.char ?? 'kai', Number(cv.dataset.color), renderer.time, cv.dataset.locked === '1');
+  for (const card of S.ui.querySelectorAll<HTMLElement>('.pcard[data-slot]')) card.classList.toggle('speaking', voice.speaking.has(Number(card.dataset.slot)));
   renderer.time += 1;
 }
 
@@ -811,6 +818,10 @@ function updateRotateHint(): void {
 let lastFrameTime = 0;
 function loop(now: number): void {
   requestAnimationFrame(loop);
+  const inRoom = !noNet && (state === 'online-lobby' || (state === 'game' && gameOnline));
+  voiceBtn.style.display = inRoom ? 'flex' : 'none';
+  if (!inRoom && voice.state !== 'off') voice.leave();
+  hud.speaking = voice.speaking;
   const dt = lastFrameTime ? Math.min(100, now - lastFrameTime) : 16.7;
   lastFrameTime = now;
   input.pollAll();
@@ -882,6 +893,46 @@ document.addEventListener('visibilitychange', () => {
   else if (state === 'game' && gameOnline && (!net || !net.connectedFlag) && !reconnecting) void autoReconnect();
 });
 
+// ---- chat vocal : bouton micro ----
+const voiceBtn = document.createElement('button');
+voiceBtn.id = 'voice';
+voiceBtn.type = 'button';
+voiceBtn.setAttribute('aria-label', 'Chat vocal');
+document.body.appendChild(voiceBtn);
+function refreshVoiceBtn(): void {
+  const st = voice.state;
+  voiceBtn.className = (st === 'on' ? 'on' : st === 'muted' ? 'muted' : st === 'listen' ? 'listen' : '') + (voice.speaking.has(mySlot) ? ' talk' : '');
+  const n = voice.connectedCount();
+  voiceBtn.textContent = st === 'off' ? '🎙️ Voix' : st === 'on' ? `🎙️ ${n ? n : '…'}` : st === 'muted' ? '🔇 Micro coupé' : `🎧 ${n ? n : '…'}`;
+  voiceBtn.title = st === 'off' ? 'Activer le chat vocal' : st === 'on' ? 'Couper le micro (appui long : quitter la voix)' : st === 'muted' ? 'Réactiver le micro' : 'Tu écoutes seulement (appui long : quitter la voix)';
+}
+voice.onChange = refreshVoiceBtn;
+let voicePress = 0;
+let voiceLong = false;
+voiceBtn.addEventListener('pointerdown', () => {
+  voiceLong = false;
+  window.clearTimeout(voicePress);
+  voicePress = window.setTimeout(() => { voiceLong = true; if (voice.state !== 'off') { voice.leave(); S.toast('Chat vocal quitté.'); } }, 700);
+});
+voiceBtn.addEventListener('pointerup', () => window.clearTimeout(voicePress));
+voiceBtn.addEventListener('pointerleave', () => window.clearTimeout(voicePress));
+voiceBtn.addEventListener('click', async () => {
+  if (voiceLong) return;
+  synth.unlock();
+  if (voice.state === 'off') {
+    S.toast('Demande d\'accès au micro…', 2500);
+    await voice.join();
+    if (voice.lastError) S.toast(voice.lastError, 6000);
+    else S.toast('Chat vocal activé : ceux qui l\'activent aussi t\'entendent. Casque conseillé.', 4500);
+  } else if (voice.state === 'listen') { voice.leave(); S.toast('Chat vocal quitté.'); }
+  else voice.toggleMute();
+  refreshVoiceBtn();
+});
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'KeyV' && !e.repeat && document.activeElement?.tagName !== 'INPUT' && voice.state !== 'off') { voice.toggleMute(); refreshVoiceBtn(); S.toast(voice.muted ? '🔇 Micro coupé' : '🎙️ Micro actif', 1200); }
+});
+refreshVoiceBtn();
+
 // bouton pause tactile
 touch.onPause = () => { if (session) session.queue(session.localSlots[0], IN.PAUSE); };
 
@@ -894,7 +945,7 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) navigator.serviceWorke
 
 applySettings();
 // accès de débogage en développement (tests automatisés)
-if (import.meta.env.DEV) (window as unknown as { __aif2: unknown }).__aif2 = { get session() { return session; }, get net() { return net; }, get resyncs() { return resyncCount; } };
+if (import.meta.env.DEV) (window as unknown as { __aif2: unknown }).__aif2 = { get session() { return session; }, get net() { return net; }, get resyncs() { return resyncCount; }, voice };
 const params = new URLSearchParams(location.search);
 const salon = params.get('salon');
 const resumeInfo = salon ? loadOnlineResume() : null;

@@ -50,6 +50,12 @@ p { line-height: 1.45; color: var(--text); }
 .grid { display: grid; gap: 10px; }
 .resume { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
 .resume .btn { flex-direction: column; align-items: flex-start; text-align: left; gap: 2px; }
+#voice { position: fixed; top: 34%; right: calc(14px + env(safe-area-inset-right)); z-index: 30; min-width: 44px; height: 40px; padding: 0 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.4); background: rgba(0,0,0,0.5); color: #fff; font: 700 14px var(--font); display: none; align-items: center; justify-content: center; gap: 6px; touch-action: manipulation; cursor: pointer; }
+#voice.on { background: rgba(57,211,83,0.35); border-color: #39d353; }
+#voice.muted { background: rgba(255,95,95,0.35); border-color: #ff5f5f; }
+#voice.listen { background: rgba(79,227,255,0.3); border-color: #4fe3ff; }
+#voice.talk { box-shadow: 0 0 0 3px rgba(57,211,83,0.55); }
+.pcard.speaking { box-shadow: 0 0 0 3px var(--ok); }
 .catchup { position: fixed; inset: 0; z-index: 45; display: flex; flex-direction: column; gap: 12px; align-items: center; justify-content: center; background: rgba(5, 6, 14, 0.86); text-align: center; padding: 20px; }
 .catchup .bar { width: min(80vw, 360px); height: 10px; border-radius: 6px; background: rgba(255,255,255,0.15); overflow: hidden; }
 .catchup .bar i { display: block; height: 100%; width: 0; background: var(--accent); }

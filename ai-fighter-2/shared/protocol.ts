@@ -43,6 +43,7 @@ export type ClientMsg =
   | { t: 'join'; code: string; name: string; charId: string; color: number }
   | { t: 'rejoin'; code: string; token: string } // retour dans une partie en cours après une coupure
   | { t: 'leave' }
+  | { t: 'rtc'; to: number; data: string } // signalisation du chat vocal (relayée telle quelle au joueur `to`)
   | { t: 'resync' } // demande à reconstruire la partie depuis le journal du serveur (après une désynchronisation)
   | { t: 'lobby'; charId?: string; color?: number; ready?: boolean; name?: string }
   | { t: 'options'; options: Partial<LobbyOptions> }
@@ -73,6 +74,7 @@ export type ServerMsg =
   | { t: 'rejoin'; slot: number; from: number } // le joueur est revenu : il reprend la main à la frame `from`
   | { t: 'resume'; seed: number; options: LobbyOptions; players: LobbyPlayer[]; delay: number; slot: number; from: number; log: { slot: number; rle: number[] }[]; events: CtlEvent[] }
   | { t: 'desync'; f: number }
+  | { t: 'rtc'; from: number; data: string }
   | { t: 'end' }
   | { t: 'pong'; ts: number }
   | { t: 'ping'; ts: number }
