@@ -451,8 +451,8 @@ export function step(w: World, inputs: number[]): void {
   // nettoyage des ennemis de vague KO (jamais en duel : ils reviennent à la manche suivante)
   if (w.mode !== 'duel') w.fighters = w.fighters.filter((f) => !(f.state === 'ko' && f.team !== 0 && f.slot < 0 && f.koTimer > 80));
 
-  // caméra
-  const ps = players(w).filter(alive);
+  // caméra : suit les joueurs (en duel : tous les combattants)
+  const ps = (w.mode === 'duel' ? w.fighters : players(w)).filter(alive);
   if (ps.length) {
     let cx = 0;
     for (const p of ps) cx += p.x;
