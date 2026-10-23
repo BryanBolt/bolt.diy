@@ -1,0 +1,17 @@
+# Déploiement sur Fly.io : `fly launch --copy-config` puis `fly deploy` (depuis ai-fighter-2/).
+app = "ai-fighter-2"
+primary_region = "cdg"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[http_service]
+  internal_port = 8787
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

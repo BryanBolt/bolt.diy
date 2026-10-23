@@ -32,6 +32,14 @@ export function aiInput(w: World, f: Fighter): number {
     return 0;
   }
   ai.timer--;
+  if ((ai.kind === 'gunner' || ai.kind === 'bomber' || ai.kind === 'boss') && f.ki < C.KI_MAX) f.ki = Math.min(C.KI_MAX, f.ki + (ai.kind === 'boss' ? 0.15 : 0.25));
+  // éviter les dangers de stage
+  for (const h of w.hazards) {
+    if (h.state === 'idle') continue;
+    if (h.kind === 'train' && f.z < C.Z_MIN + 50) return IN.DOWN;
+    if (h.kind === 'laser' && h.state === 'active' && Math.abs(h.x - f.x) < 60 && f.y === 0) return IN.JUMP;
+    if (h.kind === 'barrel' && h.state === 'active' && Math.abs(h.z - f.z) < 34 && Math.abs(h.x - f.x) < 90 && f.y === 0) return IN.JUMP;
+  }
   let target = w.fighters.find((o) => o.id === ai.target && isAlive(o)) ?? null;
   if (!target || ai.timer <= 0 || rand(w) < 0.01) {
     target = pickTarget(w, f);
@@ -53,7 +61,7 @@ export function aiInput(w: World, f: Fighter): number {
   const dirTo = dx >= 0 ? 1 : -1;
   const isBoss = kind === 'boss' || kind === 'bot';
   const react = C.DIFF_REACT[w.difficulty] + (isBoss ? 0.12 : 0) + ai.level * 0.012;
-  const range = kind === 'gunner' ? 260 : kind === 'brute' ? 72 : kind === 'ninja' ? 58 : 64;
+  const range = kind === 'gunner' ? 260 : kind === 'bomber' ? 220 : kind === 'brute' ? 72 : kind === 'ninja' ? 58 : kind === 'shield' ? 60 : 64;
   const meleeRange = 62 + f.stats.reach;
 
   // --- limite du nombre d'attaquants simultanés sur une même cible ---
@@ -70,7 +78,8 @@ export function aiInput(w: World, f: Fighter): number {
     const low = f.hp < f.hpMax * 0.25;
     if (low && r < 0.25 && !isBoss) ai.intent = 'retreat';
     else if (crowded && r < 0.7) ai.intent = 'flank';
-    else if (kind === 'gunner' && adx < 150 && r < 0.6) ai.intent = 'retreat';
+    else if ((kind === 'gunner' || kind === 'bomber') && adx < 150 && r < 0.6) ai.intent = 'retreat';
+    else if (kind === 'shield' && adx < 90 && r < 0.55) ai.intent = 'guard';
     else if (adx > range + 16 || adz > 18) ai.intent = 'approach';
     else if (r < ai.aggro) ai.intent = 'attack';
     else if (r < ai.aggro + 0.15) ai.intent = 'guard';
@@ -80,8 +89,8 @@ export function aiInput(w: World, f: Fighter): number {
   let inp = 0;
   // --- réaction défensive : la cible attaque et nous regarde ---
   const targetAttacking = target.state === 'attack' && target.stateFrame <= 12 && target.facing === -dirTo && adx < 130 && adz < 36;
-  if (targetAttacking && f.state !== 'attack' && rand(w) < react) {
-    if (rand(w) < 0.5 || kind === 'brute') {
+  if (targetAttacking && f.state !== 'attack' && rand(w) < (kind === 'shield' ? 0.85 : react)) {
+    if (rand(w) < 0.5 || kind === 'brute' || kind === 'shield') {
       inp |= IN.GUARD; // parade/garde
       if (f.state === 'guard') inp |= IN.GUARD;
     } else {
@@ -130,13 +139,15 @@ export function aiInput(w: World, f: Fighter): number {
     }
     case 'retreat': {
       inp |= dirTo > 0 ? IN.LEFT : IN.RIGHT;
-      if (kind === 'gunner' && f.ki >= 20 && adz < 24 && rand(w) < 0.08) inp |= IN.SPECIAL;
-      if (adx > 230) ai.intent = kind === 'gunner' ? 'attack' : 'approach';
+      if ((kind === 'gunner' || kind === 'bomber') && f.ki >= 20 && adz < 24 && rand(w) < 0.08) inp |= IN.SPECIAL;
+      if (adx > 230) ai.intent = kind === 'gunner' || kind === 'bomber' ? 'attack' : 'approach';
       break;
     }
     case 'guard': {
       inp |= IN.GUARD;
-      if (adx < 40) inp |= dirTo > 0 ? IN.LEFT : IN.RIGHT;
+      if (adx < 40 && kind !== 'shield') inp |= dirTo > 0 ? IN.LEFT : IN.RIGHT;
+      // le bouclier riposte au coup lourd quand la cible finit son coup
+      if (kind === 'shield' && adx < meleeRange && target.state === 'attack' && target.stateFrame > 10 && rand(w) < 0.3) { inp = IN.HEAVY | (dirTo > 0 ? IN.RIGHT : IN.LEFT); }
       break;
     }
     case 'wait': {
@@ -150,13 +161,13 @@ export function aiInput(w: World, f: Fighter): number {
       // se tourner vers la cible
       if (f.facing !== dirTo && f.state !== 'attack') inp |= dirTo > 0 ? IN.RIGHT : IN.LEFT;
       if (f.state === 'attack') break; // le tampon gère l'enchaînement ci-dessous
-      const cadence = (w.frame + f.id * 3) % (isBoss ? 5 : kind === 'ninja' ? 6 : 9) === 0;
+      const cadence = (w.frame + f.id * 3) % (f.rage ? 3 : isBoss ? 5 : kind === 'ninja' ? 6 : 9) === 0;
       if (!cadence) break;
       const r = rand(w);
       const superReady = f.superMeter >= C.SUPER_MAX;
       const kiReady = f.ki >= 25;
-      if (kind === 'gunner') {
-        if (adx > 100 && kiReady && adz < 20) inp |= IN.SPECIAL;
+      if (kind === 'gunner' || kind === 'bomber') {
+        if (adx > 100 && kiReady && adz < (kind === 'bomber' ? 30 : 20)) inp |= IN.SPECIAL;
         else if (adx < meleeRange + 10) inp |= r < 0.7 ? IN.LIGHT : IN.HEAVY;
         else inp |= dirTo > 0 ? IN.RIGHT : IN.LEFT;
         break;
@@ -177,6 +188,12 @@ export function aiInput(w: World, f: Fighter): number {
           else if (r < 0.55) inp |= IN.HEAVY;
           else if (r < 0.75) inp |= IN.HEAVY | (dirTo > 0 ? IN.RIGHT : IN.LEFT);
           else inp |= IN.LIGHT;
+          break;
+        case 'shield':
+          if (r < 0.5) inp |= IN.HEAVY;
+          else if (r < 0.7) inp |= IN.HEAVY | (dirTo > 0 ? IN.LEFT : IN.RIGHT);
+          else if (r < 0.85) inp |= IN.LIGHT;
+          else inp |= IN.GUARD;
           break;
         case 'ninja':
           if (r < 0.6) inp |= IN.LIGHT;

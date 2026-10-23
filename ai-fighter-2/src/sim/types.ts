@@ -50,7 +50,7 @@ export type MoveKind =
   | 'super'
   | 'finisher';
 
-export type ProjectileKind = 'ki' | 'fire' | 'ice' | 'shuriken' | 'bullet' | 'orb' | 'shock' | 'bottle';
+export type ProjectileKind = 'ki' | 'fire' | 'ice' | 'shuriken' | 'bullet' | 'orb' | 'shock' | 'bottle' | 'bat';
 
 export interface ProjectileDef {
   kind: ProjectileKind;
@@ -145,7 +145,7 @@ export interface SkeletonStyle {
   accessory: string; // 'headband' | 'scarf' | 'horns' | 'hood' | 'none' ...
 }
 
-export type EnemyKind = 'thug' | 'brute' | 'ninja' | 'gunner' | 'boss';
+export type EnemyKind = 'thug' | 'brute' | 'ninja' | 'gunner' | 'shield' | 'bomber' | 'boss';
 
 export type BonusId =
   | 'power'
@@ -240,6 +240,8 @@ export interface Fighter {
   phoenixUsed: boolean;
   nextMoveFrame: number; // frame simulée à partir de laquelle on peut ré-attaquer (anti-mash)
   wantsLeave: boolean;
+  weapon: number; // coups restants avec l'arme tenue (0 = mains nues)
+  rage: boolean; // boss en furie
 }
 
 export interface Projectile {
@@ -264,7 +266,7 @@ export interface Projectile {
 
 export interface Item {
   id: number;
-  kind: 'heal' | 'ki' | 'coin' | 'crate';
+  kind: 'heal' | 'ki' | 'coin' | 'crate' | 'weapon';
   x: number;
   y: number;
   z: number;
@@ -284,13 +286,18 @@ export type SimEvent =
   | { t: 'phase'; phase: Phase }
   | { t: 'pickup'; kind: Item['kind']; x: number; y: number; z: number }
   | { t: 'special'; id: number; x: number; y: number; z: number; kind: string }
-  | { t: 'bonus'; slot: number; bonus: BonusId };
+  | { t: 'bonus'; slot: number; bonus: BonusId }
+  | { t: 'hazard'; kind: HazardKind; state: 'warn' | 'active' | 'end'; x: number; z: number }
+  | { t: 'rage'; id: number; x: number; y: number; z: number }
+  | { t: 'wall'; x: number; y: number; z: number; dir: number }
+  | { t: 'counter'; x: number; y: number; z: number };
 
 export type Phase =
   | 'intro'
   | 'fight'
   | 'waveClear'
   | 'bonus'
+  | 'shop'
   | 'stageClear'
   | 'roundEnd'
   | 'matchEnd'
@@ -300,6 +307,8 @@ export interface WaveSpec {
   enemies: { kind: EnemyKind; charId?: string; level: number }[];
 }
 
+export type HazardKind = 'train' | 'laser' | 'barrel' | 'drone' | 'wind';
+
 export interface StageDef {
   id: string;
   name: string;
@@ -307,8 +316,37 @@ export interface StageDef {
   theme: string; // palette/rendu
   width: number;
   waves: WaveSpec[];
-  boss: { charId: string; level: number; name: string; line: string };
+  boss: { charId: string; level: number; name: string; line: string; rageLine: string; minions?: EnemyKind };
+  hazard?: HazardKind;
+  music?: string;
 }
+
+export interface Hazard {
+  id: number;
+  kind: HazardKind;
+  state: 'idle' | 'warn' | 'active';
+  timer: number;
+  x: number;
+  z: number;
+  vx: number;
+  dir: number;
+  hits: number[];
+}
+
+export interface ShopChoice {
+  slot: number;
+  cursor: number;
+  done: boolean;
+  bought: string[];
+}
+
+export const SHOP_ITEMS: { id: string; name: string; desc: string; cost: number; icon: string }[] = [
+  { id: 'life', name: 'Vie supplémentaire', desc: '+1 vie pour le prochain stage', cost: 40, icon: '💗' },
+  { id: 'heal', name: 'Soin complet', desc: 'PV au maximum', cost: 25, icon: '🍜' },
+  { id: 'ki', name: 'Ki plein', desc: 'Jauges de Ki et de Super pleines', cost: 20, icon: '🌀' },
+  { id: 'bonus', name: 'Bonus mystère', desc: 'Un bonus roguelite aléatoire', cost: 60, icon: '🎁' },
+  { id: 'weapon', name: 'Batte', desc: 'Arme : coups légers plus forts et plus longs (10 coups)', cost: 15, icon: '🏏' },
+];
 
 export interface BonusChoice {
   slot: number;
@@ -355,6 +393,8 @@ export interface World {
   score: number;
   coins: number;
   bonusChoices: BonusChoice[];
+  shopChoices: ShopChoice[];
+  hazards: Hazard[];
   events: SimEvent[];
   survivalWave: number;
   winnerTeam: number;

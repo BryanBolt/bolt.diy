@@ -24,7 +24,7 @@ button, .btn { font: inherit; }
   width: min(96vw, 900px);
   max-height: 96vh;
   overflow: auto;
-  background: var(--panel);
+  background: rgba(16, 18, 36, 0.84);
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 18px;
   padding: clamp(14px, 3vw, 28px);

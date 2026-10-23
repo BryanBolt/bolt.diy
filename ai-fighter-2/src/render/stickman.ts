@@ -261,7 +261,7 @@ export function drawStickman(ctx: CanvasRenderingContext2D, f: Fighter, pose: Po
   const lR = limb(hipX, hipY, pose.legR[0], TH, pose.legR[0] + pose.legR[1], SH);
 
   const main = o.ghost ? col.glow : col.main;
-  const dark = o.outline ?? (o.ghost ? col.main : '#141622');
+  const dark = o.outline ?? (o.ghost ? col.main : f.rage ? '#4a0a0a' : '#141622');
 
   const strokePath = (pts: number[][], width: number, color: string) => {
     ctx.beginPath();
@@ -297,6 +297,16 @@ export function drawStickman(ctx: CanvasRenderingContext2D, f: Fighter, pose: Po
     ctx.arc(px, py, thick * 0.55, 0, Math.PI * 2);
     ctx.fillStyle = dark;
     ctx.fill();
+  }
+  // arme (batte) dans la main avant
+  if (f.weapon > 0) {
+    const ang = (pose.armR[0] + pose.armR[1]) * DEG;
+    const hx = aR[2], hy = aR[3];
+    const ex = hx + Math.sin(ang) * 46 * S * fx, ey = hy + Math.cos(ang) * 46 * S;
+    ctx.beginPath(); ctx.moveTo(hx - Math.sin(ang) * 8 * S * fx, hy - Math.cos(ang) * 8 * S); ctx.lineTo(ex, ey);
+    ctx.lineWidth = thick + 3 * S; ctx.strokeStyle = dark; ctx.lineCap = 'round'; ctx.stroke();
+    ctx.lineWidth = thick; ctx.strokeStyle = '#c98a4b'; ctx.stroke();
+    ctx.beginPath(); ctx.moveTo((hx + ex) / 2, (hy + ey) / 2); ctx.lineTo(ex, ey); ctx.lineWidth = thick + 1.5 * S; ctx.stroke();
   }
   // tête
   ctx.beginPath();

@@ -16,5 +16,6 @@ export function hashWorld(w: World): number {
   }
   for (const p of w.projectiles) nums.push(p.id, p.x, p.y, p.z, p.vx, p.life);
   for (const it of w.items) nums.push(it.id, it.x, it.y, it.life);
+  for (const h of w.hazards) nums.push(h.id, h.x, h.timer, h.state.length);
   return hashNumbers(nums);
 }

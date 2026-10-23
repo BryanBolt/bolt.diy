@@ -18,6 +18,8 @@ import type { LobbyCard } from './ui/screens';
 import type { HudInfo } from './render/hud';
 import type { InputDevice, KeyMap, PadMap } from './input/devices';
 import { KEYMAP_P1, KEYMAP_P2, PADMAP_DEFAULT, PAD_BUTTON_NAMES } from './input/devices';
+import { drawQr } from './ui/qr';
+import { VIEW_W } from './sim/constants';
 
 const VERSION = '2.0.0';
 
@@ -45,6 +47,9 @@ let endShown = false;
 let endTimer = 0;
 let rotateHint: HTMLDivElement | null = null;
 let lastMenuBits = 0;
+let demo: Session | null = null;
+let demoTimer = 0;
+const demoHud: HudInfo = { localSlots: [], waitingSlots: [], stalledMs: 0, desync: false, ping: 0, fps: 60, online: false, names: new Map(), showDebug: false, hidden: true };
 const names = new Map<number, string>();
 const hud: HudInfo = { localSlots: [], waitingSlots: [], stalledMs: 0, desync: false, ping: 0, fps: 60, online: false, names, showDebug: false };
 
@@ -58,6 +63,19 @@ function myName(): string {
 // ---------------------------------------------------------------------------
 // Menus
 // ---------------------------------------------------------------------------
+
+/** Démo en arrière-plan des menus : deux IA s'affrontent dans un stage aléatoire. */
+function startDemo(): void {
+  demo?.dispose();
+  const ids = ROSTER.filter((r) => !r.unlock).map((r) => r.id);
+  const a = ids[Math.floor(Math.random() * ids.length)];
+  let b = ids[Math.floor(Math.random() * ids.length)];
+  if (b === a) b = ids[(ids.indexOf(a) + 1) % ids.length];
+  const config: SimConfig = { mode: 'duel', difficulty: 2, rounds: 1, teams: false, stageIndex: Math.floor(Math.random() * 7),
+    players: [], bots: [{ charId: a, name: getChar(a).name, color: getChar(a).color, team: 0, level: 4 }, { charId: b, name: getChar(b).name, color: getChar(b).color, team: 1, level: 4 }] };
+  demo = new Session({ config, seed: (Math.random() * 0xffffffff) >>> 0, localSlots: [], allSlots: [], delay: 0, input });
+  demoTimer = 0;
+}
 
 function goMenu(): void {
   state = 'menu';
@@ -404,6 +422,8 @@ function renderOnlineLobby(): void {
   const joinUrl = `${location.origin}${location.pathname}?salon=${lobby.code}`;
   const view = { online: true, code: lobby.code, joinUrl, cards, options: lobby.options, isHost: !!me?.isHost, profile: loadProfile(), ping: net?.rtt, chat };
   const el = S.show(S.lobbyHtml(view), 'wide');
+  const qr = el.querySelector<HTMLCanvasElement>('canvas[data-qr]');
+  if (qr) { try { drawQr(qr, joinUrl, 112); } catch { qr.remove(); } }
   const chatBox = el.querySelector('#chat');
   if (chatBox) chatBox.scrollTop = chatBox.scrollHeight;
   el.addEventListener('click', async (e) => {
@@ -481,6 +501,8 @@ function startGame(config: SimConfig, seed: number, localSlots: number[], allSlo
   for (const p of config.players) names.set(p.slot, p.name);
   hud.localSlots = localSlots;
   hud.online = !!n;
+  demo?.dispose();
+  demo = null;
   session = new Session({ config, seed, localSlots, allSlots, delay, input, net: n ?? undefined });
   renderer.fx = new (renderer.fx.constructor as new () => typeof renderer.fx)();
   applySettings();
@@ -562,8 +584,9 @@ function handleEvents(events: SimEvent[]): void {
   const profile = loadProfile();
   const patch: Partial<Profile> = {};
   let changed = false;
+  const panOf = (x: number | undefined) => (x === undefined ? 0 : Math.max(-1, Math.min(1, (x - w.camX - VIEW_W / 2) / (VIEW_W * 0.7))));
   for (const e of events) {
-    if (e.t === 'sound') synth.play(e.id);
+    if (e.t === 'sound') synth.play(e.id, panOf(e.x));
     else if (e.t === 'hit' && !e.blocked) {
       const t = w.fighters.find((f) => f.id === e.target);
       if (t && t.slot >= 0 && session.localSlots.includes(t.slot)) input.rumble(t.slot, 60 + e.power * 60, Math.min(1, 0.3 + e.power * 0.5));
@@ -632,22 +655,34 @@ function loop(now: number): void {
   const dt = lastFrameTime ? Math.min(100, now - lastFrameTime) : 16.7;
   lastFrameTime = now;
   input.pollAll();
-  synth.tickMusic(now);
-  if (state === 'local-lobby') { tickLocalLobby(); return; }
-  if (state === 'online-lobby') { tickOnlineLobby(); return; }
+  synth.tickMusic();
+  if (state === 'local-lobby') tickLocalLobby();
+  if (state === 'online-lobby') tickOnlineLobby();
   if (state === 'menu') {
     // valider au clavier/manette depuis le menu
     const bits = input.anyBits();
     const pressed = bits & ~lastMenuBits;
     lastMenuBits = bits;
     if (pressed & IN.CONFIRM) (S.ui.querySelector('[data-action="local"]') as HTMLButtonElement | null)?.focus();
+  }
+  if (state !== 'game' || !session) {
+    // démo d'arrière-plan
+    if (!demo || demo.world.phase === 'matchEnd' || demoTimer > 60 * 90) startDemo();
+    if (demo) {
+      demoTimer++;
+      const steps = demo.update(now);
+      renderer.fx.consume(demo.events, demo.world);
+      demo.events = [];
+      renderer.fx.update(steps);
+      renderer.render(demo.world, demoHud, dt);
+    }
     return;
   }
-  if (state !== 'game' || !session) return;
   const w = session.world;
   session.timeScale = w.slowmo > 0 ? 0.35 : 1;
   const steps = session.update(now);
   if (session.events.length) { handleEvents(session.events); session.events = []; }
+  synth.intensity = w.mode !== 'duel' && w.fighters.some((f) => f.ai?.kind === 'boss' && f.state !== 'ko') ? 1 : 0;
   renderer.fx.update(steps);
   hud.waitingSlots = session.waitingSlots;
   hud.stalledMs = session.stalledMs;
@@ -676,6 +711,8 @@ window.addEventListener('keydown', () => synth.unlock());
 if (import.meta.env.PROD && 'serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
 
 applySettings();
+// accès de débogage en développement (tests automatisés)
+if (import.meta.env.DEV) (window as unknown as { __aif2: unknown }).__aif2 = { get session() { return session; }, get net() { return net; } };
 const params = new URLSearchParams(location.search);
 const salon = params.get('salon');
 if (salon) goOnline(normalizeRoomCode(salon));

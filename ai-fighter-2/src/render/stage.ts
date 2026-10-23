@@ -117,6 +117,7 @@ export function drawStage(ctx: CanvasRenderingContext2D, themeId: string, camX: 
     ctx.stroke();
   }
   ctx.globalAlpha = 1;
+  drawFloorDetail(ctx, t, camX, time);
   // bord du fond (mur/garde-fou)
   ctx.fillStyle = t.mid;
   ctx.fillRect(0, FLOOR_TOP - 6, VIEW_W, 8);
@@ -272,14 +273,17 @@ function drawMid(ctx: CanvasRenderingContext2D, t: Theme, p: Prop, time: number)
       break;
     }
     case 'tower': {
+      // montant de baie vitrée + plante en pot
       ctx.fillStyle = 'rgba(255,255,255,0.35)';
       ctx.fillRect(p.x, base - 200, 6, 200);
-      ctx.fillStyle = t.mid;
-      ctx.fillRect(p.x + 20, base - 50, 50, 50);
-      ctx.fillStyle = '#4caf50';
-      ctx.beginPath();
-      ctx.arc(p.x + 45, base - 70, 22, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.fillStyle = '#6b7f94';
+      ctx.fillRect(p.x + 26, base - 26, 22, 26);
+      ctx.fillStyle = '#3f9d4f';
+      for (let i = 0; i < 5; i++) {
+        ctx.beginPath();
+        ctx.ellipse(p.x + 37 + Math.cos(i * 1.3) * 10, base - 36 - Math.abs(Math.sin(i * 1.3)) * 14, 9, 4, i * 0.7, 0, Math.PI * 2);
+        ctx.fill();
+      }
       break;
     }
     case 'core': {
@@ -310,4 +314,136 @@ function drawMid(ctx: CanvasRenderingContext2D, t: Theme, p: Prop, time: number)
       break;
     }
   }
+}
+
+
+function drawFloorDetail(ctx: CanvasRenderingContext2D, t: Theme, camX: number, time: number): void {
+  ctx.save();
+  switch (t.kind) {
+    case 'metro': {
+      // voie ferrée sur la ligne du fond (zone du train)
+      const y0 = FLOOR_TOP + 4, y1 = FLOOR_TOP + 40;
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.fillRect(0, y0, VIEW_W, y1 - y0);
+      ctx.strokeStyle = '#9aa7b8';
+      ctx.lineWidth = 2;
+      for (const y of [y0 + 8, y1 - 8]) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(VIEW_W, y); ctx.stroke(); }
+      ctx.fillStyle = '#5c4a3a';
+      const off = ((-camX) % 34 + 34) % 34;
+      for (let x = off - 34; x < VIEW_W; x += 34) ctx.fillRect(x, y0 + 4, 10, y1 - y0 - 8);
+      // ligne jaune de sécurité
+      ctx.fillStyle = 'rgba(255,225,77,0.5)';
+      ctx.fillRect(0, y1 + 4, VIEW_W, 3);
+      break;
+    }
+    case 'dojo': {
+      // tatamis
+      ctx.strokeStyle = 'rgba(80,50,20,0.25)';
+      ctx.lineWidth = 2;
+      const off = ((-camX * 1.1) % 180 + 180) % 180;
+      for (let x = off - 180; x < VIEW_W + 180; x += 180) {
+        ctx.beginPath(); ctx.moveTo(x, FLOOR_TOP + 70); ctx.lineTo((x - VIEW_W / 2) * 1.2 + VIEW_W / 2, FLOOR_BOTTOM + 12); ctx.stroke();
+      }
+      break;
+    }
+    case 'city': {
+      // reflets des néons sur le sol mouillé
+      const colors = [t.accent, '#4fe3ff', '#ffe14d'];
+      const off = ((-camX * 0.6) % 300 + 300) % 300;
+      for (let x = off - 300, i = 0; x < VIEW_W + 300; x += 300, i++) {
+        const g = ctx.createLinearGradient(0, FLOOR_TOP, 0, FLOOR_BOTTOM);
+        g.addColorStop(0, colors[i % 3] + '55');
+        g.addColorStop(1, colors[i % 3] + '00');
+        ctx.fillStyle = g;
+        ctx.fillRect(x + 20, FLOOR_TOP, 70, FLOOR_BOTTOM - FLOOR_TOP);
+      }
+      break;
+    }
+    case 'market': {
+      // pavés
+      ctx.fillStyle = 'rgba(0,0,0,0.12)';
+      const off = ((-camX) % 40 + 40) % 40;
+      for (let row = 0; row < 5; row++) {
+        const y = FLOOR_TOP + 20 + row * row * 9;
+        for (let x = off - 40 + (row % 2) * 20; x < VIEW_W; x += 40) ctx.fillRect(x, y, 30, 5 + row * 2);
+      }
+      break;
+    }
+    case 'tower': {
+      // marbre : reflets
+      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      const off = ((-camX * 0.8) % 240 + 240) % 240;
+      for (let x = off - 240; x < VIEW_W + 240; x += 240) { ctx.beginPath(); ctx.moveTo(x, FLOOR_TOP); ctx.lineTo(x + 40, FLOOR_TOP); ctx.lineTo(x + 120, FLOOR_BOTTOM); ctx.lineTo(x + 60, FLOOR_BOTTOM); ctx.closePath(); ctx.fill(); }
+      break;
+    }
+    case 'core': {
+      // grille lumineuse pulsante
+      ctx.strokeStyle = t.accent;
+      ctx.globalAlpha = 0.18 + Math.sin(time * 0.05) * 0.08;
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 8; i++) { const y = FLOOR_TOP + ((FLOOR_BOTTOM - FLOOR_TOP) * i * i) / 64; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(VIEW_W, y); ctx.stroke(); }
+      ctx.globalAlpha = 1;
+      break;
+    }
+    default:
+      break;
+  }
+  ctx.restore();
+}
+
+/** Premier plan (parallaxe > 1), dessiné par-dessus les combattants. */
+export function drawForeground(ctx: CanvasRenderingContext2D, themeId: string, camX: number, time: number): void {
+  const t = themeOf(themeId);
+  ctx.save();
+  const par = 1.3;
+  const off = ((-camX * par) % 700 + 700) % 700;
+  ctx.globalAlpha = 0.85;
+  for (let x = off - 700; x < VIEW_W + 700; x += 700) {
+    switch (t.kind) {
+      case 'dojo':
+        ctx.fillStyle = '#3b2412';
+        ctx.fillRect(x + 40, VIEW_H - 120, 14, 120);
+        ctx.fillStyle = '#c0392b';
+        ctx.beginPath(); ctx.ellipse(x + 47, VIEW_H - 128 + Math.sin(time * 0.05 + x) * 3, 12, 16, 0, 0, Math.PI * 2); ctx.fill();
+        break;
+      case 'city':
+        ctx.strokeStyle = '#141622';
+        ctx.lineWidth = 6;
+        ctx.beginPath(); ctx.moveTo(x, VIEW_H - 30); ctx.lineTo(x + 260, VIEW_H - 30); ctx.stroke();
+        for (let k = 0; k < 6; k++) { ctx.beginPath(); ctx.moveTo(x + k * 50, VIEW_H - 30); ctx.lineTo(x + k * 50, VIEW_H); ctx.stroke(); }
+        break;
+      case 'market':
+        ctx.strokeStyle = '#2a1a1f';
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(x + 100, 0); ctx.lineTo(x + 100, 70 + Math.sin(time * 0.04 + x) * 4); ctx.stroke();
+        ctx.fillStyle = '#ff6b35';
+        ctx.beginPath(); ctx.ellipse(x + 100, 86 + Math.sin(time * 0.04 + x) * 4, 14, 20, 0, 0, Math.PI * 2); ctx.fill();
+        break;
+      case 'metro':
+        ctx.fillStyle = 'rgba(14,18,26,0.9)';
+        ctx.fillRect(x + 300, 0, 28, VIEW_H);
+        ctx.fillStyle = 'rgba(255,255,255,0.08)';
+        ctx.fillRect(x + 300, 0, 4, VIEW_H);
+        break;
+      case 'tower':
+        // garde-corps en verre au premier plan
+        ctx.fillStyle = 'rgba(200,225,255,0.18)';
+        ctx.fillRect(x, VIEW_H - 40, 700, 40);
+        ctx.fillStyle = 'rgba(255,255,255,0.5)';
+        ctx.fillRect(x, VIEW_H - 42, 700, 3);
+        break;
+      case 'core':
+        ctx.strokeStyle = t.accent;
+        ctx.lineWidth = 3;
+        ctx.globalAlpha = 0.35;
+        ctx.beginPath(); ctx.moveTo(x, VIEW_H - 60); ctx.quadraticCurveTo(x + 200, VIEW_H - 140, x + 420, VIEW_H - 40); ctx.stroke();
+        ctx.globalAlpha = 0.85;
+        break;
+      case 'arena':
+        ctx.fillStyle = '#2b1d12';
+        ctx.fillRect(x + 200, VIEW_H - 70, 26, 70);
+        break;
+    }
+  }
+  ctx.restore();
 }

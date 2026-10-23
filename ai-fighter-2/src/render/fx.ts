@@ -43,6 +43,11 @@ export class Fx {
   enabledShake = true;
   banner: { text: string; sub?: string; life: number; max: number; color: string } | null = null;
   comboPops = new Map<number, { hits: number; life: number }>();
+  /** particules d'ambiance en coordonnées écran (pluie, braises, poussière…) */
+  ambient: { x: number; y: number; vx: number; vy: number; life: number; max: number; kind: string }[] = [];
+  theme = 'dojo';
+  rageFlash = 0;
+  alert: { text: string; life: number } | null = null;
 
   consume(events: SimEvent[], world: World): void {
     for (const e of events) {
@@ -97,6 +102,25 @@ export class Fx {
         case 'phase':
           this.onPhase(e.phase, world);
           break;
+        case 'counter':
+          this.burst(e.x, e.y, e.z, 14, '#ff9f1c', 'spark', 4, 6);
+          this.ring(e.x, e.y, e.z, '#ff9f1c', 60);
+          break;
+        case 'wall':
+          this.burst(e.x, e.y, e.z, 12, '#d9c7a0', 'dust', 7, 4, e.dir);
+          this.burst(e.x, e.y, e.z, 6, '#ffffff', 'spark', 3, 5, e.dir);
+          break;
+        case 'rage':
+          this.rageFlash = 1;
+          this.ring(e.x, e.y + 50, e.z, '#ff3b3b', 180);
+          this.burst(e.x, e.y + 50, e.z, 40, '#ff5f5f', 'spark', 5, 9);
+          break;
+        case 'hazard': {
+          const labels: Record<string, string> = { train: '⚠ RAME EN APPROCHE : quitte la voie du fond !', laser: '⚠ BALAYAGE LASER : saute !', barrel: '⚠ TONNEAU : saute ou change de ligne !', drone: '⚠ DRONE : écarte-toi de sa ligne !', wind: '💨 BOURRASQUE !' };
+          if (e.state === 'warn') this.alert = { text: labels[e.kind] ?? '⚠', life: 110 };
+          if (e.state === 'active' && e.kind === 'train') this.shake = Math.max(this.shake, 4);
+          break;
+        }
         case 'spawn':
           break;
         default:
@@ -188,12 +212,66 @@ export class Fx {
       if (this.shake > 0) this.shake = Math.max(0, this.shake - 0.4);
       if (this.superFocus > 0) this.superFocus = Math.max(0, this.superFocus - 0.012);
       if (this.banner) { this.banner.life--; if (this.banner.life <= 0) this.banner = null; }
+      if (this.alert) { this.alert.life--; if (this.alert.life <= 0) this.alert = null; }
+      if (this.rageFlash > 0) this.rageFlash = Math.max(0, this.rageFlash - 0.03);
+      this.stepAmbient();
     }
     if (this.shake > 0 && this.enabledShake) {
       this.shakeX = (Math.random() - 0.5) * this.shake * 3;
       this.shakeY = (Math.random() - 0.5) * this.shake * 3;
     } else {
       this.shakeX = this.shakeY = 0;
+    }
+  }
+
+  private stepAmbient(): void {
+    const t = this.theme;
+    const spawn = this.reduce ? 0.3 : 1;
+    const add = (kind: string, n: number, mk: () => { x: number; y: number; vx: number; vy: number; max: number }) => {
+      for (let i = 0; i < n; i++) if (Math.random() < spawn) { const p = mk(); this.ambient.push({ ...p, life: 0, kind }); }
+    };
+    if (t === 'neon') add('rain', 3, () => ({ x: Math.random() * 1100 - 70, y: -10, vx: -1.5, vy: 14 + Math.random() * 4, max: 45 }));
+    else if (t === 'market' || t === 'arena') add('ember', 0.4, () => ({ x: Math.random() * 960, y: 560, vx: (Math.random() - 0.5) * 0.6, vy: -0.8 - Math.random(), max: 240 }));
+    else if (t === 'dojo') add('petal', 0.25, () => ({ x: Math.random() * 1000, y: -10, vx: -0.6 - Math.random() * 0.5, vy: 0.7 + Math.random() * 0.6, max: 500 }));
+    else if (t === 'metro') add('spark', 0.08, () => ({ x: Math.random() * 960, y: 200 + Math.random() * 100, vx: (Math.random() - 0.5) * 3, vy: 2, max: 30 }));
+    else if (t === 'core') add('digit', 0.5, () => ({ x: Math.random() * 960, y: 560, vx: 0, vy: -1.5 - Math.random() * 2, max: 200 }));
+    else if (t === 'tower') add('cloud', 0.02, () => ({ x: 1000, y: 40 + Math.random() * 120, vx: -0.25, vy: 0, max: 4500 }));
+    for (const a of this.ambient) { a.life++; a.x += a.vx; a.y += a.vy; if (a.kind === 'petal') a.x += Math.sin(a.life * 0.05) * 0.8; }
+    this.ambient = this.ambient.filter((a) => a.life < a.max && a.y < 600 && a.x > -120 && a.x < 1100);
+    if (this.ambient.length > 400) this.ambient.splice(0, this.ambient.length - 400);
+  }
+
+  drawAmbient(ctx: CanvasRenderingContext2D): void {
+    for (const a of this.ambient) {
+      const t = a.life / a.max;
+      switch (a.kind) {
+        case 'rain':
+          ctx.strokeStyle = 'rgba(180,200,255,0.35)';
+          ctx.lineWidth = 1.2;
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(a.x - a.vx * 1.5, a.y - a.vy * 1.2); ctx.stroke();
+          break;
+        case 'ember':
+          ctx.fillStyle = `rgba(255,${140 + Math.round(60 * Math.sin(a.life * 0.2))},60,${0.8 * (1 - t)})`;
+          ctx.beginPath(); ctx.arc(a.x, a.y, 1.6, 0, Math.PI * 2); ctx.fill();
+          break;
+        case 'petal':
+          ctx.fillStyle = `rgba(255,190,200,${0.7 * (1 - t)})`;
+          ctx.beginPath(); ctx.ellipse(a.x, a.y, 3, 1.8, a.life * 0.1, 0, Math.PI * 2); ctx.fill();
+          break;
+        case 'spark':
+          ctx.fillStyle = `rgba(255,230,150,${1 - t})`;
+          ctx.fillRect(a.x, a.y, 2, 2);
+          break;
+        case 'digit':
+          ctx.fillStyle = `rgba(0,240,255,${0.5 * (1 - t)})`;
+          ctx.font = '10px monospace';
+          ctx.fillText(a.life % 20 < 10 ? '1' : '0', a.x, a.y);
+          break;
+        case 'cloud':
+          ctx.fillStyle = 'rgba(255,255,255,0.35)';
+          ctx.beginPath(); ctx.ellipse(a.x, a.y, 60, 16, 0, 0, Math.PI * 2); ctx.ellipse(a.x + 30, a.y - 8, 40, 14, 0, 0, Math.PI * 2); ctx.fill();
+          break;
+      }
     }
   }
 

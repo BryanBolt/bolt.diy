@@ -6,6 +6,7 @@ import { BONUS_BY_ID } from '../sim/bonuses';
 import type { Fx } from './fx';
 import { project, type Camera } from './camera';
 import { STAGES } from '../sim/stages';
+import { SHOP_ITEMS } from '../sim/types';
 
 const FONT = '"Segoe UI", system-ui, -apple-system, sans-serif';
 
@@ -19,6 +20,7 @@ export interface HudInfo {
   online: boolean;
   names: Map<number, string>;
   showDebug: boolean;
+  hidden?: boolean;
 }
 
 const ghostHp = new Map<number, number>();
@@ -50,6 +52,7 @@ function bar(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: 
 }
 
 export function drawHud(ctx: CanvasRenderingContext2D, w: World, fx: Fx, cam: Camera, info: HudInfo, time: number): void {
+  if (info.hidden) return;
   ctx.textBaseline = 'alphabetic';
   const players = w.fighters.filter((f) => f.team === 0 && (f.slot >= 0 || f.ai?.kind === 'bot')) as Fighter[];
   const duel = w.mode === 'duel';
@@ -157,6 +160,8 @@ export function drawHud(ctx: CanvasRenderingContext2D, w: World, fx: Fx, cam: Ca
   if (fx.banner) drawBanner(ctx, fx.banner);
   // --- choix de bonus ---
   if (w.phase === 'bonus') drawBonusChoice(ctx, w, info, time);
+  if (w.phase === 'shop') drawShop(ctx, w, info, time);
+  if (fx.alert) drawAlert(ctx, fx.alert, time);
   // --- écrans de fin ---
   if (w.phase === 'matchEnd' || w.phase === 'gameOver') drawEndScreen(ctx, w, time);
   // --- pause ---
@@ -295,7 +300,7 @@ function drawBonusChoice(ctx: CanvasRenderingContext2D, w: World, info: HudInfo,
   ctx.fillText('CHOISIS UN BONUS', VIEW_W / 2, 90);
   ctx.font = `13px ${FONT}`;
   ctx.fillStyle = '#ccc';
-  ctx.fillText(`← → pour choisir, Attaque pour valider  ·  ${Math.ceil(w.phaseTimer / FPS)} s`, VIEW_W / 2, 112);
+  ctx.fillText(`← → choisir · Attaque valider · Lourd relancer (25 🪙, tu as ${w.coins})  ·  ${Math.ceil(w.phaseTimer / FPS)} s`, VIEW_W / 2, 112);
   const rows = w.bonusChoices;
   const rowH = Math.min(120, 380 / Math.max(1, rows.length));
   rows.forEach((bc, ri) => {
@@ -339,6 +344,71 @@ function drawBonusChoice(ctx: CanvasRenderingContext2D, w: World, info: HudInfo,
   ctx.textAlign = 'left';
 }
 
+function drawAlert(ctx: CanvasRenderingContext2D, a: { text: string; life: number }, time: number): void {
+  const blink = Math.floor(time / 10) % 2 === 0;
+  ctx.save();
+  ctx.globalAlpha = Math.min(1, a.life / 20);
+  ctx.textAlign = 'center';
+  ctx.font = `900 20px ${FONT}`;
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+  ctx.strokeText(a.text, VIEW_W / 2, 130);
+  ctx.fillStyle = blink ? '#ff5f5f' : '#ffd166';
+  ctx.fillText(a.text, VIEW_W / 2, 130);
+  ctx.restore();
+  ctx.textAlign = 'left';
+}
+
+function drawShop(ctx: CanvasRenderingContext2D, w: World, info: HudInfo, time: number): void {
+  ctx.fillStyle = 'rgba(10,10,20,0.6)';
+  ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+  ctx.textAlign = 'center';
+  ctx.font = `900 28px ${FONT}`;
+  ctx.fillStyle = '#ffd166';
+  ctx.fillText('ÉCHOPPE DE NOUILLES', VIEW_W / 2, 70);
+  ctx.font = `13px ${FONT}`;
+  ctx.fillStyle = '#ccc';
+  ctx.fillText(`${w.coins} 🪙 en commun  ·  ← → choisir · Attaque acheter · Garde/Saut terminer  ·  ${Math.ceil(w.phaseTimer / FPS)} s`, VIEW_W / 2, 92);
+  const rows = w.shopChoices;
+  const rowH = Math.min(110, 400 / Math.max(1, rows.length));
+  const cw = Math.min(170, (VIEW_W - 100) / SHOP_ITEMS.length - 8);
+  rows.forEach((sc, ri) => {
+    const f = w.fighters.find((x) => x.slot === sc.slot && x.team === 0);
+    const y = 120 + ri * rowH;
+    const pal = f ? PALETTE[f.color % PALETTE.length] : PALETTE[0];
+    ctx.textAlign = 'left';
+    ctx.font = `bold 14px ${FONT}`;
+    ctx.fillStyle = pal.main;
+    ctx.fillText(`P${sc.slot + 1} · ${f?.name ?? ''}${info.localSlots.includes(sc.slot) ? '  (toi)' : ''}${sc.done ? '  ✔ terminé' : ''}  ·  ${f ? `${Math.round(f.hp)}/${f.hpMax} PV · ${f.lives} vie${f.lives > 1 ? 's' : ''}` : ''}`, 50, y - 6);
+    SHOP_ITEMS.forEach((it, i) => {
+      const x = 50 + i * (cw + 8);
+      const selected = sc.cursor === i && !sc.done;
+      const affordable = w.coins >= it.cost;
+      roundRect(ctx, x, y, cw, rowH - 26, 10);
+      ctx.fillStyle = selected ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.45)';
+      ctx.fill();
+      if (selected) { ctx.lineWidth = 3; ctx.strokeStyle = pal.main; ctx.stroke(); }
+      ctx.globalAlpha = affordable ? 1 : 0.45;
+      ctx.font = `22px ${FONT}`;
+      ctx.fillStyle = '#fff';
+      ctx.fillText(it.icon, x + 10, y + 30);
+      ctx.font = `bold 13px ${FONT}`;
+      ctx.fillText(it.name, x + 42, y + 22);
+      ctx.font = `11px ${FONT}`;
+      ctx.fillStyle = '#ddd';
+      wrapText(ctx, it.desc, x + 42, y + 38, cw - 50, 13);
+      ctx.font = `bold 12px ${FONT}`;
+      ctx.fillStyle = '#ffe14d';
+      ctx.fillText(`${it.cost} 🪙`, x + 10, y + rowH - 34);
+      const n = sc.bought.filter((b) => b === it.id).length;
+      if (n) { ctx.fillStyle = '#7cff9a'; ctx.fillText(`✔ ×${n}`, x + cw - 44, y + rowH - 34); }
+      ctx.globalAlpha = 1;
+    });
+  });
+  void time;
+  ctx.textAlign = 'left';
+}
+
 function wrapText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxW: number, lh: number): void {
   const words = text.split(' ');
   let line = '';
@@ -357,7 +427,7 @@ function drawEndScreen(ctx: CanvasRenderingContext2D, w: World, time: number): v
   const t = Math.min(1, (w.elapsed % 100000) / 60);
   void t;
   ctx.fillStyle = 'rgba(10,10,20,0.45)';
-  ctx.fillRect(0, VIEW_H / 2 + 20, VIEW_W, 120);
+  ctx.fillRect(0, VIEW_H / 2 - 40, VIEW_W, 180);
   ctx.textAlign = 'center';
   ctx.font = `bold 15px ${FONT}`;
   ctx.fillStyle = '#fff';
@@ -367,6 +437,14 @@ function drawEndScreen(ctx: CanvasRenderingContext2D, w: World, time: number): v
   } else {
     const ps = w.fighters.filter((f) => f.team === 0 && f.slot >= 0);
     const line = ps.map((p) => `${p.name} : ${p.kills} KO`).join('   ·   ');
+    if (w.mode === 'campaign' && w.phase === 'matchEnd') {
+      const epilogue = ['NOVA s\'éteint dans une pluie de pixels. La ville respire.', 'Le sensei rouvre le dojo. Le videur Tora sert les nouilles.', 'Quant au sandwich… il n\'a jamais été retrouvé.'];
+      ctx.font = `italic 14px ${FONT}`;
+      ctx.fillStyle = '#ffd166';
+      epilogue.forEach((l, i) => ctx.fillText(l, VIEW_W / 2, VIEW_H / 2 - 2 + i * 18 - 18));
+    }
+    ctx.font = `bold 15px ${FONT}`;
+    ctx.fillStyle = '#fff';
     ctx.fillText(line, VIEW_W / 2, VIEW_H / 2 + 60);
     ctx.fillStyle = '#ffe14d';
     ctx.fillText(`Score ${w.score}   ·   ${w.coins} pièces   ·   ${w.mode === 'survival' ? `vague ${w.survivalWave}` : `stage ${w.stageIndex + 1}`}`, VIEW_W / 2, VIEW_H / 2 + 84);

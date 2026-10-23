@@ -11,7 +11,8 @@ import { BONUSES } from './bonuses';
 import { aiInput } from './ai';
 import * as C from './constants';
 import { IN } from './types';
-import type { World, Fighter, SimConfig, MoveDef, Projectile, Item, BonusId, EnemyKind, StageDef, AiState, CharDef, SimEvent, Phase, FState } from './types';
+import { SHOP_ITEMS } from './types';
+import type { World, Fighter, SimConfig, MoveDef, Projectile, Item, BonusId, EnemyKind, StageDef, AiState, CharDef, SimEvent, Phase, FState, Hazard, ProjectileDef } from './types';
 
 // ---------------------------------------------------------------------------
 // Création
@@ -46,6 +47,8 @@ export function createWorld(config: SimConfig, seed: number): World {
     score: 0,
     coins: 0,
     bonusChoices: [],
+    shopChoices: [],
+    hazards: [],
     events: [],
     survivalWave: 0,
     winnerTeam: -1,
@@ -155,6 +158,8 @@ export function makeFighter(w: World, charId: string, name: string, team: number
     phoenixUsed: false,
     nextMoveFrame: 0,
     wantsLeave: false,
+    weapon: 0,
+    rage: false,
   };
   return f;
 }
@@ -164,14 +169,15 @@ function makeEnemy(w: World, kind: EnemyKind, level: number, charId?: string, na
   const nm = name ?? ENEMY_NAMES[kind]?.[randInt(w, 0, 3)] ?? 'Ennemi';
   const f = makeFighter(w, cid, nm, 1, level, kind === 'boss' ? getChar(cid).color : 11);
   const diff = C.DIFF_HP[w.difficulty];
-  const base = kind === 'boss' ? 1.9 : kind === 'brute' ? 1.25 : kind === 'ninja' ? 0.7 : kind === 'gunner' ? 0.75 : 0.85;
+  const base = kind === 'boss' ? 1.75 : kind === 'brute' ? 1.25 : kind === 'ninja' ? 0.7 : kind === 'gunner' ? 0.75 : kind === 'shield' ? 1.1 : kind === 'bomber' ? 0.7 : 0.85;
   const players = Math.max(1, w.fighters.filter((x) => x.controller === 'player' || x.slot >= 0).length);
   const crowd = kind === 'boss' ? 1 + (players - 1) * 0.45 : 1 + (players - 1) * 0.12;
   f.hpMax = Math.round(f.hpMax * base * (0.5 + level * 0.1) * diff * crowd);
   f.hp = f.hpMax;
-  f.stats.power = f.stats.power * (kind === 'boss' ? 0.75 : 0.5) * (0.7 + level * 0.06) * C.DIFF_DMG[w.difficulty];
+  // en solo, les ennemis frappent un peu moins fort (pas d'allié pour réanimer)
+  f.stats.power = f.stats.power * (kind === 'boss' ? 0.72 : 0.5) * (0.7 + level * 0.06) * C.DIFF_DMG[w.difficulty] * (players === 1 ? 0.88 : 1);
   f.stats.speed = f.stats.speed * (kind === 'ninja' ? 1.05 : 0.9) * (0.92 + level * 0.012);
-  f.stats.defense = f.stats.defense * (kind === 'boss' ? 1.1 : 0.9);
+  f.stats.defense = f.stats.defense * (kind === 'boss' ? 1.1 : kind === 'shield' ? 1.12 : 0.9);
   f.ai = makeAi(kind, level, w);
   f.controller = 'ai';
   f.lives = 0;
@@ -217,6 +223,7 @@ function startStage(w: World, stage: StageDef): void {
   w.fighters = w.fighters.filter((f) => f.team === 0);
   w.projectiles = [];
   w.items = [];
+  w.hazards = [];
   for (const f of players(w)) {
     if (f.state === 'ko') {
       f.lives = Math.max(f.lives, 1);
@@ -270,6 +277,9 @@ function nextWave(w: World): void {
   } else {
     w.events.push({ t: 'sound', id: 'wave' });
   }
+  // danger de stage
+  w.hazards = [];
+  if (stage.hazard) w.hazards.push({ id: w.nextId++, kind: stage.hazard, state: 'idle', timer: randInt(w, 240, 420), x: 0, z: 140, vx: 0, dir: -1, hits: [] });
   // caisses
   const nCrates = isBoss ? 1 : randInt(w, 1, 2);
   for (let i = 0; i < nCrates; i++) {
@@ -329,6 +339,168 @@ export function applyBonus(w: World, f: Fighter, b: BonusId): void {
     default: break;
   }
 }
+
+function startShop(w: World): void {
+  w.shopChoices = [];
+  for (const f of players(w)) w.shopChoices.push({ slot: f.slot, cursor: 0, done: f.controller === 'ai', bought: [] });
+  setPhase(w, 'shop', 20 * C.FPS);
+  w.events.push({ t: 'sound', id: 'shop' });
+}
+
+function buyItem(w: World, f: Fighter, sc: { cursor: number; bought: string[] }): void {
+  const item = SHOP_ITEMS[sc.cursor];
+  if (!item) return;
+  if (w.coins < item.cost) { w.events.push({ t: 'sound', id: 'deny' }); return; }
+  if (item.id === 'heal' && f.hp >= f.hpMax) { w.events.push({ t: 'sound', id: 'deny' }); return; }
+  if (item.id === 'weapon' && f.weapon > 0) { w.events.push({ t: 'sound', id: 'deny' }); return; }
+  w.coins -= item.cost;
+  sc.bought.push(item.id);
+  switch (item.id) {
+    case 'life': f.lives++; break;
+    case 'heal': f.hp = f.hpMax; break;
+    case 'ki': f.ki = C.KI_MAX; f.superMeter = C.SUPER_MAX; break;
+    case 'weapon': f.weapon = 10; break;
+    case 'bonus': {
+      const pool = BONUSES.filter((b) => !f.bonuses.includes(b.id));
+      const b = pool.length ? pool[randInt(w, 0, pool.length - 1)].id : 'power';
+      applyBonus(w, f, b);
+      w.events.push({ t: 'bonus', slot: f.slot, bonus: b });
+      break;
+    }
+  }
+  w.events.push({ t: 'sound', id: 'buy' });
+}
+
+// ---- dangers de stage ----
+function stepHazards(w: World): void {
+  const keep: Hazard[] = [];
+  for (const h of w.hazards) {
+    h.timer--;
+    if (h.state === 'idle') {
+      if (h.timer <= 0) {
+        h.state = 'warn';
+        h.timer = h.kind === 'wind' ? 60 : 100;
+        h.hits = [];
+        h.dir = rand(w) < 0.5 ? -1 : 1;
+        switch (h.kind) {
+          case 'train': h.z = C.Z_MIN + 12; h.x = h.dir < 0 ? w.arenaR + 400 : w.arenaL - 400; h.vx = 16 * h.dir; break;
+          case 'laser': h.z = 140; h.x = h.dir < 0 ? w.arenaR + 20 : w.arenaL - 20; h.vx = 5 * h.dir; break;
+          case 'barrel': h.z = randInt(w, C.Z_MIN + 20, C.Z_MAX - 20); h.x = h.dir < 0 ? w.arenaR + 30 : w.arenaL - 30; h.vx = 6.5 * h.dir; break;
+          case 'drone': h.z = randInt(w, C.Z_MIN + 20, C.Z_MAX - 20); h.x = w.arenaL + 120 + rand(w) * (C.VIEW_W - 240); h.vx = 0; break;
+          case 'wind': h.x = w.arenaL; h.z = 140; h.vx = 0; break;
+        }
+        w.events.push({ t: 'hazard', kind: h.kind, state: 'warn', x: h.x, z: h.z });
+        w.events.push({ t: 'sound', id: h.kind === 'wind' ? 'wind' : 'alarm', x: h.x });
+      }
+    } else if (h.state === 'warn') {
+      if (h.timer <= 0) {
+        h.state = 'active';
+        h.timer = h.kind === 'wind' ? 180 : h.kind === 'drone' ? 150 : 400;
+        w.events.push({ t: 'hazard', kind: h.kind, state: 'active', x: h.x, z: h.z });
+        w.events.push({ t: 'sound', id: h.kind, x: h.x });
+        if (h.kind === 'train' || h.kind === 'laser') w.events.push({ t: 'shake', power: 3 });
+      }
+    } else {
+      // actif
+      h.x = q(h.x + h.vx);
+      let done = h.timer <= 0;
+      if (h.kind === 'train') {
+        if ((h.dir < 0 && h.x < w.arenaL - 500) || (h.dir > 0 && h.x > w.arenaR + 500)) done = true;
+        for (const f of w.fighters) {
+          if (!alive(f) || h.hits.includes(f.id) || f.z > C.Z_MIN + 46 || f.invuln > 0) continue;
+          if (Math.abs(f.x - h.x) > 190) continue;
+          h.hits.push(f.id);
+          hazardHit(w, f, 28, h.dir, 11, 9);
+        }
+      } else if (h.kind === 'laser') {
+        if ((h.dir < 0 && h.x < w.arenaL - 40) || (h.dir > 0 && h.x > w.arenaR + 40)) done = true;
+        for (const f of w.fighters) {
+          if (!alive(f) || h.hits.includes(f.id) || f.y > 38 || f.invuln > 0 || f.state === 'dodge') continue;
+          if (Math.abs(f.x - h.x) > 14) continue;
+          h.hits.push(f.id);
+          hazardHit(w, f, 16, h.dir, 6, 7);
+        }
+      } else if (h.kind === 'barrel') {
+        if ((h.dir < 0 && h.x < w.arenaL + 10) || (h.dir > 0 && h.x > w.arenaR - 10)) { done = true; w.events.push({ t: 'pickup', kind: 'crate', x: h.x, y: 20, z: h.z }); w.events.push({ t: 'sound', id: 'cratebreak', x: h.x }); }
+        for (const f of w.fighters) {
+          if (!alive(f) || h.hits.includes(f.id) || f.y > 42 || f.invuln > 0 || f.state === 'dodge') continue;
+          if (Math.abs(f.x - h.x) > 26 || Math.abs(f.z - h.z) > 30) continue;
+          h.hits.push(f.id);
+          hazardHit(w, f, 14, h.dir, 7, 6);
+        }
+      } else if (h.kind === 'drone') {
+        // drone qui tire vers le bas toutes les 30 frames, puis repart
+        if (h.timer % 30 === 0) {
+          w.projectiles.push({ id: w.nextId++, kind: 'bullet', x: h.x, y: 150, z: h.z, vx: 0, vy: -9, owner: -1, team: 2, damage: 9, life: 30, radius: 9, pierce: false, hits: [], gravity: 0, homing: 0 });
+          w.events.push({ t: 'sound', id: 'kishot', x: h.x });
+        }
+      } else if (h.kind === 'wind') {
+        // bourrasque : pousse tout le monde dans un sens
+        for (const f of w.fighters) if (alive(f) && f.state !== 'down') f.vx += 0.35 * h.dir * (f.y > 0 ? 2 : 1);
+      }
+      if (done) {
+        h.state = 'idle';
+        h.timer = randInt(w, 420, 720);
+        w.events.push({ t: 'hazard', kind: h.kind, state: 'end', x: h.x, z: h.z });
+      }
+    }
+    keep.push(h);
+  }
+  w.hazards = keep;
+}
+
+function hazardHit(w: World, f: Fighter, dmg: number, dir: number, kbx: number, kby: number): void {
+  if ((f.state === 'guard' || f.state === 'block') && sign(dir) === -f.facing) {
+    dmg = Math.round(dmg * 0.3);
+    f.guardMeter -= 25;
+  }
+  const real = Math.max(1, Math.round(dmg / f.stats.defense));
+  damageRaw(w, f, real, -1);
+  w.events.push({ t: 'hit', x: f.x, y: f.y + 50, z: f.z, power: 1.2, blocked: false, crit: false, dir, attacker: -1, target: f.id });
+  w.events.push({ t: 'sound', id: 'hitheavy', x: f.x });
+  w.events.push({ t: 'shake', power: 4 });
+  if (!alive(f)) return;
+  setState(f, 'launch');
+  f.vx = dir * kbx;
+  f.vy = kby;
+  f.y = Math.max(f.y, 0.1);
+  f.freeze = 6;
+}
+
+function stepBossRage(w: World): void {
+  for (const f of w.fighters) {
+    if (!f.ai || f.ai.kind !== 'boss' || f.rage || !alive(f) || f.hp > f.hpMax * 0.5) continue;
+    f.rage = true;
+    f.stats.speed *= 1.12;
+    f.stats.power *= 1.15;
+    f.superMeter = C.SUPER_MAX;
+    f.ki = C.KI_MAX;
+    f.ai.aggro = 1;
+    f.invuln = Math.max(f.invuln, 40);
+    f.status = { burn: 0, burnDps: 0, frozen: 0, poison: 0 };
+    if (f.state !== 'ko') setState(f, 'idle');
+    w.events.push({ t: 'rage', id: f.id, x: f.x, y: f.y, z: f.z });
+    w.events.push({ t: 'text', x: f.x, y: f.y + 150, z: f.z, text: 'FURIE !', color: '#ff5f5f' });
+    if (w.stage) w.events.push({ t: 'text', x: w.arenaL + C.VIEW_W / 2, y: 300, z: 140, text: w.stage.boss.rageLine, color: '#ffd166' });
+    w.events.push({ t: 'sound', id: 'rage', x: f.x });
+    w.events.push({ t: 'shake', power: 6 });
+    w.slowmo = Math.max(w.slowmo, 30);
+    const minions = w.stage?.boss.minions;
+    if (minions) {
+      for (let i = 0; i < 2; i++) {
+        const m = makeEnemy(w, minions, Math.max(1, f.level - 2));
+        m.x = i === 0 ? w.arenaL - 40 : w.arenaR + 40;
+        m.z = randInt(w, C.Z_MIN + 10, C.Z_MAX - 10);
+        m.facing = i === 0 ? 1 : -1;
+        m.invuln = 20;
+        w.fighters.push(m);
+        w.events.push({ t: 'spawn', id: m.id });
+      }
+    }
+  }
+}
+
+const BOTTLE: ProjectileDef = { kind: 'bottle', speed: 6.5, life: 110, damage: 13, radius: 13, y: 70, gravity: 0.28 };
 
 function startDuelRound(w: World, first: boolean): void {
   const stages = DUEL_STAGES;
@@ -444,6 +616,8 @@ export function step(w: World, inputs: number[]): void {
     stepFighter(w, f, inp, acting);
     f.prevInput = inp;
   }
+  // --- dangers, boss ---
+  if (canAct && w.mode !== 'duel') { stepHazards(w); stepBossRage(w); }
   // --- projectiles / objets ---
   stepProjectiles(w);
   stepItems(w);
@@ -505,6 +679,20 @@ function stepPhase(w: World, inputs: number[]): void {
         if (pressed & IN.LEFT) { bc.cursor = (bc.cursor + 2) % 3; w.events.push({ t: 'sound', id: 'ui' }); }
         if (pressed & IN.RIGHT) { bc.cursor = (bc.cursor + 1) % 3; w.events.push({ t: 'sound', id: 'ui' }); }
         if (pressed & (IN.LIGHT | IN.CONFIRM | IN.JUMP)) { bc.chosen = bc.cursor; w.events.push({ t: 'sound', id: 'confirm' }); }
+        else if (pressed & IN.HEAVY) {
+          // relance des 3 propositions (25 pièces)
+          if (w.coins >= 25) {
+            w.coins -= 25;
+            const pool = BONUSES.filter((b) => !f.bonuses.includes(b.id) && !bc.options.includes(b.id));
+            const r = rng(w);
+            const next: BonusId[] = [];
+            while (next.length < 3 && pool.length) { const i = r.int(0, pool.length - 1); next.push(pool[i].id); pool.splice(i, 1); }
+            commitRng(w, r);
+            while (next.length < 3) next.push(bc.options[next.length]);
+            bc.options = next;
+            w.events.push({ t: 'sound', id: 'buy' });
+          } else w.events.push({ t: 'sound', id: 'deny' });
+        }
         f.prevInput = inp;
         if (bc.chosen < 0) all = false;
       }
@@ -514,8 +702,7 @@ function stepPhase(w: World, inputs: number[]): void {
     case 'stageClear':
       if (w.phaseTimer === 0) {
         if (w.stageIndex + 1 < STAGES.length) {
-          w.stageIndex++;
-          startStage(w, STAGES[w.stageIndex]);
+          startShop(w);
         } else {
           w.winnerTeam = 0;
           setPhase(w, 'matchEnd', 0);
@@ -523,6 +710,29 @@ function stepPhase(w: World, inputs: number[]): void {
         }
       }
       break;
+    case 'shop': {
+      let all = true;
+      for (const sc of w.shopChoices) {
+        if (sc.done) continue;
+        const f = w.fighters.find((x) => x.slot === sc.slot && x.team === 0);
+        if (!f) { sc.done = true; continue; }
+        const inp = inputs[sc.slot] ?? 0;
+        const pressed = inp & ~f.prevInput;
+        const n = SHOP_ITEMS.length;
+        if (pressed & IN.LEFT) { sc.cursor = (sc.cursor + n - 1) % n; w.events.push({ t: 'sound', id: 'ui' }); }
+        if (pressed & IN.RIGHT) { sc.cursor = (sc.cursor + 1) % n; w.events.push({ t: 'sound', id: 'ui' }); }
+        if (pressed & (IN.LIGHT | IN.CONFIRM)) buyItem(w, f, sc);
+        if (pressed & (IN.GUARD | IN.JUMP | IN.HEAVY)) { sc.done = true; w.events.push({ t: 'sound', id: 'confirm' }); }
+        f.prevInput = inp;
+        if (!sc.done) all = false;
+      }
+      if (all || w.phaseTimer === 0) {
+        w.shopChoices = [];
+        w.stageIndex++;
+        startStage(w, STAGES[w.stageIndex]);
+      }
+      break;
+    }
     case 'roundEnd':
       if (w.phaseTimer === 0) {
         const need = Math.ceil(w.config.rounds / 2);
@@ -886,6 +1096,13 @@ function tryAttack(w: World, f: Fighter, c: CharDef, inp: number, dirX: number, 
     else if (f.controller === 'player') w.events.push({ t: 'sound', id: 'deny' });
     f.bufferedInput &= ~IN.SPECIAL;
   }
+  // arme tenue : lourd = lancer l'arme
+  if (!moveId && f.weapon > 0 && (buf & IN.HEAVY) && onGround) {
+    f.bufferedInput &= ~IN.HEAVY;
+    f.heavyCharge = 0;
+    throwWeapon(w, f);
+    return true;
+  }
   // coup lourd : déclenché au relâchement (charge) ou immédiatement avec direction / en l'air
   const heavyReleased = f.heavyCharge > 0 && !(inp & IN.HEAVY);
   if (!moveId && (heavyReleased || (buf & IN.HEAVY && (fwd || back || down || !onGround || running)))) {
@@ -906,6 +1123,16 @@ function tryAttack(w: World, f: Fighter, c: CharDef, inp: number, dirX: number, 
   if (w.frame < f.nextMoveFrame) return false;
   startMove(w, f, moveId);
   return true;
+}
+
+function throwWeapon(w: World, f: Fighter): void {
+  f.weapon = 0;
+  setState(f, 'attack');
+  f.moveId = 'heavy';
+  f.stateFrame = 0;
+  f.moveHits = [-1]; // pas de boîte de coup : le projectile fait le travail
+  w.projectiles.push({ id: w.nextId++, kind: 'bat', x: f.x + f.facing * 20, y: f.y + 60, z: f.z, vx: f.facing * 11, vy: 1.5, owner: f.id, team: f.team, damage: Math.round(20 * f.stats.power), life: 60, radius: 16, pierce: false, hits: [], gravity: 0.12, homing: 0 });
+  w.events.push({ t: 'sound', id: 'throw', x: f.x });
 }
 
 function startMove(w: World, f: Fighter, moveId: string): void {
@@ -959,8 +1186,9 @@ function stepAttack(w: World, f: Fighter, c: CharDef, inp: number, dirX: number,
   const inAir = airborne(f);
 
   // projectile au premier frame actif
-  if (fr === activeStart && m.projectile) {
-    const p = m.projectile;
+  const projDef = f.ai?.kind === 'bomber' && m.kind === 'special' ? BOTTLE : m.projectile;
+  if (fr === activeStart && projDef) {
+    const p = projDef;
     const n = p.count ?? 1;
     for (let i = 0; i < n; i++) {
       const spread = n > 1 ? (i - (n - 1) / 2) * 1.6 : 0;
@@ -971,7 +1199,7 @@ function stepAttack(w: World, f: Fighter, c: CharDef, inp: number, dirX: number,
         y: f.y + p.y,
         z: f.z,
         vx: f.facing * p.speed,
-        vy: spread,
+        vy: spread + (p.kind === 'bottle' ? 7 : 0),
         owner: f.id,
         team: f.team,
         damage: Math.round(p.damage * f.stats.power * (f.chargeBonus ? 1 + f.chargeBonus / 60 : 1)),
@@ -997,7 +1225,7 @@ function stepAttack(w: World, f: Fighter, c: CharDef, inp: number, dirX: number,
     f.moveHits = [];
   }
   // détection de coups
-  if (fr >= activeStart && fr <= activeEnd && m.hit.w > 0) {
+  if (fr >= activeStart && fr <= activeEnd && m.hit.w > 0 && f.moveHits[0] !== -1) {
     checkHits(w, f, m);
   }
   // atterrissage pendant un coup aérien
@@ -1083,7 +1311,7 @@ function tryChain(w: World, f: Fighter, c: CharDef, m: MoveDef, inp: number, dir
 // ---------------------------------------------------------------------------
 
 function hitboxOf(f: Fighter, m: MoveDef): { x0: number; x1: number; y0: number; y1: number; z: number } {
-  const reach = f.stats.reach;
+  const reach = f.stats.reach + (f.weapon > 0 && m.kind === 'light' ? 34 : 0);
   const cx = f.x + f.facing * (m.hit.x + reach * 0.5);
   const hw = (m.hit.w + reach) / 2;
   return { x0: cx - hw, x1: cx + hw, y0: f.y + m.hit.y0, y1: f.y + m.hit.y1, z: m.hit.z };
@@ -1157,6 +1385,10 @@ function resolveHit(w: World, a: Fighter, t: Fighter, m: MoveDef, proj?: Project
   let dmg = computeDamage(w, a, t, m, proj);
   const crit = !proj && hasBonus(a, 'crit') && rand(w) < 0.15;
   if (crit) dmg = Math.round(dmg * 1.6);
+  // contre-coup : la cible était en préparation d'attaque
+  const counter = !proj && t.state === 'attack' && t.moveId !== null && t.stateFrame <= getChar(t.charId).moves[t.moveId].startup && !t.armor;
+  if (counter) dmg = Math.round(dmg * 1.3);
+  if (!proj && a.weapon > 0 && m.kind === 'light') { a.weapon--; if (a.weapon === 0) { w.events.push({ t: 'text', x: a.x, y: a.y + 125, z: a.z, text: 'ARME CASSÉE', color: '#ccc' }); w.events.push({ t: 'sound', id: 'cratebreak', x: a.x }); } }
   if (guardOk) {
     const chip = Math.round(dmg * (m.kind === 'super' || m.kind === 'special' ? 0.25 : 0.12));
     const guardDmg = m.guardBreak ? 60 : dmg * 1.3;
@@ -1217,6 +1449,7 @@ function resolveHit(w: World, a: Fighter, t: Fighter, m: MoveDef, proj?: Project
   w.events.push({ t: 'sound', id: m.kind === 'super' ? 'superhit' : heavyish || m.kind === 'special' ? 'hitheavy' : 'hit', x: t.x });
   if (heavyish || m.kind === 'super' || crit) w.events.push({ t: 'shake', power: crit ? 5 : m.kind === 'super' ? 5 : 3 });
   if (crit) w.events.push({ t: 'text', x: t.x, y: t.y + 140, z: t.z, text: 'CRITIQUE', color: '#ffe14d' });
+  if (counter) { w.events.push({ t: 'counter', x: t.x, y: t.y + 70, z: t.z }); w.events.push({ t: 'text', x: t.x, y: t.y + 155, z: t.z, text: 'CONTRE !', color: '#ff9f1c' }); w.events.push({ t: 'sound', id: 'counter', x: t.x }); }
   // onde de choc bonus
   if (heavyish && hasBonus(a, 'shockwave') && !proj) spawnShock(w, a, a.facing * 5, 45, 9);
   if (t.hp <= 0) {
@@ -1252,7 +1485,7 @@ function resolveHit(w: World, a: Fighter, t: Fighter, m: MoveDef, proj?: Project
     t.y = Math.max(t.y, 0.1);
   } else {
     setState(t, 'hit');
-    t.hitFrames = Math.round(m.hitstun * (1 - Math.min(0.4, a.comboHits * 0.03)));
+    t.hitFrames = Math.round(m.hitstun * (1 - Math.min(0.4, a.comboHits * 0.03))) + (counter ? 8 : 0);
     t.vx = dir * m.kbx * kbScale;
   }
   t.facing = (-dir) as 1 | -1;
@@ -1262,6 +1495,7 @@ function resolveHit(w: World, a: Fighter, t: Fighter, m: MoveDef, proj?: Project
 function computeDamage(w: World, a: Fighter, t: Fighter, m: MoveDef, proj?: Projectile): number {
   let base = proj ? proj.damage : m.damage * a.stats.power;
   if (!proj && a.chargeBonus) base *= 1 + a.chargeBonus / 56;
+  if (!proj && a.weapon > 0 && m.kind === 'light') base *= 1.45;
   if (hasBonus(a, 'berserk') && a.hp < a.hpMax * 0.35) base *= 1.5;
   const scale = Math.max(0.35, 1 - a.comboHits * 0.07);
   base *= scale;
@@ -1328,7 +1562,7 @@ function spawnShock(w: World, f: Fighter, vx: number, radius: number, damage: nu
 function breakCrate(w: World, it: Item, dir: number): void {
   w.items = w.items.filter((x) => x !== it);
   const r = rand(w);
-  const kind: Item['kind'] = r < 0.45 ? 'heal' : r < 0.8 ? 'ki' : 'coin';
+  const kind: Item['kind'] = r < 0.38 ? 'heal' : r < 0.66 ? 'ki' : r < 0.84 ? 'coin' : 'weapon';
   w.items.push({ id: w.nextId++, kind, x: it.x + dir * 20, y: 30, z: it.z, vy: 5, life: 900 });
   if (rand(w) < 0.4) w.items.push({ id: w.nextId++, kind: 'coin', x: it.x - dir * 24, y: 30, z: it.z + 10, vy: 6, life: 900 });
   w.events.push({ t: 'pickup', kind: 'crate', x: it.x, y: it.y + 20, z: it.z });
@@ -1369,9 +1603,19 @@ function physics(w: World, f: Fighter): void {
   const right = (w.locked ? w.arenaR : (w.stage?.width ?? C.VIEW_W)) - 24;
   const isEnemyEntering = f.team !== 0 && f.invuln > 0 && (f.x < left || f.x > right);
   if (!isEnemyEntering) {
-    if (f.x < left) { f.x = left; if (f.vx < 0) f.vx = f.state === 'launch' || f.state === 'ko' ? -f.vx * 0.4 : 0; }
-    if (f.x > right) { f.x = right; if (f.vx > 0) f.vx = f.state === 'launch' || f.state === 'ko' ? -f.vx * 0.4 : 0; }
+    const flying = f.state === 'launch' || f.state === 'ko';
+    if (f.x < left) { f.x = left; if (f.vx < 0) { if (flying && f.vx < -5) wallSplat(w, f, 1); f.vx = flying ? -f.vx * 0.45 : 0; } }
+    if (f.x > right) { f.x = right; if (f.vx > 0) { if (flying && f.vx > 5) wallSplat(w, f, -1); f.vx = flying ? -f.vx * 0.45 : 0; } }
   }
+}
+
+function wallSplat(w: World, f: Fighter, dir: number): void {
+  f.vy = Math.max(f.vy, 5);
+  f.y = Math.max(f.y, 0.1);
+  f.freeze = 4;
+  w.events.push({ t: 'wall', x: f.x, y: f.y + 60, z: f.z, dir });
+  w.events.push({ t: 'sound', id: 'wall', x: f.x });
+  w.events.push({ t: 'shake', power: 3 });
 }
 
 function stepProjectiles(w: World): void {
@@ -1399,6 +1643,7 @@ function stepProjectiles(w: World): void {
     for (const f of w.fighters) {
       if (f.team === p.team || !alive(f) || p.hits.includes(f.id)) continue;
       if (f.invuln > 0 || f.state === 'down') continue;
+      if (p.kind === 'bat' && f.y > 0 && p.y < f.y) continue;
       if (Math.abs(f.z - p.z) > 34 + p.radius * 0.3) continue;
       if (Math.abs(f.x - p.x) > C.HURT_HW + p.radius) continue;
       if (p.y + p.radius < f.y || p.y - p.radius > f.y + C.HURT_H) continue;
@@ -1406,7 +1651,7 @@ function stepProjectiles(w: World): void {
       const owner = w.fighters.find((o) => o.id === p.owner);
       const m = projectileMove(p);
       if (owner) resolveHit(w, owner, f, m, p);
-      else resolveHit(w, f, f, m, p);
+      else { const real = Math.max(1, Math.round(p.damage / f.stats.defense)); damageRaw(w, f, real, -1); if (alive(f)) { setState(f, 'hit'); f.hitFrames = 16; f.vx = 0; f.freeze = 3; } w.events.push({ t: 'hit', x: f.x, y: f.y + 60, z: f.z, power: 0.6, blocked: false, crit: false, dir: 1, attacker: -1, target: f.id }); w.events.push({ t: 'sound', id: 'hit', x: f.x }); }
       if (!p.pierce) p.life = 0;
     }
     // caisses
@@ -1433,15 +1678,17 @@ function stepProjectiles(w: World): void {
       }
     }
   }
+  for (const p of w.projectiles) if (p.life <= 0 && p.kind === 'bat' && p.y <= 5) w.items.push({ id: w.nextId++, kind: 'weapon', x: p.x, y: 0, z: p.z, vy: 0, life: 1200 });
   w.projectiles = w.projectiles.filter((p) => p.life > 0);
 }
 
 function projectileMove(p: Projectile): MoveDef {
   const shock = p.kind === 'shock';
+  const heavyProj = shock || p.kind === 'orb' || p.kind === 'bat' || p.kind === 'bottle';
   return {
     id: 'proj', name: '', kind: 'special', anim: 'special', startup: 0, active: 1, recovery: 0,
     hit: { x: 0, w: 0, y0: -20, y1: 40, z: 40 }, damage: p.damage, hitstun: shock ? 24 : 18, blockstun: 12,
-    kbx: shock ? 6 : 4, kby: shock ? 5 : 0, hitstop: 4, knockdown: shock || p.kind === 'orb', launch: false,
+    kbx: shock ? 6 : p.kind === 'bat' ? 7 : 4, kby: shock ? 5 : p.kind === 'bat' ? 4 : 0, hitstop: heavyProj ? 7 : 4, knockdown: heavyProj, launch: false,
     burnTarget: p.kind === 'fire' ? 120 : undefined, freezeTarget: p.kind === 'ice' ? 60 : undefined, low: false,
   };
 }
@@ -1459,7 +1706,9 @@ function stepItems(w: World): void {
       if (f.team !== 0 || !alive(f) || f.state === 'down') continue;
       if (Math.abs(f.x - it.x) > 28 || Math.abs(f.z - it.z) > 26 || it.y > 40) continue;
       if (it.kind === 'heal' && f.hp >= f.hpMax) continue;
+      if (it.kind === 'weapon' && (f.weapon > 0 || f.state === 'attack')) continue;
       it.life = 0;
+      if (it.kind === 'weapon') { f.weapon = 10; w.events.push({ t: 'text', x: f.x, y: f.y + 120, z: f.z, text: 'BATTE !', color: '#c98a4b' }); w.events.push({ t: 'sound', id: 'weapon', x: f.x }); }
       if (it.kind === 'heal') { f.hp = Math.min(f.hpMax, f.hp + 35); w.events.push({ t: 'text', x: f.x, y: f.y + 120, z: f.z, text: '+35 PV', color: '#7cff9a' }); }
       else if (it.kind === 'ki') { f.ki = Math.min(C.KI_MAX, f.ki + 50); w.events.push({ t: 'text', x: f.x, y: f.y + 120, z: f.z, text: '+50 KI', color: '#7cf6ff' }); }
       else if (it.kind === 'coin') { const v = hasBonus(f, 'midas') ? 30 : 10; w.coins += v; w.score += v * 5; w.events.push({ t: 'text', x: f.x, y: f.y + 120, z: f.z, text: `+${v} 🪙`, color: '#ffe14d' }); }
@@ -1486,6 +1735,7 @@ export function setSlotAi(w: World, slot: number): void {
     }
   }
   for (const bc of w.bonusChoices) if (bc.slot === slot && bc.chosen < 0) bc.chosen = 0;
+  for (const sc of w.shopChoices) if (sc.slot === slot) sc.done = true;
   if (w.paused && w.pausedBy === slot) { w.paused = false; w.pausedBy = -1; }
 }
 

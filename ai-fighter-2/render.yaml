@@ -1,0 +1,13 @@
+# Déploiement en un clic sur Render (https://render.com) : bouton "New > Blueprint".
+services:
+  - type: web
+    name: ai-fighter-2
+    runtime: node
+    rootDir: ai-fighter-2
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"

@@ -239,6 +239,8 @@ export const ENEMY_CHAR: Record<string, string> = {
   brute: 'tora',
   ninja: 'zed',
   gunner: 'orion',
+  shield: 'frost',
+  bomber: 'blaze',
 };
 
 export const ENEMY_NAMES: Record<string, string[]> = {
@@ -246,6 +248,8 @@ export const ENEMY_NAMES: Record<string, string[]> = {
   brute: ['Brute', 'Videur', 'Cogneur', 'Molosse'],
   ninja: ['Ombre', 'Furtif', 'Lame', 'Assassin'],
   gunner: ['Tireur', 'Sniper', 'Canonnier', 'Artilleur'],
+  shield: ['Bouclier', 'Rempart', 'Mur', 'Garde'],
+  bomber: ['Lanceur', 'Artificier', 'Pyro', 'Cocktail'],
 };
 
 export const PALETTE: { name: string; main: string; dark: string; glow: string }[] = [
