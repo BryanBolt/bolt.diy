@@ -453,13 +453,14 @@ function tickOnlineLobby(): void {
   // navigation au périphérique
   const me = lobby?.players.find((p) => p.slot === mySlot);
   const d = input.deviceFor(mySlot) as (InputDevice & { lastBits?: number; prevBits?: number }) | undefined;
-  if (me && d && d.kind !== 'touch') {
+  const typing = document.activeElement?.tagName === 'INPUT';
+  if (me && d && d.kind !== 'touch' && !typing) {
     const pressed = (d.lastBits ?? 0) & ~(d.prevBits ?? 0);
     if (pressed & IN.LEFT) net?.send({ t: 'lobby', charId: cycleId(me.charId, -1), ready: false });
     if (pressed & IN.RIGHT) net?.send({ t: 'lobby', charId: cycleId(me.charId, 1), ready: false });
     if (pressed & IN.UP) net?.send({ t: 'lobby', color: (me.color + 11) % 12 });
     if (pressed & IN.DOWN) net?.send({ t: 'lobby', color: (me.color + 1) % 12 });
-    if (pressed & (IN.LIGHT | IN.CONFIRM) && document.activeElement?.tagName !== 'INPUT') {
+    if (pressed & (IN.LIGHT | IN.CONFIRM)) {
       if (me.ready && me.isHost && lobby!.players.every((p) => p.ready)) net?.send({ t: 'start', seed: (Math.random() * 0xffffffff) >>> 0 });
       else if (S.isUnlocked(me.charId, loadProfile())) net?.send({ t: 'lobby', ready: !me.ready });
     }
