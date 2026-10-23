@@ -1,0 +1,8 @@
+[package]
+name = "lumen_server"
+version = "0.1.0"
+edition = "2021"
+description = "Serveur statique + relais WebSocket (lockstep) pour le multijoueur en ligne de Lumen Requiem."
+
+[dependencies]
+tungstenite = "0.24"

@@ -1,0 +1,70 @@
+:root {
+  --bg: #03060d;
+  --fg: #eaf6ff;
+  --accent: #5ad1c9;
+  --panel: rgba(8, 14, 28, 0.94);
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--fg);
+  font-family: "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+  touch-action: none; -webkit-user-select: none; user-select: none;
+  overscroll-behavior: none;
+}
+canvas#game { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; display: block; }
+
+#boot {
+  position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: radial-gradient(circle at 50% 35%, #0d2a2a, #03060d 70%); z-index: 20; text-align: center; padding: 16px;
+}
+#boot h1 { font-size: clamp(32px, 8vw, 72px); letter-spacing: 0.12em; margin: 0 0 12px; text-shadow: 0 0 24px #5affb0; }
+#boot button, #net button {
+  font: inherit; font-weight: 700; color: #03060d; background: var(--accent); border: 0; border-radius: 10px;
+  padding: 12px 28px; font-size: 18px; cursor: pointer;
+}
+#boot button:disabled, #net button:disabled { opacity: 0.4; }
+.hint { color: #8b95a8; font-size: 13px; }
+
+#net-btn {
+  position: fixed; left: 8px; bottom: 8px; z-index: 6; font: inherit; font-size: 12px; color: var(--fg);
+  background: rgba(10, 16, 30, 0.7); border: 1px solid #3a4a66; border-radius: 8px; padding: 6px 10px; cursor: pointer;
+}
+#net {
+  position: fixed; z-index: 15; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(440px, calc(100vw - 32px)); background: var(--panel); border: 1px solid var(--accent); border-radius: 14px; padding: 16px;
+}
+#net h2 { margin: 0 0 8px; font-size: 18px; color: var(--accent); }
+#net label { display: block; margin: 8px 0; font-size: 13px; }
+#net input { width: 100%; font: inherit; padding: 8px; border-radius: 8px; border: 1px solid #3a4a66; background: #0a0f1c; color: var(--fg); }
+#net .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+#net .row button { padding: 8px 12px; font-size: 14px; }
+#net-status { font-size: 13px; color: #b8c8e0; min-height: 1.4em; }
+
+/* Commandes tactiles */
+#touch { position: fixed; inset: 0; z-index: 5; pointer-events: none; }
+#touch button {
+  pointer-events: auto; position: absolute; border-radius: 50%; border: 2px solid rgba(160, 220, 255, 0.45);
+  background: rgba(20, 30, 50, 0.45); color: #eaf6ff; font-size: 20px; font-weight: 700; touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+}
+#touch button.on { background: rgba(90, 209, 201, 0.55); }
+#stick {
+  pointer-events: auto; position: absolute; left: 16px; bottom: 16px; width: 140px; height: 140px; border-radius: 50%;
+  background: rgba(20, 30, 50, 0.35); border: 2px solid rgba(160, 220, 255, 0.3); touch-action: none;
+}
+#knob { position: absolute; left: 45px; top: 45px; width: 50px; height: 50px; border-radius: 50%; background: rgba(160, 220, 255, 0.55); }
+#pad { position: absolute; right: 12px; bottom: 12px; width: 220px; height: 200px; }
+#pad .big { width: 74px; height: 74px; }
+#pad .mid { width: 56px; height: 56px; font-size: 18px; }
+#pad .small { width: 44px; height: 44px; font-size: 15px; }
+#pad .x { right: 84px; bottom: 6px; }
+#pad .a { right: 4px; bottom: 60px; }
+#pad .b { right: 90px; bottom: 88px; }
+#pad .lb { right: 160px; bottom: 20px; }
+#pad .rt { right: 20px; bottom: 142px; }
+#pad .rb { right: 150px; bottom: 96px; }
+#pad-top { position: absolute; right: 8px; top: 86px; display: flex; flex-direction: column; gap: 6px; }
+#pad-top button { position: static; border-radius: 8px; width: 64px; height: 34px; font-size: 12px; }
+@media (orientation: portrait) {
+  #pad-top { top: auto; bottom: 222px; flex-direction: row; right: 12px; }
+}

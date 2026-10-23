@@ -1,0 +1,10 @@
+[package]
+name = "lumen_core"
+version = "0.1.0"
+edition = "2021"
+description = "Lumen Requiem — moteur de combat, Réflexes (IA programmable) et logique de jeu, sans dépendance graphique."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]

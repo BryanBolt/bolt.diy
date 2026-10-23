@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#03060d">
+<title>Lumen Requiem</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="touch" hidden>
+  <div id="stick"><div id="knob"></div></div>
+  <div id="pad">
+    <button data-b="X" class="big x">⚔</button>
+    <button data-b="A" class="big a">⤒</button>
+    <button data-b="B" class="mid b">✦</button>
+    <button data-b="LB" class="mid lb">⛨</button>
+    <button data-b="RT" class="mid rt">✸</button>
+    <button data-b="RB" class="small rb">◎</button>
+  </div>
+</div>
+
+<button id="net-btn" title="Multijoueur en ligne">🌐 En ligne</button>
+<div id="net" hidden>
+  <h2>Multijoueur en ligne</h2>
+  <p class="hint">Un joueur héberge, les autres rejoignent avec le même code. Nécessite le serveur relais (<code>cargo run -p lumen_server</code>).</p>
+  <label>Serveur <input id="net-url" value=""></label>
+  <label>Salon <input id="net-room" value="halcyon" maxlength="24"></label>
+  <div class="row">
+    <button id="net-join">Se connecter</button>
+    <button id="net-start" disabled>Lancer la partie (hôte)</button>
+    <button id="net-close">Fermer</button>
+  </div>
+  <p id="net-status">Hors ligne.</p>
+</div>
+
+<div id="boot">
+  <h1>LUMEN REQUIEM</h1>
+  <p id="boot-msg">Chargement…</p>
+  <button id="boot-go" hidden>▶ Jouer</button>
+  <p class="hint">Clavier · manette (jusqu'à 3) · tactile</p>
+</div>
+
+<script src="main.js"></script>
+</body>
+</html>
