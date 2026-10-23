@@ -1,0 +1,275 @@
+// Effets visuels (rendu uniquement) : particules, textes flottants, secousses, images rémanentes.
+import type { SimEvent, World, Fighter } from '../sim/types';
+import type { Camera } from './camera';
+import { project } from './camera';
+import type { Pose } from './stickman';
+
+interface Particle {
+  x: number; y: number; z: number;
+  vx: number; vy: number; vz: number;
+  life: number; max: number;
+  size: number;
+  color: string;
+  kind: 'spark' | 'dust' | 'ring' | 'flame' | 'ice' | 'star' | 'shard' | 'coin';
+  rot: number;
+}
+
+interface FloatText {
+  x: number; y: number; z: number;
+  text: string; color: string;
+  life: number; max: number;
+  big: boolean;
+}
+
+export interface Ghost {
+  fighter: Fighter;
+  pose: Pose;
+  x: number; y: number; z: number;
+  facing: number;
+  life: number;
+}
+
+export class Fx {
+  particles: Particle[] = [];
+  texts: FloatText[] = [];
+  ghosts: Ghost[] = [];
+  shake = 0;
+  shakeX = 0;
+  shakeY = 0;
+  flash = new Map<number, number>(); // id -> intensité
+  superFocus = 0; // assombrissement pendant un super
+  superOwner = -1;
+  reduce = false;
+  enabledShake = true;
+  banner: { text: string; sub?: string; life: number; max: number; color: string } | null = null;
+  comboPops = new Map<number, { hits: number; life: number }>();
+
+  consume(events: SimEvent[], world: World): void {
+    for (const e of events) {
+      switch (e.t) {
+        case 'hit': {
+          if (e.blocked) {
+            this.burst(e.x, e.y, e.z, 6, '#9fd3ff', 'spark', 3, 2);
+            this.flash.set(e.target, 0.25);
+          } else {
+            const n = Math.round(8 + e.power * 10);
+            this.burst(e.x, e.y, e.z, n, e.crit ? '#ffe14d' : '#ffffff', 'spark', 3 + e.power * 2, 4 + e.power * 2, e.dir);
+            this.burst(e.x, e.y, e.z, 3, '#ff8a3d', 'star', 6 + e.power * 4, 1);
+            this.flash.set(e.target, 0.9);
+            if (e.power > 0.8) this.ring(e.x, e.y, e.z, '#ffffff', 30 + e.power * 30);
+          }
+          const a = world.fighters.find((f) => f.id === e.attacker);
+          if (a && !e.blocked && a.comboHits >= 2) this.comboPops.set(a.id, { hits: a.comboHits, life: 60 });
+          break;
+        }
+        case 'parry':
+          this.ring(e.x, e.y, e.z, '#7cf6ff', 70);
+          this.burst(e.x, e.y, e.z, 16, '#7cf6ff', 'spark', 4, 6);
+          break;
+        case 'ko':
+          this.burst(e.x, e.y, e.z, 24, '#ffffff', 'star', 6, 6);
+          this.ring(e.x, e.y, e.z, '#ff5f5f', 90);
+          break;
+        case 'text':
+          this.texts.push({ x: e.x, y: e.y, z: e.z, text: e.text, color: e.color ?? '#fff', life: 70, max: 70, big: e.text.length < 12 && e.text === e.text.toUpperCase() });
+          break;
+        case 'shake':
+          this.shake = Math.max(this.shake, e.power);
+          break;
+        case 'pickup':
+          this.burst(e.x, e.y, e.z, e.kind === 'crate' ? 14 : 8, e.kind === 'heal' ? '#7cff9a' : e.kind === 'ki' ? '#7cf6ff' : e.kind === 'coin' ? '#ffe14d' : '#c9a060', e.kind === 'crate' ? 'shard' : 'coin', 5, 4);
+          break;
+        case 'special':
+          if (e.kind === 'super') {
+            this.superFocus = 1;
+            this.superOwner = e.id;
+            this.ring(e.x, e.y + 50, e.z, '#ffd166', 160);
+            this.burst(e.x, e.y + 50, e.z, 30, '#ffd166', 'spark', 4, 8);
+          } else if (e.kind === 'teleport') {
+            this.burst(e.x, e.y + 50, e.z, 14, '#a86bff', 'dust', 6, 2);
+          } else if (e.kind === 'shock') {
+            this.ring(e.x, e.y + 10, e.z, '#ffffff', 120);
+            this.burst(e.x, e.y, e.z, 12, '#c9a060', 'dust', 6, 3);
+          } else {
+            this.burst(e.x, e.y + 60, e.z, 10, '#7cf6ff', 'spark', 3, 3);
+          }
+          break;
+        case 'phase':
+          this.onPhase(e.phase, world);
+          break;
+        case 'spawn':
+          break;
+        default:
+          break;
+      }
+    }
+  }
+
+  onPhase(phase: string, w: World): void {
+    const set = (text: string, sub: string | undefined, color: string, life = 110) => (this.banner = { text, sub, life, max: life, color });
+    switch (phase) {
+      case 'intro':
+        if (w.mode === 'duel') set(`ROUND ${w.round + 1}`, w.stage?.name, '#ffd166', 120);
+        else if (w.stage) set(w.stage.name.toUpperCase(), w.stage.tagline, '#ffd166', 150);
+        break;
+      case 'fight':
+        if (w.mode === 'duel' && w.phaseTimer === 0) set('COMBAT !', undefined, '#ff5f5f', 50);
+        break;
+      case 'waveClear':
+        set('VAGUE TERMINÉE', undefined, '#7cff9a', 70);
+        break;
+      case 'stageClear':
+        set('STAGE TERMINÉ !', `Score ${w.score}`, '#ffd166', 200);
+        break;
+      case 'roundEnd':
+        set(w.winnerTeam === -2 ? 'DOUBLE K.O.' : 'K.O.', undefined, '#ff5f5f', 150);
+        break;
+      case 'matchEnd':
+        set(w.mode === 'duel' ? 'VICTOIRE' : 'CAMPAGNE TERMINÉE !', w.mode === 'duel' ? `Équipe ${w.winnerTeam + 1}` : `Score final ${w.score}`, '#ffd166', 400);
+        break;
+      case 'gameOver':
+        set('GAME OVER', `Score ${w.score}`, '#ff5f5f', 400);
+        break;
+      default:
+        break;
+    }
+  }
+
+  burst(x: number, y: number, z: number, n: number, color: string, kind: Particle['kind'], size: number, speed: number, dir = 0): void {
+    if (this.reduce) n = Math.ceil(n / 3);
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = speed * (0.4 + Math.random());
+      this.particles.push({
+        x, y, z,
+        vx: Math.cos(a) * sp + dir * speed * 0.6,
+        vy: Math.sin(a) * sp + (kind === 'dust' ? 1 : 2),
+        vz: (Math.random() - 0.5) * 2,
+        life: 0,
+        max: 18 + Math.random() * 20,
+        size: size * (0.6 + Math.random() * 0.8),
+        color,
+        kind,
+        rot: Math.random() * Math.PI,
+      });
+    }
+  }
+  ring(x: number, y: number, z: number, color: string, size: number): void {
+    this.particles.push({ x, y, z, vx: 0, vy: 0, vz: 0, life: 0, max: 18, size, color, kind: 'ring', rot: 0 });
+  }
+
+  addGhost(f: Fighter, pose: Pose): void {
+    if (this.reduce) return;
+    this.ghosts.push({ fighter: f, pose, x: f.x, y: f.y, z: f.z, facing: f.facing, life: 14 });
+    if (this.ghosts.length > 40) this.ghosts.shift();
+  }
+
+  update(frames: number): void {
+    for (let k = 0; k < frames; k++) {
+      for (const p of this.particles) {
+        p.life++;
+        p.x += p.vx;
+        p.y += p.vy;
+        p.z += p.vz;
+        if (p.kind !== 'ring') p.vy -= p.kind === 'spark' ? 0.25 : 0.4;
+        if (p.y < 0 && p.kind !== 'ring') { p.y = 0; p.vy = -p.vy * 0.3; p.vx *= 0.7; }
+        p.rot += 0.2;
+      }
+      this.particles = this.particles.filter((p) => p.life < p.max);
+      for (const t of this.texts) { t.life--; t.y += 0.7; }
+      this.texts = this.texts.filter((t) => t.life > 0);
+      for (const g of this.ghosts) g.life--;
+      this.ghosts = this.ghosts.filter((g) => g.life > 0);
+      for (const [id, v] of this.flash) {
+        const nv = v - 0.18;
+        if (nv <= 0) this.flash.delete(id); else this.flash.set(id, nv);
+      }
+      for (const [id, c] of this.comboPops) { c.life--; if (c.life <= 0) this.comboPops.delete(id); }
+      if (this.shake > 0) this.shake = Math.max(0, this.shake - 0.4);
+      if (this.superFocus > 0) this.superFocus = Math.max(0, this.superFocus - 0.012);
+      if (this.banner) { this.banner.life--; if (this.banner.life <= 0) this.banner = null; }
+    }
+    if (this.shake > 0 && this.enabledShake) {
+      this.shakeX = (Math.random() - 0.5) * this.shake * 3;
+      this.shakeY = (Math.random() - 0.5) * this.shake * 3;
+    } else {
+      this.shakeX = this.shakeY = 0;
+    }
+  }
+
+  drawParticles(ctx: CanvasRenderingContext2D, cam: Camera): void {
+    for (const p of this.particles) {
+      const { sx, sy, s } = project(cam, p.x, p.y, p.z);
+      const t = p.life / p.max;
+      ctx.globalAlpha = 1 - t;
+      ctx.fillStyle = p.color;
+      ctx.strokeStyle = p.color;
+      switch (p.kind) {
+        case 'ring':
+          ctx.lineWidth = 4 * (1 - t) + 1;
+          ctx.beginPath();
+          ctx.ellipse(sx, sy, p.size * s * (0.2 + t * 0.8), p.size * s * (0.2 + t * 0.8) * 0.7, 0, 0, Math.PI * 2);
+          ctx.stroke();
+          break;
+        case 'spark': {
+          const len = p.size * s * (1 - t * 0.5);
+          ctx.lineWidth = 2.2;
+          ctx.beginPath();
+          ctx.moveTo(sx, sy);
+          ctx.lineTo(sx - p.vx * len * 0.4, sy + p.vy * len * 0.4);
+          ctx.stroke();
+          break;
+        }
+        case 'star': {
+          const r = p.size * s * (1 - t);
+          ctx.save();
+          ctx.translate(sx, sy);
+          ctx.rotate(p.rot);
+          ctx.beginPath();
+          for (let i = 0; i < 8; i++) {
+            const a = (i / 8) * Math.PI * 2;
+            const rr = i % 2 === 0 ? r : r * 0.4;
+            ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+          }
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+          break;
+        }
+        case 'coin':
+          ctx.beginPath();
+          ctx.arc(sx, sy, p.size * s * 0.6, 0, Math.PI * 2);
+          ctx.fill();
+          break;
+        case 'shard':
+        case 'dust':
+        default:
+          ctx.beginPath();
+          ctx.save();
+          ctx.translate(sx, sy);
+          ctx.rotate(p.rot);
+          ctx.fillRect(-p.size * s * 0.5, -p.size * s * 0.3, p.size * s, p.size * s * 0.6);
+          ctx.restore();
+          break;
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  drawTexts(ctx: CanvasRenderingContext2D, cam: Camera): void {
+    ctx.textAlign = 'center';
+    for (const t of this.texts) {
+      const { sx, sy } = project(cam, t.x, t.y, t.z);
+      const a = Math.min(1, t.life / 20);
+      ctx.globalAlpha = a;
+      ctx.font = t.big ? '900 22px "Segoe UI", system-ui, sans-serif' : 'bold 15px "Segoe UI", system-ui, sans-serif';
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+      ctx.strokeText(t.text, sx, sy);
+      ctx.fillStyle = t.color;
+      ctx.fillText(t.text, sx, sy);
+    }
+    ctx.globalAlpha = 1;
+    ctx.textAlign = 'left';
+  }
+}

@@ -1,0 +1,304 @@
+// Écrans DOM : menus, options, aide, lobby. Le rendu du jeu lui-même reste sur le canvas.
+import { ROSTER, getChar, PALETTE } from '../sim/chars';
+import { STAGES } from '../sim/stages';
+import { POSES, drawStickman } from '../render/stickman';
+import type { Fighter } from '../sim/types';
+import type { LobbyOptions, GameMode } from '../../shared/protocol';
+import type { Profile, Settings } from '../core/storage';
+import { KEYMAP_P1, KEYMAP_P2, keyLabel, PAD_BUTTON_NAMES, PADMAP_DEFAULT, type KeyMap, type PadMap } from '../input/devices';
+
+export const ui = document.getElementById('ui') as HTMLDivElement;
+
+export function show(html: string, cls = ''): HTMLElement {
+  ui.innerHTML = `<div class="screen ${cls}">${html}</div>`;
+  return ui.firstElementChild as HTMLElement;
+}
+export function hide(): void {
+  ui.innerHTML = '';
+}
+export function toast(msg: string, ms = 2200): void {
+  const t = document.getElementById('toast')!;
+  t.textContent = msg;
+  t.classList.add('on');
+  clearTimeout((t as unknown as { _tm?: number })._tm);
+  (t as unknown as { _tm?: number })._tm = window.setTimeout(() => t.classList.remove('on'), ms);
+}
+export function esc(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string);
+}
+
+export const MODE_LABEL: Record<GameMode, string> = { campaign: 'Campagne', duel: 'Duel', survival: 'Survie', training: 'Entraînement' };
+export const MODE_DESC: Record<GameMode, string> = {
+  campaign: '6 stages, vagues d\'ennemis, boss, bonus à choisir. Coop jusqu\'à 4.',
+  duel: 'Versus : 1 contre 1, chacun pour soi ou par équipes, jusqu\'à 4 combattants (bots possibles).',
+  survival: 'Vagues infinies de plus en plus dures. Jusqu\'où irez-vous ?',
+  training: 'Mannequin, affichage des boîtes de collision, liste des coups.',
+};
+export const DIFF_LABEL = ['Facile', 'Normal', 'Difficile', 'Cauchemar'];
+
+export function isUnlocked(charId: string, profile: Profile): boolean {
+  const c = getChar(charId);
+  if (!c.unlock) return true;
+  if (profile.unlockedChars.includes(charId)) return true;
+  return c.unlock.kind === 'stage' ? profile.stageReached >= c.unlock.value : false;
+}
+
+export function unlockHint(charId: string): string {
+  const c = getChar(charId);
+  if (!c.unlock) return '';
+  return c.unlock.kind === 'stage' ? `Termine le stage ${c.unlock.value}` : '';
+}
+
+// ---- Portraits (stickman statique) ----
+const portraitFighter = (charId: string, color: number): Fighter =>
+  ({ id: 0, charId, name: '', team: 0, slot: 0, controller: 'player', ai: null, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, facing: 1, hp: 1, hpMax: 1, ki: 0, superMeter: 0, guardMeter: 0, state: 'idle', stateFrame: 0, moveId: null, moveHits: [], multiLeft: 0, chainIndex: 0, freeze: 0, invuln: 0, armor: false, comboHits: 0, comboTimer: 0, comboDamage: 0, guardFrames: 0, lowGuard: false, prevInput: 0, bufferedInput: 0, bufferTimer: 0, tapTimer: 0, tapDir: 0, runFrames: 0, airJumps: 0, heavyCharge: 0, chargeBonus: 0, hitFrames: 0, lastHitBy: 0, koTimer: 0, revive: 0, lives: 0, stats: getChar(charId).stats, bonuses: [], status: { burn: 0, burnDps: 0, frozen: 0, poison: 0 }, color, level: 0, kills: 0, phoenixUsed: false, nextMoveFrame: 0, wantsLeave: false }) as Fighter;
+
+export function drawPortrait(canvas: HTMLCanvasElement, charId: string, color: number, time: number, locked = false): void {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const w = canvas.clientWidth || 160;
+  const h = canvas.clientHeight || 110;
+  if (canvas.width !== Math.round(w * dpr)) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); }
+  const ctx = canvas.getContext('2d')!;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  const f = portraitFighter(charId, color);
+  const pose = { ...POSES.idle, hipY: Math.sin(time * 0.1) * 1.5 };
+  pose.armL = [25 + Math.sin(time * 0.1) * 3, -45];
+  const scale = h / 125;
+  ctx.globalAlpha = locked ? 0.35 : 1;
+  drawStickman(ctx, f, pose, { x: w / 2, y: h - 6, scale, facing: 1, time });
+  if (locked) {
+    ctx.globalAlpha = 1;
+    ctx.font = '900 26px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#fff';
+    ctx.fillText('🔒', w / 2, h / 2 + 10);
+  }
+}
+
+// ---- Lobby ----
+export interface LobbyCard {
+  slot: number;
+  name: string;
+  charId: string;
+  color: number;
+  ready: boolean;
+  isHost: boolean;
+  local: boolean;
+  deviceLabel?: string;
+}
+
+export interface LobbyView {
+  online: boolean;
+  code?: string;
+  joinUrl?: string;
+  cards: LobbyCard[];
+  options: LobbyOptions;
+  isHost: boolean;
+  profile: Profile;
+  ping?: number;
+  chat?: { name: string; text: string }[];
+}
+
+export function lobbyHtml(v: LobbyView): string {
+  const slots = [0, 1, 2, 3];
+  const cards = slots.map((s) => {
+    const c = v.cards.find((x) => x.slot === s);
+    if (!c) {
+      return `<div class="pcard empty" data-slot="${s}">${v.online ? `<div>Place libre<br><span class="small">Partage le code <b>${esc(v.code ?? '')}</b></span></div>` : `<div>Appuie sur <kbd>Attaque</kbd> / <kbd>A</kbd> / <kbd>Entrée</kbd><br>sur un clavier, une manette<br>ou <button class="btn sm" data-action="join-touch" data-slot="${s}">Rejoindre au tactile</button></div>`}</div>`;
+    }
+    const ch = getChar(c.charId);
+    const locked = !isUnlocked(c.charId, v.profile);
+    const canEdit = c.local;
+    const pal = PALETTE[c.color % PALETTE.length];
+    return `<div class="pcard ${c.ready ? 'ready' : ''}" data-slot="${s}" style="--pc:${pal.main}">
+      <div class="tag" style="color:${pal.main}">P${s + 1} · ${esc(c.name)}</div>
+      ${c.isHost ? '<div class="host">★ hôte</div>' : ''}
+      <div class="portrait"><canvas data-portrait data-char="${ch.id}" data-color="${c.color}" data-locked="${locked ? 1 : 0}"></canvas></div>
+      <div class="cname">${esc(ch.name)}</div>
+      <div class="ctitle">${esc(ch.title)}</div>
+      ${locked ? `<div class="lock">🔒 ${esc(unlockHint(ch.id))}</div>` : ''}
+      ${canEdit ? `<div class="nav"><button class="btn sm" data-action="prev-char" data-slot="${s}">◀</button><button class="btn sm ${c.ready ? '' : 'primary'}" data-action="ready" data-slot="${s}" ${locked ? 'disabled' : ''}>${c.ready ? 'Prêt ✔' : 'Prêt ?'}</button><button class="btn sm" data-action="next-char" data-slot="${s}">▶</button></div>
+      <div class="colors">${PALETTE.slice(0, 12).map((p, i) => `<span class="dot ${i === c.color ? 'sel' : ''}" style="background:${p.main}" data-action="color" data-slot="${s}" data-color="${i}" title="${p.name}"></span>`).join('')}</div>
+      <div class="dev">${esc(c.deviceLabel ?? '')}${c.local && !v.online ? ' · <a href="#" data-action="leave" data-slot="' + s + '" style="color:var(--danger)">quitter</a>' : ''}</div>`
+      : `<div class="dev">${c.ready ? '✔ prêt' : 'choisit son combattant…'}</div>`}
+    </div>`;
+  });
+  const o = v.options;
+  const optBtn = (key: string, label: string, val: string, enabled = v.isHost) => `<div class="opt"><div class="lbl">${label}</div><div class="val">${enabled ? `<button class="btn sm" data-action="opt" data-key="${key}" data-dir="-1">◀</button>` : ''}<span>${val}</span>${enabled ? `<button class="btn sm" data-action="opt" data-key="${key}" data-dir="1">▶</button>` : ''}</div></div>`;
+  const stageName = o.mode === 'duel' ? (STAGES[o.stage]?.name ?? 'Arène') : (STAGES[Math.min(o.stage, Math.max(0, Math.min(STAGES.length - 1, v.profile.stageReached)))]?.name ?? STAGES[0].name);
+  const options = [
+    optBtn('mode', 'Mode', MODE_LABEL[o.mode]),
+    o.mode === 'campaign' || o.mode === 'survival' ? optBtn('difficulty', 'Difficulté', DIFF_LABEL[o.difficulty]) : '',
+    o.mode === 'duel' ? optBtn('rounds', 'Manches', `Meilleur des ${o.rounds}`) : '',
+    o.mode === 'duel' ? optBtn('bots', 'Bots', String(o.bots)) : '',
+    o.mode === 'duel' ? optBtn('teams', 'Équipes', o.teams ? '2 équipes' : 'Chacun pour soi') : '',
+    o.mode === 'campaign' || o.mode === 'duel' ? optBtn('stage', o.mode === 'duel' ? 'Arène' : 'Départ', `${o.stage + 1}. ${stageName}`) : '',
+  ].join('');
+  const allReady = v.cards.length > 0 && v.cards.every((c) => c.ready || !c.local && v.online && c.ready);
+  const canStart = v.isHost && v.cards.length > 0 && v.cards.every((c) => c.ready);
+  const header = v.online
+    ? `<div class="row between"><div><h2 style="margin:0">Salon en ligne</h2><div class="small muted">Code à partager · ${v.ping !== undefined ? `ping ${Math.round(v.ping)} ms` : ''}</div></div><div class="col" style="align-items:flex-end;gap:4px"><div class="code-big">${esc(v.code ?? '')}</div><div class="row"><button class="btn sm" data-action="copy-link">📋 Copier le lien</button><button class="btn sm" data-action="share-link">📤 Partager</button></div></div></div>`
+    : `<div class="row between"><h2 style="margin:0">Jouer en local</h2><div class="small muted">Jusqu'à 4 joueurs : claviers, manettes, tactile</div></div>`;
+  return `${header}
+    <div class="players" style="margin:12px 0">${cards.join('')}</div>
+    <div class="desc">${esc(MODE_DESC[o.mode])}</div>
+    <div class="options">${options}</div>
+    ${v.online && v.chat ? `<div class="chat" id="chat">${v.chat.map((m) => `<div><b>${esc(m.name)}</b> ${esc(m.text)}</div>`).join('')}</div><form class="row" id="chatform" style="margin-top:6px"><input type="text" id="chatinput" placeholder="Message…" maxlength="120" style="flex:1;min-height:40px" autocomplete="off"><button class="btn sm" type="submit">Envoyer</button></form>` : ''}
+    <div class="row between" style="margin-top:12px">
+      <button class="btn ghost" data-action="back">← Retour</button>
+      <div class="row">
+        ${v.isHost ? `<button class="btn primary big" data-action="start" ${canStart ? '' : 'disabled'}>${canStart ? '⚔ LANCER LA PARTIE' : allReady && !v.cards.length ? 'En attente de joueurs' : 'En attente que tout le monde soit prêt'}</button>` : `<span class="muted">L'hôte lance la partie quand tout le monde est prêt.</span>`}
+      </div>
+    </div>`;
+}
+
+// ---- Aide / liste des coups ----
+export function howToHtml(charId: string): string {
+  const c = getChar(charId);
+  const tabs = ROSTER.map((r) => `<button class="btn sm ${r.id === charId ? 'on' : ''}" data-action="howto-char" data-char="${r.id}">${esc(r.name)}</button>`).join('');
+  const m = c.moves;
+  const row = (cmd: string, id: string, note = '') => `<tr><td>${cmd}</td><td><b>${esc(m[id]?.name ?? '')}</b>${note ? `<br><span class="small muted">${note}</span>` : ''}</td><td class="small muted">${m[id] ? `${m[id].damage} dég. · ${m[id].startup}f` : ''}</td></tr>`;
+  return `<h2>Comment jouer</h2>
+  <div class="grid" style="grid-template-columns:1fr 1fr;gap:16px">
+    <div>
+      <h3>Clavier (J1)</h3>
+      <p class="small"><kbd>Z Q S D</kbd> ou <kbd>W A S D</kbd> bouger · <kbd>Maj G</kbd> ou double appui = courir · <kbd>J</kbd> attaque · <kbd>K</kbd> lourd (maintenir : charger) · <kbd>Espace</kbd>/<kbd>L</kbd> saut · <kbd>U</kbd> garde (+ direction : roulade) · <kbd>I</kbd> spécial (Ki) · <kbd>O</kbd> super · <kbd>Échap</kbd> pause</p>
+      <h3>Clavier (J2) : pavé numérique</h3>
+      <p class="small"><kbd>4 6 8 5</kbd> bouger · <kbd>1</kbd> attaque · <kbd>3</kbd> lourd · <kbd>0</kbd> saut · <kbd>7</kbd> garde · <kbd>9</kbd> spécial · <kbd>+</kbd> super</p>
+      <h3>Manette</h3>
+      <p class="small"><kbd>Stick</kbd> bouger (à fond : courir) · <kbd>X</kbd> attaque · <kbd>Y</kbd> lourd · <kbd>A</kbd> saut · <kbd>B</kbd> garde · <kbd>RB</kbd> spécial · <kbd>RT</kbd> super · <kbd>LB/LT</kbd> courir · <kbd>Start</kbd> pause</p>
+      <h3>Tactile</h3>
+      <p class="small">Pose le pouce gauche n'importe où à gauche : un joystick apparaît (à fond = courir). Boutons à droite : <kbd>A</kbd> attaque, <kbd>B</kbd> lourd, <kbd>X</kbd> saut, <kbd>Y</kbd> garde, <kbd>Ki</kbd>, <kbd>★</kbd> super. Tu peux glisser d'un bouton à l'autre.</p>
+      <h3>Système</h3>
+      <p class="small">
+        <b>Enchaînements</b> : attaque ×3, puis lourd = finisseur. <b>Avant + lourd</b> = lanceur, puis saut + attaques aériennes pour jongler.<br>
+        <b>Arrière/Bas + lourd</b> = coup bas (passe sous la garde haute). <b>Course + attaque</b> = attaque de course.<br>
+        <b>Garde</b> : bloque de face. <b>Bas + garde</b> = garde basse (bloque les coups bas, pas les plongeons).<br>
+        <b>Parade parfaite</b> : garde juste avant l'impact (7 frames) → l'ennemi est déséquilibré, +20 Ki, les projectiles sont renvoyés.<br>
+        <b>Roulade</b> : garde + direction (invincible au milieu). Après un coup qui touche, garde + direction annule la récupération.<br>
+        <b>Ki</b> : se remplit en frappant, 25 par spécial. <b>Super</b> : jauge pleine = super dévastateur et imparable.<br>
+        <b>Coop</b> : un allié KO ? Maintiens Attaque à côté de lui pour le réanimer. Les caisses contiennent soins, Ki et pièces.
+      </p>
+    </div>
+    <div>
+      <h3>Liste des coups</h3>
+      <div class="tabs">${tabs}</div>
+      <p class="small muted" style="margin:0 0 6px">${esc(c.title)} — ${esc(c.desc)}</p>
+      <table class="moves">
+        <tr><th>Commande</th><th>Coup</th><th></th></tr>
+        ${row('Attaque', 'l1')}${row('Attaque, Attaque', 'l2')}${row('Attaque ×3', 'l3')}
+        ${row('Lourd', 'heavy', 'maintenir pour charger : armure + brise-garde')}
+        ${row('Avant + Lourd', 'launcher', 'lanceur → saut-annulation')}
+        ${row('Arrière/Bas + Lourd', 'low', 'coup bas')}
+        ${row('Course + Attaque', 'run')}
+        ${row('En l\'air : Attaque', 'air')}${row('En l\'air : Lourd', 'airHeavy', 'plongeon (passe la garde basse)')}
+        ${row('Spécial', 'special', `${m.special.kiCost ?? 25} Ki`)}${row('Bas + Spécial', 'special2', `${m.special2.kiCost ?? 25} Ki`)}
+        ${row('Super (jauge pleine)', 'super', 'imparable, invincible au départ')}
+      </table>
+    </div>
+  </div>
+  <div class="row" style="margin-top:14px"><button class="btn ghost" data-action="back">← Retour</button></div>`;
+}
+
+// ---- Options ----
+export function optionsHtml(s: Settings, profile: Profile, pads: string[]): string {
+  const km = (map: KeyMap, who: 'keymap1' | 'keymap2') =>
+    (Object.keys(map) as (keyof KeyMap)[])
+      .map((k) => `<div class="opt"><div class="lbl">${labelFor(k)}</div><div class="val"><span>${map[k].map((c) => `<kbd>${esc(keyLabel(c))}</kbd>`).join(' ')}</span><button class="btn sm" data-action="rebind" data-map="${who}" data-key="${k}">Changer</button></div></div>`)
+      .join('');
+  const pm = (map: PadMap) =>
+    (Object.keys(map) as (keyof PadMap)[])
+      .map((k) => `<div class="opt"><div class="lbl">${labelFor(k)}</div><div class="val"><span><kbd>${PAD_BUTTON_NAMES[map[k]] ?? map[k]}</kbd></span><button class="btn sm" data-action="rebind-pad" data-key="${k}">Changer</button></div></div>`)
+      .join('');
+  return `<h2>Options</h2>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px">
+    <div class="col">
+      <h3>Audio</h3>
+      <label class="field">Effets sonores <input type="range" min="0" max="1" step="0.05" value="${s.volume}" data-set="volume"></label>
+      <label class="field">Musique <input type="range" min="0" max="1" step="0.05" value="${s.music}" data-set="music"></label>
+      <h3>Affichage</h3>
+      <label class="toggle"><input type="checkbox" data-set="shake" ${s.shake ? 'checked' : ''}> Secousses d'écran</label>
+      <label class="toggle"><input type="checkbox" data-set="reduceFx" ${s.reduceFx ? 'checked' : ''}> Réduire les effets (téléphones modestes)</label>
+      <label class="toggle"><input type="checkbox" data-set="showHitboxes" ${s.showHitboxes ? 'checked' : ''}> Afficher les boîtes de collision</label>
+      <h3>Tactile</h3>
+      <label class="field">Taille des boutons <input type="range" min="0.75" max="1.5" step="0.05" value="${s.touchSize}" data-set="touchSize"></label>
+      <label class="field">Opacité <input type="range" min="0.2" max="1" step="0.05" value="${s.touchOpacity}" data-set="touchOpacity"></label>
+      <h3>Profil</h3>
+      <label class="field">Ton pseudo <input type="text" maxlength="14" value="${esc(s.name)}" data-set="name" placeholder="Joueur"></label>
+      <p class="small muted">Stages terminés : ${profile.stageReached}/6 · Duels gagnés : ${profile.duelWins} · Meilleure survie : vague ${profile.bestSurvival} · Record : ${profile.bestScore} pts · KO : ${profile.totalKo}</p>
+      <button class="btn danger sm" data-action="reset-profile">Effacer la progression</button>
+    </div>
+    <div class="col">
+      <h3>Clavier joueur 1</h3>
+      <div class="options">${km(s.keymap1 ?? KEYMAP_P1, 'keymap1')}</div>
+      <h3>Clavier joueur 2</h3>
+      <div class="options">${km(s.keymap2 ?? KEYMAP_P2, 'keymap2')}</div>
+      <h3>Manette ${pads.length ? `(${pads.length} détectée${pads.length > 1 ? 's' : ''})` : '(aucune détectée : appuie sur un bouton)'}</h3>
+      <div class="options">${pm(s.padmap ?? PADMAP_DEFAULT)}</div>
+      <div class="row"><button class="btn sm" data-action="reset-controls">Commandes par défaut</button></div>
+    </div>
+  </div>
+  <div class="row" style="margin-top:14px"><button class="btn ghost" data-action="back">← Retour</button></div>`;
+}
+
+function labelFor(k: string): string {
+  const L: Record<string, string> = { left: 'Gauche', right: 'Droite', up: 'Haut (fond)', down: 'Bas (avant)', light: 'Attaque', heavy: 'Lourd', jump: 'Saut', guard: 'Garde', special: 'Spécial', super: 'Super', dash: 'Courir', pause: 'Pause', confirm: 'Valider' };
+  return L[k] ?? k;
+}
+
+export function menuHtml(profile: Profile, hasTouch: boolean, version: string): string {
+  return `<div class="row between" style="align-items:flex-end">
+      <h1 class="logo">AI <span>FIGHTER</span> 2<small>BEAT'EM UP · 1 À 4 JOUEURS</small></h1>
+      <div class="small muted" style="text-align:right">Stages : ${profile.stageReached}/6<br>Record : ${profile.bestScore} pts</div>
+    </div>
+    <div class="grid menu" style="margin-top:18px">
+      <button class="btn menu-item big" data-action="local"><span class="ico">🎮</span>Jouer en local<span class="sub">Solo ou jusqu'à 4 sur cet écran : claviers, manettes${hasTouch ? ', tactile' : ''}</span></button>
+      <button class="btn menu-item big primary" data-action="online"><span class="ico">📡</span>Jouer en ligne<span class="sub">Chacun sur son téléphone / PC, avec un code de salon</span></button>
+      <button class="btn menu-item" data-action="howto"><span class="ico">📖</span>Comment jouer<span class="sub">Commandes, système de combat, liste des coups</span></button>
+      <button class="btn menu-item" data-action="options"><span class="ico">⚙️</span>Options<span class="sub">Son, commandes, tactile, profil</span></button>
+    </div>
+    <p class="small muted" style="margin:14px 0 0">v${version} · Les parties se jouent en lockstep déterministe : aucune triche possible par l'hôte, tout le monde voit la même chose.</p>`;
+}
+
+export function onlineHtml(s: Settings, prefillCode: string, serverUrl: string): string {
+  return `<h2>Jouer en ligne</h2>
+  <p class="small muted">Un joueur crée un salon et partage le code (ou le lien). Les autres rejoignent depuis leur téléphone ou PC. Fonctionne sur le même Wi-Fi ou via Internet si le serveur est hébergé.</p>
+  <label class="field">Ton pseudo <input type="text" id="name" maxlength="14" value="${esc(s.name)}" placeholder="Joueur"></label>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-top:12px">
+    <div class="col" style="background:var(--panel2);padding:14px;border-radius:12px">
+      <b>Créer un salon</b>
+      <span class="small muted">Tu seras l'hôte : tu choisis le mode et lances la partie.</span>
+      <button class="btn primary" data-action="create">➕ Créer</button>
+    </div>
+    <div class="col" style="background:var(--panel2);padding:14px;border-radius:12px">
+      <b>Rejoindre un salon</b>
+      <input type="text" id="code" class="code" maxlength="5" placeholder="CODE" value="${esc(prefillCode)}" autocomplete="off" autocapitalize="characters">
+      <button class="btn" data-action="join">🔗 Rejoindre</button>
+    </div>
+  </div>
+  <details style="margin-top:12px"><summary class="small muted" style="cursor:pointer">Serveur avancé</summary>
+    <label class="field" style="margin-top:8px">Adresse du serveur WebSocket (vide = même adresse que la page) <input type="text" id="server" value="${esc(serverUrl)}" placeholder="wss://mon-serveur.exemple/ws"></label>
+  </details>
+  <div id="online-status" class="small muted" style="margin-top:10px;min-height:18px"></div>
+  <div class="row" style="margin-top:14px"><button class="btn ghost" data-action="back">← Retour</button></div>`;
+}
+
+export function pauseHtml(canQuit: boolean, isHost: boolean, online: boolean): string {
+  return `<h2>Pause</h2>
+  <div class="col">
+    <button class="btn primary" data-action="resume">▶ Reprendre</button>
+    <button class="btn" data-action="controls">📖 Commandes</button>
+    ${canQuit ? `<button class="btn danger" data-action="quit">${online ? (isHost ? '✖ Terminer la partie pour tout le monde' : '✖ Quitter la partie') : '✖ Quitter la partie'}</button>` : ''}
+  </div>`;
+}
+
+export function endHtml(title: string, lines: string[], opts: { canReplay: boolean; canLobby: boolean; isHost: boolean; online: boolean; nextStage?: boolean }): string {
+  return `<h2>${esc(title)}</h2>
+  <div class="col small muted">${lines.map((l) => `<div>${esc(l)}</div>`).join('')}</div>
+  <div class="col" style="margin-top:12px">
+    ${opts.canReplay ? `<button class="btn primary" data-action="replay">🔁 Rejouer</button>` : ''}
+    ${opts.canLobby ? `<button class="btn" data-action="lobby">${opts.online ? '🏠 Retour au salon' : '🏠 Retour au salon'}</button>` : opts.online ? `<span class="small muted">L'hôte décide de la suite…</span>` : ''}
+    <button class="btn ghost" data-action="menu">Menu principal</button>
+  </div>`;
+}

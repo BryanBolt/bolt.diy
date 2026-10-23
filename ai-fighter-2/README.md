@@ -1,0 +1,110 @@
+# AI Fighter 2
+
+Beat'em up « stickman » en 2.5D, pensé dès le départ pour le **multijoueur** : de 1 à 4 joueurs,
+**en local** (plusieurs claviers, manettes, écran tactile sur le même appareil) ou **en ligne**
+(chacun sur son téléphone ou son PC, avec un simple code de salon).
+
+C'est la suite d'*AI Fighter Heroes* (Rust / macroquad, Android uniquement, solo). Cette version
+repart de zéro en web (TypeScript + Canvas), sans aucune dépendance de jeu, et tourne partout :
+Android, iOS, PC, Mac, installable en application (PWA) et jouable hors-ligne en local.
+
+## Ce qui change par rapport au premier
+
+| Problème du 1 | AI Fighter 2 |
+| --- | --- |
+| Android seulement (APK) | Tout navigateur, installable (PWA), aucun store |
+| Solo (duel local limité) | 1 à 4 joueurs, coop campagne, duel chacun pour soi ou par équipes, survie, entraînement |
+| Pas de jeu en ligne | Salons avec code, **lockstep déterministe** : tout le monde voit exactement la même partie, l'hôte ne peut pas tricher |
+| Clavier + manette | Clavier (AZERTY **et** QWERTY, 2 joueurs sur un clavier), manettes (API Gamepad, vibration), **tactile** multi-touch avec joystick flottant |
+| Combat « mash » | Tampon d'entrées, hit-stop, enchaînements, lanceurs + jongles, coups bas / plongeons, garde haute/basse, **parade parfaite**, roulade, garde brisée, charge du coup lourd, super imparable |
+| IA qui s'empile | Limite d'attaquants simultanés, flanc, réactions (garde / esquive) qui dépendent de la difficulté, projectiles évités |
+| Pas de réanimation | Un allié KO se réanime en maintenant Attaque à côté de lui ; système de vies ; Phénix |
+| Textes dynamiques via API Claude | Tout est embarqué : aucune clé, aucun réseau requis hors multijoueur |
+
+## Lancer
+
+```bash
+cd ai-fighter-2
+npm install
+npm run dev          # client Vite sur http://localhost:5173 (proxy /ws vers le serveur)
+npm run dev:server   # serveur de salons sur le port 8787 (dans un second terminal)
+```
+
+Pour jouer **chacun sur son téléphone** sur le même Wi-Fi : lance les deux commandes ci-dessus, puis
+ouvre l'adresse « Network » affichée par Vite (ex. `http://192.168.1.20:5173`) sur chaque téléphone.
+Un joueur crée un salon, les autres entrent le code (ou ouvrent le lien partagé `?salon=CODE`).
+
+### Production (un seul processus)
+
+```bash
+npm run build   # typecheck + build dans dist/
+npm start       # sert dist/ et le WebSocket /ws sur $PORT (8787 par défaut)
+```
+
+Héberge ce processus Node n'importe où (VPS, Fly.io, Render, Railway…) derrière HTTPS et le jeu
+en ligne fonctionne via Internet. Un `Dockerfile` est fourni.
+
+### Tests
+
+```bash
+npm test        # déterminisme de la simulation, stabilité des 4 modes, lockstep avec latence et déconnexion
+```
+
+## Commandes
+
+| Action | Clavier J1 | Clavier J2 (pavé num.) | Manette | Tactile |
+| --- | --- | --- | --- | --- |
+| Bouger | `Z Q S D` / `W A S D` / flèches | `8 4 5 6` | Stick / croix | Joystick (gauche de l'écran) |
+| Courir | `Maj gauche` ou double appui | `.` | Stick à fond / `LB` / `LT` | Joystick à fond |
+| Attaque | `J` | `1` | `X` | `A` |
+| Lourd (maintenir : charger) | `K` | `3` | `Y` | `B` |
+| Saut | `Espace` / `L` | `0` | `A` | `X` |
+| Garde (+ direction : roulade) | `U` / `Maj droite` | `7` | `B` | `Y` |
+| Spécial (25 Ki) | `I` | `9` | `RB` | `Ki` |
+| Super (jauge pleine) | `O` | `+` | `RT` | `★` |
+| Pause | `Échap` / `P` | `*` | `Start` | `❚❚` |
+
+Toutes les touches sont remappables dans **Options**.
+
+### Système de combat
+
+- **Enchaînements** : Attaque ×3 puis Lourd = finisseur. Avant + Lourd = **lanceur**, puis saut et attaques aériennes pour jongler.
+- **Coups bas** (Arrière/Bas + Lourd) passent sous la garde haute ; les **plongeons** (Lourd en l'air) passent au-dessus de la garde basse (Bas + Garde).
+- **Parade parfaite** : appuyer sur Garde dans les 7 frames avant l'impact déséquilibre l'attaquant, rend 20 Ki et **renvoie les projectiles**.
+- **Garde brisée** quand la jauge de garde tombe à zéro (les coups lourds chargés cassent la garde d'un coup).
+- Après un coup qui touche, Garde + direction **annule la récupération** par une roulade.
+- **Ki** : se remplit en frappant ; **Super** : jauge pleine = coup imparable, invincible au départ.
+- **Coop** : réanimation des alliés, soins / Ki / pièces dans les caisses, **bonus roguelite** à choisir entre chaque vague (18 bonus avec effets réels : brûlure, gel, ondes de choc, vampirisme, Phénix…).
+
+## Les héros
+
+Kai (karaté équilibré), Tora (muay-thaï, armure, brise-garde), Zed (ninja, kunaïs, téléportation), Vex (fouet à longue allonge, lasso),
+Orion (zoneur au Ki), Blaze (pyromane, dégâts sur la durée), Frost (gel), Shade (contres, forme ombre) ;
+Gorr (colosse) et Nova (boss final) se débloquent en campagne.
+
+## Modes
+
+- **Campagne** (coop 1-4) : 6 stages, 3 vagues + boss chacun, bonus entre les vagues, 4 difficultés. Le stage de départ est débloqué au fur et à mesure.
+- **Duel** : meilleur des 1/3/5, jusqu'à 4 combattants, chacun pour soi ou 2 équipes, bots IA en renfort, timer de 99 s.
+- **Survie** : vagues infinies, record sauvegardé.
+- **Entraînement** : mannequin qui régénère, affichage des boîtes de collision (Options).
+
+## Architecture
+
+```
+shared/protocol.ts   messages client <-> serveur
+server/index.ts      salons + relais d'entrées + fichiers statiques (Node, ws)
+src/sim/             simulation déterministe (aucune horloge, aucun Math.random, aucune trig) : combattants, coups, IA, vagues, bonus
+src/net/             client WebSocket + session lockstep (délai d'entrée adaptatif, redondance, prise en charge des départs, hash anti-désync)
+src/input/           clavier (codes physiques), manettes, tactile
+src/render/          caméra 2.5D, stickmen « encre » à poses procédurales, décors parallaxe, effets, HUD
+src/audio/           synthèse WebAudio (effets + musique procédurale par stage)
+src/ui/              écrans DOM (menus, salon, options, aide), manette tactile
+tests/               déterminisme, stabilité, lockstep
+```
+
+**Pourquoi le lockstep ?** Chaque client simule la partie entière ; seules les entrées (16 bits par
+joueur et par frame) transitent par le serveur, qui ne fait que relayer. Une frame n'est jouée que
+lorsque les entrées de tous sont connues : impossible de désynchroniser ou de tricher sur la position
+d'un combattant. Si un joueur quitte, son combattant passe sous contrôle de l'IA au même instant pour
+tout le monde. Un hash de l'état est comparé toutes les 60 frames pour détecter une désynchronisation.

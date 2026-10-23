@@ -1,0 +1,29 @@
+{
+  "name": "ai-fighter-2",
+  "version": "2.0.0",
+  "private": true,
+  "description": "AI Fighter 2 - beat'em up stickman multijoueur (local + en ligne), clavier / manette / tactile",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "dev:server": "tsx watch server/index.ts",
+    "build": "tsc --noEmit -p tsconfig.json && vite build",
+    "start": "node --import tsx server/index.ts",
+    "test": "vitest --run",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p server/tsconfig.json"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "tsx": "4.23.15",
+    "ws": "8.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "@types/ws": "8.18.2",
+    "typescript": "5.9.3",
+    "vite": "7.3.7",
+    "vitest": "3.2.7"
+  }
+}
