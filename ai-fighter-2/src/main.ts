@@ -288,6 +288,7 @@ function changeOption(o: LobbyOptions, key: string, dir: number): void {
     case 'rounds': { const r: (1 | 3 | 5)[] = [1, 3, 5]; o.rounds = r[(r.indexOf(o.rounds) + dir + 3) % 3]; break; }
     case 'bots': o.bots = Math.max(0, Math.min(3, o.bots + dir)); break;
     case 'teams': o.teams = !o.teams; break;
+    case 'isPublic': o.isPublic = !o.isPublic; break;
     case 'stage': {
       const max = o.mode === 'duel' ? 6 : Math.min(STAGES.length - 1, loadProfile().stageReached);
       o.stage = (o.stage + dir + max + 1) % (max + 1);
@@ -359,6 +360,8 @@ function startLocalGame(): void {
 // En ligne
 // ---------------------------------------------------------------------------
 
+let roomsTimer = 0;
+
 function goOnline(prefill = ''): void {
   state = 'online';
   gameOnline = true;
@@ -368,27 +371,48 @@ function goOnline(prefill = ''): void {
   const nameEl = el.querySelector('#name') as HTMLInputElement;
   const codeEl = el.querySelector('#code') as HTMLInputElement;
   const serverEl = el.querySelector('#server') as HTMLInputElement;
+  const pubEl = el.querySelector('#pub') as HTMLInputElement;
+  const roomsEl = el.querySelector('#rooms') as HTMLDivElement;
   const persist = () => saveSettings({ name: nameEl.value.trim().slice(0, 14), serverUrl: serverEl.value.trim() });
+  const connect = async (): Promise<boolean> => {
+    status.textContent = 'Connexion au serveur…';
+    try {
+      await ensureNet();
+      status.textContent = '';
+      return true;
+    } catch (err) {
+      const msg = `Impossible de joindre le serveur (${(err as Error).message}). Vérifie l'adresse du serveur et ta connexion.`;
+      status.textContent = msg;
+      roomsEl.innerHTML = S.roomsHtml(null, 'Serveur injoignable : « Actualiser » pour réessayer.');
+      return false;
+    }
+  };
+  const refresh = async () => {
+    if (state !== 'online') return;
+    if (!net || !net.connectedFlag) { persist(); if (!(await connect())) return; }
+    net!.send({ t: 'list' });
+  };
+  // liste des salons publics : récupérée à l'ouverture puis toutes les 3 s tant que l'écran est ouvert
+  window.clearInterval(roomsTimer);
+  roomsTimer = window.setInterval(() => { if (state !== 'online') window.clearInterval(roomsTimer); else void refresh(); }, 3000);
+  void refresh();
   el.addEventListener('click', async (e) => {
     const a = actionOf(e);
     if (!a) return;
     synth.unlock();
-    if (a === 'back') { net?.close(); net = null; goMenu(); return; }
-    if (a !== 'create' && a !== 'join') return;
+    if (a === 'back') { window.clearInterval(roomsTimer); net?.close(); net = null; goMenu(); return; }
+    if (a === 'refresh') { await refresh(); return; }
+    if (!['create', 'join', 'quick', 'join-room'].includes(a)) return;
     persist();
-    const code = normalizeRoomCode(codeEl.value);
-    if (a === 'join' && code.length < 5) { status.textContent = 'Entre le code à 5 caractères du salon.'; return; }
-    status.textContent = 'Connexion au serveur…';
-    try {
-      await ensureNet();
-    } catch (err) {
-      status.textContent = `Impossible de joindre le serveur (${(err as Error).message}). Vérifie que le serveur tourne (npm start) et l'adresse.`;
-      return;
-    }
+    const code = a === 'join-room' ? normalizeRoomCode(dataOf(e).code ?? '') : normalizeRoomCode(codeEl.value);
+    if ((a === 'join' || a === 'join-room') && code.length < 5) { status.textContent = 'Entre le code à 5 caractères du salon.'; return; }
+    if (!(net && net.connectedFlag) && !(await connect())) return;
     const s2 = settings();
-    if (a === 'create') net!.send({ t: 'create', name: myName(), charId: s2.lastChar, color: s2.lastColor });
-    else net!.send({ t: 'join', code, name: myName(), charId: s2.lastChar, color: s2.lastColor });
-    status.textContent = 'Salon…';
+    const who = { name: myName(), charId: s2.lastChar, color: s2.lastColor };
+    if (a === 'create') net!.send({ t: 'create', ...who, public: pubEl.checked });
+    else if (a === 'quick') net!.send({ t: 'quick', ...who });
+    else net!.send({ t: 'join', code, ...who });
+    status.textContent = a === 'quick' ? 'Recherche d\'un salon…' : 'Salon…';
   });
   if (prefill.length === 5 && s.name) {
     // lien direct : rejoindre automatiquement
@@ -534,6 +558,11 @@ function bindNet(n: NetClient): void {
     if (st) st.textContent = m.message;
     if (m.code === 'gone') { saveOnlineResume(null); resumeWaiter?.(false); }
   });
+  n.on('rooms', (m) => {
+    if (m.t !== 'rooms') return;
+    const box = document.getElementById('rooms');
+    if (box && state === 'online') box.innerHTML = S.roomsHtml(m.rooms);
+  });
   n.on('resume', (m) => { if (m.t === 'resume') handleResume(m); });
   // désynchronisation détectée par le serveur : on se reconstruit depuis son journal (il fait foi)
   n.on('desync', () => {
@@ -555,6 +584,8 @@ function bindNet(n: NetClient): void {
     chat = [];
     history.replaceState(null, '', `?salon=${m.code}`);
     saveOnlineResume({ code: m.code, token: m.token, slot: m.slot, url: settings().serverUrl, ts: Date.now() });
+    window.clearInterval(roomsTimer);
+    if (m.created) S.toast('Salon ouvert : les autres joueurs pourront te rejoindre depuis la liste.', 4500);
   });
   n.on('lobby', (m) => { if (m.t === 'lobby') { lobby = m.state; voice.setRoster(mySlot, m.state.players.map((p) => p.slot)); if (state === 'online' || state === 'online-lobby') { state = 'online-lobby'; renderOnlineLobby(); } } });
   n.on('chat', (m) => { if (m.t === 'chat') { const p = lobby?.players.find((x) => x.slot === m.slot); chat.push({ name: p?.name ?? `P${m.slot + 1}`, text: m.text }); if (chat.length > 30) chat.shift(); if (state === 'online-lobby') renderOnlineLobby(); else S.toast(`${p?.name ?? 'Joueur'} : ${m.text}`); } });

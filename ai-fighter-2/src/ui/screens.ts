@@ -3,7 +3,7 @@ import { ROSTER, getChar, PALETTE, COMMANDS } from '../sim/chars';
 import { STAGES } from '../sim/stages';
 import { POSES, drawStickman } from '../render/stickman';
 import type { Fighter } from '../sim/types';
-import type { LobbyOptions, GameMode } from '../../shared/protocol';
+import type { LobbyOptions, GameMode, PublicRoom } from '../../shared/protocol';
 import type { Profile, Settings } from '../core/storage';
 import { KEYMAP_P1, KEYMAP_P2, keyLabel, PAD_BUTTON_NAMES, PADMAP_DEFAULT, type KeyMap, type PadMap } from '../input/devices';
 
@@ -133,12 +133,13 @@ export function lobbyHtml(v: LobbyView): string {
     o.mode === 'duel' ? optBtn('rounds', 'Manches', `Meilleur des ${o.rounds}`) : '',
     o.mode === 'duel' ? optBtn('bots', 'Bots', String(o.bots)) : '',
     o.mode === 'duel' ? optBtn('teams', 'Équipes', o.teams ? '2 équipes' : 'Chacun pour soi') : '',
+    v.online ? optBtn('isPublic', 'Visibilité', o.isPublic ? '🌐 Public' : '🔒 Privé') : '',
     o.mode === 'campaign' || o.mode === 'duel' ? optBtn('stage', o.mode === 'duel' ? 'Arène' : 'Départ', `${o.stage + 1}. ${stageName}`) : '',
   ].join('');
   const allReady = v.cards.length > 0 && v.cards.every((c) => c.ready || !c.local && v.online && c.ready);
   const canStart = v.isHost && v.cards.length > 0 && v.cards.every((c) => c.ready);
   const header = v.online
-    ? `<div class="row between"><div><h2 style="margin:0">Salon en ligne</h2><div class="small muted">Code à partager · ${v.ping !== undefined ? `ping ${Math.round(v.ping)} ms` : ''}</div></div><div class="row" style="align-items:center;gap:14px"><canvas data-qr title="Scanne pour rejoindre" style="border-radius:8px"></canvas><div class="col" style="align-items:flex-end;gap:4px"><div class="code-big">${esc(v.code ?? '')}</div><div class="row"><button class="btn sm" data-action="copy-link">📋 Copier le lien</button><button class="btn sm" data-action="share-link">📤 Partager</button></div><div class="small muted">ou scanne le QR code</div></div></div></div>`
+    ? `<div class="row between"><div><h2 style="margin:0">Salon en ligne</h2><div class="small muted">${v.options.isPublic ? '🌐 Salon public : visible dans la liste · ' : '🔒 Salon privé · '}Code à partager · ${v.ping !== undefined ? `ping ${Math.round(v.ping)} ms` : ''}</div></div><div class="row" style="align-items:center;gap:14px"><canvas data-qr title="Scanne pour rejoindre" style="border-radius:8px"></canvas><div class="col" style="align-items:flex-end;gap:4px"><div class="code-big">${esc(v.code ?? '')}</div><div class="row"><button class="btn sm" data-action="copy-link">📋 Copier le lien</button><button class="btn sm" data-action="share-link">📤 Partager</button></div><div class="small muted">ou scanne le QR code</div></div></div></div>`
     : `<div class="row between"><h2 style="margin:0">Jouer en local</h2><div class="small muted">Jusqu'à 4 joueurs : claviers, manettes, tactile</div></div>`;
   return `${header}
     <div class="players" style="margin:12px 0">${cards.join('')}</div>
@@ -272,18 +273,33 @@ export function menuHtml(profile: Profile, hasTouch: boolean, version: string, n
     <p class="small muted" style="margin:14px 0 0">v${version} · Les parties se jouent en lockstep déterministe : aucune triche possible par l'hôte, tout le monde voit la même chose.</p>`;
 }
 
+export function roomsHtml(rooms: PublicRoom[] | null, error = ''): string {
+  if (error) return `<div class="small muted" style="padding:10px">${esc(error)}</div>`;
+  if (rooms === null) return '<div class="small muted" style="padding:10px">Recherche des salons…</div>';
+  if (!rooms.length) return '<div class="small muted" style="padding:10px">Aucun salon public pour l\'instant. Lance une <b>partie rapide</b> : ton salon apparaîtra ici et les autres pourront te rejoindre.</div>';
+  return rooms.map((r) => `<div class="roomrow">
+      <div class="rinfo"><b>${esc(r.host)}</b> <span class="small muted">· ${esc(MODE_LABEL[r.mode])}${r.mode === 'campaign' || r.mode === 'survival' ? ' · ' + esc(DIFF_LABEL[r.difficulty] ?? '') : ''}${r.teams ? ' · équipes' : ''}</span>
+        <div class="small muted">${r.names.map(esc).join(', ')}</div></div>
+      <div class="rcount">${r.players}/${r.max}</div>
+      <button class="btn sm primary" data-action="join-room" data-code="${esc(r.code)}">Rejoindre</button>
+    </div>`).join('');
+}
+
 export function onlineHtml(s: Settings, prefillCode: string, serverUrl: string): string {
   return `<h2>Jouer en ligne</h2>
-  <p class="small muted">Un joueur crée un salon et partage le code (ou le lien). Les autres rejoignent depuis leur téléphone ou PC. Fonctionne sur le même Wi-Fi ou via Internet si le serveur est hébergé.</p>
   <label class="field">Ton pseudo <input type="text" id="name" maxlength="14" value="${esc(s.name)}" placeholder="Joueur"></label>
-  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-top:12px">
+  <button class="btn primary big" data-action="quick" style="margin-top:12px;width:100%"><span>⚡ Partie rapide<span class="sub">Rejoint un salon public libre, ou en ouvre un : pas de code à saisir</span></span></button>
+  <div class="row between" style="margin-top:14px"><h3 style="margin:0">Salons publics</h3><button class="btn sm" data-action="refresh">↻ Actualiser</button></div>
+  <div id="rooms" class="rooms">${roomsHtml(null)}</div>
+  <h3>Avec tes amis</h3>
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px">
     <div class="col" style="background:var(--panel2);padding:14px;border-radius:12px">
       <b>Créer un salon</b>
-      <span class="small muted">Tu seras l'hôte : tu choisis le mode et lances la partie.</span>
+      <label class="toggle"><input type="checkbox" id="pub"> Public (visible dans la liste)</label>
       <button class="btn primary" data-action="create">➕ Créer</button>
     </div>
     <div class="col" style="background:var(--panel2);padding:14px;border-radius:12px">
-      <b>Rejoindre un salon</b>
+      <b>Rejoindre avec un code</b>
       <input type="text" id="code" class="code" maxlength="5" placeholder="CODE" value="${esc(prefillCode)}" autocomplete="off" autocapitalize="characters">
       <button class="btn" data-action="join">🔗 Rejoindre</button>
     </div>

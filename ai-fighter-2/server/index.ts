@@ -9,7 +9,7 @@ import { networkInterfaces } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import type { ClientMsg, ServerMsg, LobbyPlayer, LobbyOptions, LobbyState } from '../shared/protocol';
-import type { CtlEvent } from '../shared/protocol';
+import type { CtlEvent, PublicRoom } from '../shared/protocol';
 import { PROTOCOL_VERSION, MAX_PLAYERS, REJOIN_MARGIN, makeRoomCode, normalizeRoomCode, DEFAULT_OPTIONS, encodeRle } from '../shared/protocol';
 import { randomUUID } from 'node:crypto';
 
@@ -78,6 +78,39 @@ function freeColor(room: Room, wanted: number): number {
   }
   return wanted % 12;
 }
+function newRoom(isPublic: boolean): Room {
+  let code = makeRoomCode(Math.random);
+  while (rooms.has(code)) code = makeRoomCode(Math.random);
+  const room: Room = { code, clients: [], options: { ...DEFAULT_OPTIONS, isPublic }, inGame: false, hashes: new Map(), emptySince: 0, start: null, log: new Map(), events: [], reserved: new Map(), maxFrame: 0 };
+  rooms.set(code, room);
+  return room;
+}
+
+/** Salons publics rejoignables : en salon d'attente, au moins un joueur, une place libre. */
+function openPublicRooms(): Room[] {
+  return [...rooms.values()].filter((r) => r.options.isPublic && !r.inGame && r.clients.length > 0 && r.clients.length < MAX_PLAYERS);
+}
+
+function publicList(): PublicRoom[] {
+  return openPublicRooms().map((r) => {
+    const players = lobbyState(r).players;
+    return { code: r.code, host: players[0]?.name ?? '?', mode: r.options.mode, difficulty: r.options.difficulty, players: r.clients.length, max: MAX_PLAYERS, teams: r.options.teams, names: players.map((p) => p.name) };
+  }).sort((a, b) => b.players - a.players).slice(0, 30);
+}
+
+function seat(c: Client, room: Room, slot: number, name: unknown, charId: unknown, color: unknown, created: boolean): void {
+  c.name = cleanName(name, slot === 0 ? 'Hôte' : `Joueur ${slot + 1}`);
+  c.charId = String(charId ?? 'kai').slice(0, 16);
+  c.color = freeColor(room, Number(color) | 0);
+  c.ready = false;
+  c.slot = slot;
+  c.room = room;
+  room.clients.push(c);
+  room.emptySince = 0;
+  send(c, { t: 'joined', slot, code: room.code, token: c.token, created });
+  broadcast(room, { t: 'lobby', state: lobbyState(room) });
+}
+
 function cleanName(s: unknown, fallback: string): string {
   const v = String(s ?? '').replace(/[^\p{L}\p{N} _.'-]/gu, '').trim().slice(0, 14);
   return v || fallback;
@@ -115,19 +148,20 @@ function handle(c: Client, msg: ClientMsg): void {
       return;
     case 'create': {
       leaveRoom(c);
-      let code = makeRoomCode(Math.random);
-      while (rooms.has(code)) code = makeRoomCode(Math.random);
-      const room: Room = { code, clients: [], options: { ...DEFAULT_OPTIONS }, inGame: false, hashes: new Map(), emptySince: 0, start: null, log: new Map(), events: [], reserved: new Map(), maxFrame: 0 };
-      rooms.set(code, room);
-      c.name = cleanName(msg.name, 'Hôte');
-      c.charId = String(msg.charId ?? 'kai');
-      c.color = Number(msg.color) | 0;
-      c.ready = false;
-      c.slot = 0;
-      c.room = room;
-      room.clients.push(c);
-      send(c, { t: 'joined', slot: 0, code, token: c.token });
-      send(c, { t: 'lobby', state: lobbyState(room) });
+      const room = newRoom(!!msg.public);
+      seat(c, room, 0, msg.name, msg.charId, msg.color, true);
+      return;
+    }
+    case 'list':
+      send(c, { t: 'rooms', rooms: publicList() });
+      return;
+    case 'quick': {
+      // partie rapide : le salon public le plus rempli, sinon on en ouvre un
+      leaveRoom(c);
+      const open = openPublicRooms().sort((a, b) => b.clients.length - a.clients.length)[0];
+      if (open) { seat(c, open, freeSlot(open), msg.name, msg.charId, msg.color, false); return; }
+      const room = newRoom(true);
+      seat(c, room, 0, msg.name, msg.charId, msg.color, true);
       return;
     }
     case 'join': {
@@ -138,16 +172,7 @@ function handle(c: Client, msg: ClientMsg): void {
       const slot = freeSlot(room);
       if (slot < 0) { send(c, { t: 'error', code: 'full', message: 'Salon complet (4 joueurs).' }); return; }
       leaveRoom(c);
-      c.name = cleanName(msg.name, `Joueur ${slot + 1}`);
-      c.charId = String(msg.charId ?? 'kai');
-      c.color = freeColor(room, Number(msg.color) | 0);
-      c.ready = false;
-      c.slot = slot;
-      c.room = room;
-      room.clients.push(c);
-      room.emptySince = 0;
-      send(c, { t: 'joined', slot, code, token: c.token });
-      broadcast(room, { t: 'lobby', state: lobbyState(room) });
+      seat(c, room, slot, msg.name, msg.charId, msg.color, false);
       return;
     }
     case 'leave':

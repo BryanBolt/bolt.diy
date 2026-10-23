@@ -3,7 +3,7 @@
 // entrées de chaque joueur. Toute la simulation tourne côté client en
 // lockstep déterministe.
 
-export const PROTOCOL_VERSION = 3;
+export const PROTOCOL_VERSION = 4;
 /** Délai (en frames) entre le retour d'un joueur et sa reprise des commandes : laisse le temps à tous les clients de l'apprendre. */
 export const REJOIN_MARGIN = 120;
 export const MAX_PLAYERS = 4;
@@ -27,6 +27,19 @@ export interface LobbyOptions {
   bots: number; // duel : nombre de bots ajoutés
   stage: number; // index de stage de départ
   teams: boolean; // duel par équipes
+  isPublic: boolean; // salon visible dans la liste (rejoignable sans code)
+}
+
+/** Salon public affiché dans la liste. */
+export interface PublicRoom {
+  code: string;
+  host: string;
+  mode: GameMode;
+  difficulty: number;
+  players: number;
+  max: number;
+  teams: boolean;
+  names: string[];
 }
 
 export interface LobbyState {
@@ -39,7 +52,9 @@ export interface LobbyState {
 // --- Client -> serveur ---
 export type ClientMsg =
   | { t: 'hello'; v: number }
-  | { t: 'create'; name: string; charId: string; color: number }
+  | { t: 'create'; name: string; charId: string; color: number; public?: boolean }
+  | { t: 'quick'; name: string; charId: string; color: number } // partie rapide : rejoint un salon public libre ou en ouvre un
+  | { t: 'list' } // demande la liste des salons publics
   | { t: 'join'; code: string; name: string; charId: string; color: number }
   | { t: 'rejoin'; code: string; token: string } // retour dans une partie en cours après une coupure
   | { t: 'leave' }
@@ -66,7 +81,8 @@ export interface CtlEvent {
 export type ServerMsg =
   | { t: 'welcome'; v: number }
   | { t: 'error'; code: string; message: string }
-  | { t: 'joined'; slot: number; code: string; token: string }
+  | { t: 'joined'; slot: number; code: string; token: string; created?: boolean }
+  | { t: 'rooms'; rooms: PublicRoom[] }
   | { t: 'lobby'; state: LobbyState }
   | { t: 'start'; seed: number; options: LobbyOptions; players: LobbyPlayer[]; delay: number }
   | { t: 'input'; slot: number; f: number; bits: number[] }
@@ -118,4 +134,5 @@ export const DEFAULT_OPTIONS: LobbyOptions = {
   bots: 1,
   stage: 0,
   teams: false,
+  isPublic: false,
 };

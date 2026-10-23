@@ -56,6 +56,11 @@ p { line-height: 1.45; color: var(--text); }
 #voice.listen { background: rgba(79,227,255,0.3); border-color: #4fe3ff; }
 #voice.talk { box-shadow: 0 0 0 3px rgba(57,211,83,0.55); }
 .pcard.speaking { box-shadow: 0 0 0 3px var(--ok); }
+.rooms { display: flex; flex-direction: column; gap: 6px; max-height: 190px; overflow: auto; background: rgba(0,0,0,0.25); border-radius: 10px; padding: 6px; }
+.roomrow { display: flex; align-items: center; gap: 10px; background: var(--panel2); border-radius: 10px; padding: 8px 10px; }
+.roomrow .rinfo { flex: 1; min-width: 0; }
+.roomrow .rinfo .small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.roomrow .rcount { font-weight: 800; color: var(--accent); }
 .catchup { position: fixed; inset: 0; z-index: 45; display: flex; flex-direction: column; gap: 12px; align-items: center; justify-content: center; background: rgba(5, 6, 14, 0.86); text-align: center; padding: 20px; }
 .catchup .bar { width: min(80vw, 360px); height: 10px; border-radius: 6px; background: rgba(255,255,255,0.15); overflow: hidden; }
 .catchup .bar i { display: block; height: 100%; width: 0; background: var(--accent); }
