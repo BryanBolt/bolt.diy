@@ -31,6 +31,8 @@ const renderer = new Renderer(canvas);
 const synth = new Synth();
 const touch = new TouchOverlay(input.touch);
 const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+// version hébergée sans serveur (page publiée) : le mode en ligne n'est pas disponible
+const noNet = !!(window as unknown as { __AIF2_NO_NET?: boolean }).__AIF2_NO_NET;
 
 let state: AppState = 'menu';
 let session: Session | null = null;
@@ -82,12 +84,12 @@ function goMenu(): void {
   touch.show(false);
   input.clear();
   synth.startMusic('menu');
-  const el = S.show(S.menuHtml(loadProfile(), hasTouch, VERSION));
+  const el = S.show(S.menuHtml(loadProfile(), hasTouch, VERSION, noNet));
   el.addEventListener('click', (e) => {
     const a = actionOf(e);
     synth.unlock();
     if (a === 'local') goLocalLobby();
-    else if (a === 'online') goOnline();
+    else if (a === 'online') { if (noNet) S.toast('Le jeu en ligne demande la version avec serveur (voir le README du dépôt). Ici : solo et multijoueur local sur cet appareil.', 7000); else goOnline(); }
     else if (a === 'howto') goHowTo(settings().lastChar);
     else if (a === 'options') goOptions();
   });

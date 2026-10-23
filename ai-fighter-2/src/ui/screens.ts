@@ -247,14 +247,14 @@ function labelFor(k: string): string {
   return L[k] ?? k;
 }
 
-export function menuHtml(profile: Profile, hasTouch: boolean, version: string): string {
+export function menuHtml(profile: Profile, hasTouch: boolean, version: string, noNet = false): string {
   return `<div class="row between" style="align-items:flex-end">
       <h1 class="logo">AI <span>FIGHTER</span> 2<small>BEAT'EM UP · 1 À 4 JOUEURS</small></h1>
       <div class="small muted" style="text-align:right">Stages : ${profile.stageReached}/6<br>Record : ${profile.bestScore} pts</div>
     </div>
     <div class="grid menu" style="margin-top:18px">
       <button class="btn menu-item big" data-action="local"><span class="ico">🎮</span>Jouer en local<span class="sub">Solo ou jusqu'à 4 sur cet écran : claviers, manettes${hasTouch ? ', tactile' : ''}</span></button>
-      <button class="btn menu-item big primary" data-action="online"><span class="ico">📡</span>Jouer en ligne<span class="sub">Chacun sur son téléphone / PC, avec un code de salon</span></button>
+      <button class="btn menu-item big ${noNet ? '' : 'primary'}" data-action="online"><span class="ico">📡</span>Jouer en ligne<span class="sub">${noNet ? 'Indisponible sur cette page hébergée : il faut la version avec serveur' : 'Chacun sur son téléphone / PC, avec un code de salon'}</span></button>
       <button class="btn menu-item" data-action="howto"><span class="ico">📖</span>Comment jouer<span class="sub">Commandes, système de combat, liste des coups</span></button>
       <button class="btn menu-item" data-action="options"><span class="ico">⚙️</span>Options<span class="sub">Son, commandes, tactile, profil</span></button>
     </div>
