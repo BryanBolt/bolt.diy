@@ -22,7 +22,9 @@ interface Peer {
 
 const ICE_SERVERS: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }];
 
-export type VoiceState = 'off' | 'on' | 'muted' | 'listen';
+/** off : pas dans la conversation · listen : écoute seule · ptt : appuyer-parler, en attente · talk : on parle (appuyé) · on / muted : micro ouvert actif / coupé */
+export type VoiceState = 'off' | 'listen' | 'ptt' | 'talk' | 'on' | 'muted';
+export type VoiceMode = 'ptt' | 'open';
 
 export class VoiceChat {
   private net: NetClient | null = null;
@@ -37,6 +39,8 @@ export class VoiceChat {
   private timer = 0;
   private joined = false;
   muted = false;
+  mode: VoiceMode = 'ptt';
+  private talking = false;
   volume = 1;
   /** joueurs qui parlent en ce moment (pour l'affichage) */
   speaking = new Set<number>();
@@ -46,6 +50,7 @@ export class VoiceChat {
   get state(): VoiceState {
     if (!this.joined) return 'off';
     if (!this.stream) return 'listen';
+    if (this.mode === 'ptt') return this.talking ? 'talk' : 'ptt';
     return this.muted ? 'muted' : 'on';
   }
 
@@ -89,6 +94,8 @@ export class VoiceChat {
     }
     this.joined = true;
     this.muted = false;
+    this.talking = false;
+    this.applyTrack(); // en appuyer-parler, le micro démarre coupé
     this.ensureCtx();
     if (this.stream && this.ctx) {
       const src = this.ctx.createMediaStreamSource(this.stream);
@@ -116,10 +123,32 @@ export class VoiceChat {
     this.onChange?.();
   }
 
-  toggleMute(): void {
+  /** Le micro n'émet que si : mode ouvert et non coupé, ou mode appuyer-parler et touche tenue. */
+  private applyTrack(): void {
     if (!this.stream) return;
+    const on = this.mode === 'open' ? !this.muted : this.talking;
+    for (const t of this.stream.getAudioTracks()) t.enabled = on;
+  }
+
+  toggleMute(): void {
+    if (!this.stream || this.mode !== 'open') return;
     this.muted = !this.muted;
-    for (const t of this.stream.getAudioTracks()) t.enabled = !this.muted;
+    this.applyTrack();
+    this.onChange?.();
+  }
+
+  /** Appuyer-parler : à appeler avec l'état de la touche / du bouton (sans effet en mode micro ouvert). */
+  setTalking(on: boolean): void {
+    if (on === this.talking) return;
+    this.talking = on;
+    if (this.mode === 'ptt') { this.applyTrack(); this.onChange?.(); }
+  }
+
+  setMode(mode: VoiceMode): void {
+    this.mode = mode;
+    this.talking = false;
+    this.muted = false;
+    this.applyTrack();
     this.onChange?.();
   }
 
@@ -260,7 +289,7 @@ export class VoiceChat {
   private measure(): void {
     const before = [...this.speaking].sort().join(',');
     this.speaking.clear();
-    this.localLevel = this.muted ? 0 : this.levelOf(this.localAnalyser);
+    this.localLevel = (this.mode === 'open' ? this.muted : !this.talking) ? 0 : this.levelOf(this.localAnalyser);
     if (this.localLevel > 0.04 && this.mySlot >= 0) this.speaking.add(this.mySlot);
     for (const p of this.peers.values()) {
       p.level = this.levelOf(p.analyser);

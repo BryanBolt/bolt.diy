@@ -50,11 +50,17 @@ p { line-height: 1.45; color: var(--text); }
 .grid { display: grid; gap: 10px; }
 .resume { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
 .resume .btn { flex-direction: column; align-items: flex-start; text-align: left; gap: 2px; }
-#voice { position: fixed; top: 34%; right: calc(14px + env(safe-area-inset-right)); z-index: 30; min-width: 44px; height: 40px; padding: 0 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.4); background: rgba(0,0,0,0.5); color: #fff; font: 700 14px var(--font); display: none; align-items: center; justify-content: center; gap: 6px; touch-action: manipulation; cursor: pointer; }
-#voice.on { background: rgba(57,211,83,0.35); border-color: #39d353; }
+#voicebox { position: fixed; top: 34%; right: calc(14px + env(safe-area-inset-right)); z-index: 30; display: none; flex-direction: column; align-items: flex-end; gap: 6px; }
+#voicebox button { font: 700 14px var(--font); color: #fff; border: 1px solid rgba(255,255,255,0.4); background: rgba(0,0,0,0.55); border-radius: 12px; cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+#voice { min-width: 56px; min-height: 48px; padding: 0 14px; max-width: 220px; }
+#voice.ptt { border-color: #4fe3ff; background: rgba(79,227,255,0.18); }
+#voice.on { background: rgba(57,211,83,0.4); border-color: #39d353; }
 #voice.muted { background: rgba(255,95,95,0.35); border-color: #ff5f5f; }
 #voice.listen { background: rgba(79,227,255,0.3); border-color: #4fe3ff; }
 #voice.talk { box-shadow: 0 0 0 3px rgba(57,211,83,0.55); }
+#voicebox .vrow { display: none; gap: 6px; }
+#voicebox.joined .vrow { display: flex; }
+#voicebox .vrow button { min-height: 32px; padding: 0 10px; font-size: 12px; font-weight: 600; opacity: 0.85; touch-action: manipulation; }
 .pcard.speaking { box-shadow: 0 0 0 3px var(--ok); }
 .rooms { display: flex; flex-direction: column; gap: 6px; max-height: 190px; overflow: auto; background: rgba(0,0,0,0.25); border-radius: 10px; padding: 6px; }
 .roomrow { display: flex; align-items: center; gap: 10px; background: var(--panel2); border-radius: 10px; padding: 8px 10px; }

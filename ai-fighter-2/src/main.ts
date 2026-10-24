@@ -850,7 +850,8 @@ let lastFrameTime = 0;
 function loop(now: number): void {
   requestAnimationFrame(loop);
   const inRoom = !noNet && (state === 'online-lobby' || (state === 'game' && gameOnline));
-  voiceBtn.style.display = inRoom ? 'flex' : 'none';
+  voiceBox.style.display = inRoom ? 'flex' : 'none';
+  voice.setTalking(voiceHeld || keyTalk || padTalk());
   if (!inRoom && voice.state !== 'off') voice.leave();
   hud.speaking = voice.speaking;
   const dt = lastFrameTime ? Math.min(100, now - lastFrameTime) : 16.7;
@@ -924,45 +925,79 @@ document.addEventListener('visibilitychange', () => {
   else if (state === 'game' && gameOnline && (!net || !net.connectedFlag) && !reconnecting) void autoReconnect();
 });
 
-// ---- chat vocal : bouton micro ----
-const voiceBtn = document.createElement('button');
-voiceBtn.id = 'voice';
-voiceBtn.type = 'button';
-voiceBtn.setAttribute('aria-label', 'Chat vocal');
-document.body.appendChild(voiceBtn);
+// ---- chat vocal : appuyer pour parler (par défaut) ou micro ouvert ----
+voice.setMode(settings().voiceMode);
+const voiceBox = document.createElement('div');
+voiceBox.id = 'voicebox';
+voiceBox.innerHTML = '<button id="voice" type="button" aria-label="Chat vocal"></button><div class="vrow"><button id="voicemode" type="button"></button><button id="voiceleave" type="button" title="Quitter le chat vocal" aria-label="Quitter le chat vocal">✕</button></div>';
+document.body.appendChild(voiceBox);
+const voiceBtn = voiceBox.querySelector('#voice') as HTMLButtonElement;
+const voiceModeBtn = voiceBox.querySelector('#voicemode') as HTMLButtonElement;
+const voiceLeaveBtn = voiceBox.querySelector('#voiceleave') as HTMLButtonElement;
+let voiceHeld = false; // bouton à l'écran maintenu
+let keyTalk = false; // touche V maintenue
+
 function refreshVoiceBtn(): void {
   const st = voice.state;
-  voiceBtn.className = (st === 'on' ? 'on' : st === 'muted' ? 'muted' : st === 'listen' ? 'listen' : '') + (voice.speaking.has(mySlot) ? ' talk' : '');
   const n = voice.connectedCount();
-  voiceBtn.textContent = st === 'off' ? '🎙️ Voix' : st === 'on' ? `🎙️ ${n ? n : '…'}` : st === 'muted' ? '🔇 Micro coupé' : `🎧 ${n ? n : '…'}`;
-  voiceBtn.title = st === 'off' ? 'Activer le chat vocal' : st === 'on' ? 'Couper le micro (appui long : quitter la voix)' : st === 'muted' ? 'Réactiver le micro' : 'Tu écoutes seulement (appui long : quitter la voix)';
+  const cls = st === 'talk' || st === 'on' ? 'on' : st === 'muted' ? 'muted' : st === 'listen' ? 'listen' : st === 'ptt' ? 'ptt' : '';
+  voiceBtn.className = cls + (voice.speaking.has(mySlot) ? ' talk' : '');
+  voiceBtn.textContent =
+    st === 'off' ? '🎙️ Voix' :
+    st === 'ptt' ? `🎙️ Maintiens pour parler${n ? ' · ' + n : ''}` :
+    st === 'talk' ? `🎙️ Tu parles…${n ? ' · ' + n : ''}` :
+    st === 'on' ? `🎙️ Micro ouvert · ${n || '…'}` :
+    st === 'muted' ? '🔇 Micro coupé' : `🎧 Écoute · ${n || '…'}`;
+  voiceBtn.title = st === 'off' ? 'Activer le chat vocal' : st === 'listen' ? 'Tu écoutes seulement (micro refusé)' : voice.mode === 'ptt' ? 'Maintiens ce bouton (ou la touche V, ou Select sur manette) pour parler' : 'Appuie pour couper / réactiver le micro';
+  voiceBox.classList.toggle('joined', st !== 'off');
+  voiceModeBtn.textContent = voice.mode === 'ptt' ? 'Appuyer-parler' : 'Micro ouvert';
+  voiceModeBtn.title = 'Changer de mode : appuyer-parler ou micro ouvert';
 }
 voice.onChange = refreshVoiceBtn;
-let voicePress = 0;
-let voiceLong = false;
-voiceBtn.addEventListener('pointerdown', () => {
-  voiceLong = false;
-  window.clearTimeout(voicePress);
-  voicePress = window.setTimeout(() => { voiceLong = true; if (voice.state !== 'off') { voice.leave(); S.toast('Chat vocal quitté.'); } }, 700);
+
+// maintenir le bouton = parler (souris, doigt) ; le relâcher coupe le micro
+voiceBtn.addEventListener('pointerdown', (e) => {
+  if (voice.state === 'off' || voice.mode !== 'ptt') return;
+  voiceHeld = true;
+  try { voiceBtn.setPointerCapture(e.pointerId); } catch { /* ignore */ }
 });
-voiceBtn.addEventListener('pointerup', () => window.clearTimeout(voicePress));
-voiceBtn.addEventListener('pointerleave', () => window.clearTimeout(voicePress));
+const voiceRelease = () => { voiceHeld = false; };
+voiceBtn.addEventListener('pointerup', voiceRelease);
+voiceBtn.addEventListener('pointercancel', voiceRelease);
+voiceBtn.addEventListener('lostpointercapture', voiceRelease);
+voiceBtn.addEventListener('contextmenu', (e) => e.preventDefault());
 voiceBtn.addEventListener('click', async () => {
-  if (voiceLong) return;
   synth.unlock();
   if (voice.state === 'off') {
     S.toast('Demande d\'accès au micro…', 2500);
     await voice.join();
     if (voice.lastError) S.toast(voice.lastError, 6000);
-    else S.toast('Chat vocal activé : ceux qui l\'activent aussi t\'entendent. Casque conseillé.', 4500);
-  } else if (voice.state === 'listen') { voice.leave(); S.toast('Chat vocal quitté.'); }
-  else voice.toggleMute();
+    else S.toast(voice.mode === 'ptt' ? 'Chat vocal activé : maintiens le bouton (ou la touche V) pour parler. Casque conseillé.' : 'Chat vocal activé, micro ouvert. Casque conseillé.', 5000);
+  } else if (voice.mode === 'open') voice.toggleMute();
   refreshVoiceBtn();
 });
-window.addEventListener('keydown', (e) => {
-  if (e.code === 'KeyV' && !e.repeat && document.activeElement?.tagName !== 'INPUT' && voice.state !== 'off') { voice.toggleMute(); refreshVoiceBtn(); S.toast(voice.muted ? '🔇 Micro coupé' : '🎙️ Micro actif', 1200); }
+voiceModeBtn.addEventListener('click', () => {
+  const next = voice.mode === 'ptt' ? 'open' : 'ptt';
+  voice.setMode(next);
+  saveSettings({ voiceMode: next });
+  S.toast(next === 'ptt' ? 'Appuyer-parler : maintiens le bouton, la touche V ou Select (manette).' : 'Micro ouvert : tout le monde t\'entend en continu. Touche V pour couper.', 4500);
 });
+voiceLeaveBtn.addEventListener('click', () => { voice.leave(); S.toast('Chat vocal quitté.'); });
+window.addEventListener('keydown', (e) => {
+  if (e.code !== 'KeyV' || e.repeat || document.activeElement?.tagName === 'INPUT' || voice.state === 'off') return;
+  if (voice.mode === 'ptt') keyTalk = true;
+  else { voice.toggleMute(); S.toast(voice.muted ? '🔇 Micro coupé' : '🎙️ Micro actif', 1200); }
+});
+window.addEventListener('keyup', (e) => { if (e.code === 'KeyV') keyTalk = false; });
+window.addEventListener('blur', () => { keyTalk = false; voiceHeld = false; });
 refreshVoiceBtn();
+
+/** Bouton « Select » d'une manette : parler en appuyer-parler. */
+function padTalk(): boolean {
+  const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+  for (const gp of pads) if (gp && gp.buttons[8]?.pressed) return true;
+  return false;
+}
 
 // bouton pause tactile
 touch.onPause = () => { if (session) session.queue(session.localSlots[0], IN.PAUSE); };

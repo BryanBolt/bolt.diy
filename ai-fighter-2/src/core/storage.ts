@@ -16,6 +16,7 @@ export interface Settings {
   serverUrl: string;
   lastChar: string;
   lastColor: number;
+  voiceMode: 'ptt' | 'open'; // chat vocal : appuyer pour parler (défaut) ou micro ouvert
 }
 
 export interface Profile {
@@ -46,6 +47,7 @@ const DEFAULT_SETTINGS: Settings = {
   serverUrl: '',
   lastChar: 'kai',
   lastColor: 0,
+  voiceMode: 'ptt',
 };
 
 const DEFAULT_PROFILE: Profile = {
