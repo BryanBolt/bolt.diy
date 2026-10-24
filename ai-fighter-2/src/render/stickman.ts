@@ -378,7 +378,7 @@ export function computeRig(f: Fighter, pose: Pose, S: number, fx: number): Rig {
   const standing = pose.h > 22;
   const lean = pose.lean * DEG;
   const TL = L.torso * sk.torso * S;
-  const a1 = lean * 0.3 - (standing ? 0.05 : 0), a2 = lean * 1.0 + (standing ? 0.04 : 0); // légère courbure en S, dos droit au repos
+  const a1 = lean * 0.92 - (standing ? 0.02 : 0), a2 = lean + (standing ? 0.02 : 0); // colonne quasi droite : 2 à 5° de courbure au maximum
   const midX = hipX + Math.sin(a1) * TL * 0.5 * fx, midY = hipY - Math.cos(a1) * TL * 0.5;
   const neckX = midX + Math.sin(a2) * TL * 0.5 * fx, neckY = midY - Math.cos(a2) * TL * 0.5;
   const shX = midX + Math.sin(a2) * TL * 0.4 * fx, shY = midY - Math.cos(a2) * TL * 0.4;

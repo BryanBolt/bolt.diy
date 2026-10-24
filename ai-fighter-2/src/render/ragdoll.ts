@@ -92,6 +92,19 @@ export class RagdollSystem {
           if (a === 'hip') { pb.x -= dx; pb.y -= dy; } else { pa.x += dx * 0.5; pa.y += dy * 0.5; pb.x -= dx * 0.5; pb.y -= dy * 0.5; }
         }
       }
+      // colonne rigide : le milieu du dos et les épaules restent sur la droite bassin → cou (flexion max ≈ 3°)
+      {
+        const keepOnSpine = (k: 'mid' | 'sh', f: number) => {
+          const tx = cur.hip.x + (cur.neck.x - cur.hip.x) * f, ty = cur.hip.y + (cur.neck.y - cur.hip.y) * f;
+          const len = Math.hypot(cur.neck.x - cur.hip.x, cur.neck.y - cur.hip.y) || 1;
+          let ox = (cur[k] as P).x - tx, oy = (cur[k] as P).y - ty;
+          const m = Math.hypot(ox, oy), max = len * 0.025;
+          if (m > max) { ox *= max / m; oy *= max / m; }
+          (cur[k] as P).x = tx + ox; (cur[k] as P).y = ty + oy;
+        };
+        keepOnSpine('mid', 0.5);
+        keepOnSpine('sh', 0.9);
+      }
       // articulations humaines : le genou ne plie que vers l'arrière, le coude que vers l'avant (pas d'hyper-extension)
       for (let pass = 0; pass < 2; pass++) {
         limitJoint(cur.hip, cur.lFk, cur.lFa, facing);
