@@ -72,6 +72,9 @@ export type ClientMsg =
   | { t: 'ping'; ts: number }
   | { t: 'pong'; ts: number }; // réponse au ping du serveur (mesure de latence)
 
+/** Serveur STUN/TURN pour le chat vocal (le TURN est indispensable entre deux réseaux mobiles / box différentes). */
+export interface IceServer { urls: string | string[]; username?: string; credential?: string }
+
 /** Changement de contrôle d'un slot : ai = true → une IA joue à sa place à partir de `from`.
  *  join : un nouveau joueur entre dans la partie en cours à la frame `from` (nouveau combattant, ou reprise d'un combattant laissé à l'IA). */
 export interface CtlEvent {
@@ -83,7 +86,7 @@ export interface CtlEvent {
 
 // --- Serveur -> client ---
 export type ServerMsg =
-  | { t: 'welcome'; v: number }
+  | { t: 'welcome'; v: number; ice?: IceServer[] }
   | { t: 'error'; code: string; message: string }
   | { t: 'joined'; slot: number; code: string; token: string; created?: boolean }
   | { t: 'rooms'; rooms: PublicRoom[] }

@@ -373,19 +373,19 @@ export const SHOP_ITEMS: { id: string; name: string; desc: string; cost: number;
 ];
 
 /** gun : arme à feu ; reach/dmg : bonus d'allonge et multiplicateur de dégâts des coups au corps à corps ; throwable : Lourd = lancer ; knock : fait tomber ; burn : brûle. */
-export interface WeaponDef { name: string; uses: number; icon: string; gun: boolean; reach: number; dmg: number; throwable: boolean; knock?: boolean; burn?: number }
+export interface WeaponDef { name: string; uses: number; icon: string; gun: boolean; reach: number; dmg: number; throwable: boolean; knock?: boolean; burn?: number; fx: string; desc: string }
 export const WEAPONS: Record<WeaponKind, WeaponDef> = {
-  bat: { name: 'Batte', uses: 10, icon: '🏏', gun: false, reach: 34, dmg: 1.45, throwable: true },
-  nunchaku: { name: 'Nunchaku', uses: 14, icon: '🥢', gun: false, reach: 44, dmg: 1.3, throwable: true },
-  katana: { name: 'Katana', uses: 18, icon: '🗡️', gun: false, reach: 52, dmg: 1.6, throwable: false },
-  sword: { name: 'Épée', uses: 16, icon: '⚔️', gun: false, reach: 46, dmg: 1.9, throwable: false },
-  spear: { name: 'Lance', uses: 14, icon: '🔱', gun: false, reach: 78, dmg: 1.5, throwable: true },
-  axe: { name: 'Hache', uses: 12, icon: '🪓', gun: false, reach: 40, dmg: 2.2, throwable: true, knock: true },
-  hammer: { name: 'Marteau', uses: 10, icon: '🔨', gun: false, reach: 38, dmg: 2.5, throwable: true, knock: true },
-  laser: { name: 'Sabre laser', uses: 20, icon: '✨', gun: false, reach: 56, dmg: 1.8, throwable: false, burn: 80 },
-  ak: { name: 'Kalachnikov', uses: 30, icon: '🔫', gun: true, reach: 0, dmg: 1, throwable: true },
-  pistol: { name: 'Pistolet', uses: 12, icon: '🔫', gun: true, reach: 0, dmg: 1, throwable: true },
-  shotgun: { name: 'Fusil à pompe', uses: 8, icon: '💥', gun: true, reach: 0, dmg: 1, throwable: true },
+  bat: { name: 'Batte', uses: 10, icon: '🏏', gun: false, reach: 34, dmg: 1.45, throwable: true, fx: 'homerun', desc: '1 coup sur 5 : HOME RUN, l\'adversaire est expédié très loin' },
+  nunchaku: { name: 'Nunchaku', uses: 14, icon: '🥢', gun: false, reach: 44, dmg: 1.3, throwable: true, fx: 'combo', desc: 'Combos longs : les dégâts baissent moins vite, étourdit plus longtemps' },
+  katana: { name: 'Katana', uses: 18, icon: '🗡️', gun: false, reach: 52, dmg: 1.6, throwable: false, fx: 'bleed', desc: 'Entailles : l\'adversaire saigne et perd des PV sur la durée' },
+  sword: { name: 'Épée', uses: 16, icon: '⚔️', gun: false, reach: 46, dmg: 1.9, throwable: false, fx: 'guardbreak', desc: 'Brise la garde adverse' },
+  spear: { name: 'Lance', uses: 14, icon: '🔱', gun: false, reach: 78, dmg: 1.5, throwable: true, fx: 'impale', desc: 'Allonge énorme : empale et tire l\'adversaire vers toi' },
+  axe: { name: 'Hache', uses: 12, icon: '🪓', gun: false, reach: 40, dmg: 2.2, throwable: true, knock: true, fx: 'sunder', desc: 'Ignore 40 % de la défense et brise la garde, fait tomber' },
+  hammer: { name: 'Marteau', uses: 10, icon: '🔨', gun: false, reach: 38, dmg: 2.5, throwable: true, knock: true, fx: 'quake', desc: 'Chaque coup fait trembler le sol : onde de choc autour de la cible' },
+  laser: { name: 'Sabre laser', uses: 20, icon: '✨', gun: false, reach: 56, dmg: 1.8, throwable: false, burn: 80, fx: 'reflect', desc: 'Brûle, et renvoie les projectiles quand tu frappes ou gardes' },
+  ak: { name: 'Kalachnikov', uses: 30, icon: '🔫', gun: true, reach: 0, dmg: 1, throwable: true, fx: 'suppress', desc: 'Rafale : maintient les ennemis sous le feu (étourdissement prolongé)' },
+  pistol: { name: 'Pistolet', uses: 12, icon: '🔫', gun: true, reach: 0, dmg: 1, throwable: true, fx: 'headshot', desc: '1 balle sur 4 : TIR À LA TÊTE, dégâts doublés' },
+  shotgun: { name: 'Fusil à pompe', uses: 8, icon: '💥', gun: true, reach: 0, dmg: 1, throwable: true, fx: 'blast', desc: 'À bout portant : dégâts presque doublés et projection' },
 };
 
 export interface BonusChoice {

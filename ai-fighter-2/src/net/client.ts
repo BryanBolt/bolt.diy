@@ -8,6 +8,8 @@ export class NetClient {
   private ws: WebSocket | null = null;
   private handlers = new Map<string, Handler[]>();
   rtt = 0;
+  /** serveurs STUN/TURN annoncés par le serveur (chat vocal) */
+  iceServers: { urls: string | string[]; username?: string; credential?: string }[] | null = null;
   lastRx = performance.now();
   connectedFlag = false;
   onClose: ((reason: string) => void) | null = null;
@@ -54,6 +56,7 @@ export class NetClient {
           this.send({ t: 'pong', ts: msg.ts });
           return;
         }
+        if (msg.t === 'welcome' && msg.ice) this.iceServers = msg.ice;
         if (msg.t === 'pong') {
           this.rtt = Math.max(0, performance.now() - msg.ts);
         }

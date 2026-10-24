@@ -921,6 +921,14 @@ function stepFighter(w: World, f: Fighter, inp: number, acting: boolean): void {
     }
   }
 
+  if (f.status.poison > 0 && f.state !== 'ko') {
+    f.status.poison--;
+    if (f.status.poison % 15 === 0) {
+      damageRaw(w, f, 2, -1);
+      w.events.push({ t: 'text', x: f.x, y: f.y + 105, z: f.z, text: '-2', color: '#ff5f5f' });
+    }
+  }
+
   // historique des directions (commandes de combat)
   pushHistory(f, dirMaskOf(inp, f.facing), w.frame);
   if (f.gunCd > 0 && f.state !== 'attack') f.gunCd--;
@@ -1257,9 +1265,11 @@ function startShoot(w: World, f: Fighter): void {
     f.moveHits = [-1];
     f.weapon--;
     f.gunCd = 30;
+    const near = nearestEnemy(w, f);
+    const pointBlank = !!near && Math.abs(near.x - f.x) < 95 && Math.abs(near.z - f.z) < 40;
     for (let i = 0; i < 5; i++) {
       const sp = (rand(w) - 0.5) * 1.6;
-      w.projectiles.push({ id: w.nextId++, kind: 'slug', x: f.x + f.facing * 34, y: f.y + 62, z: f.z + (i - 2) * 3, vx: f.facing * (14 + rand(w) * 3), vy: sp, owner: f.id, team: f.team, damage: Math.max(1, Math.round(6 * f.stats.power)), life: 17, radius: 6, pierce: false, hits: [], gravity: 0, homing: 0 });
+      w.projectiles.push({ id: w.nextId++, kind: 'slug', x: f.x + f.facing * 34, y: f.y + 62, z: f.z + (i - 2) * 3, vx: f.facing * (14 + rand(w) * 3), vy: sp, owner: f.id, team: f.team, damage: Math.max(1, Math.round((pointBlank ? 11 : 6) * f.stats.power)), life: 17, radius: 6, pierce: false, hits: [], gravity: 0, homing: 0, wk: 'shotgun' });
     }
     f.vx -= f.facing * 2.6;
     w.events.push({ t: 'special', id: f.id, x: f.x + f.facing * 36, y: f.y + 62, z: f.z, kind: 'muzzle' });
@@ -1274,7 +1284,7 @@ function startShoot(w: World, f: Fighter): void {
   f.weapon--;
   f.gunCd = ak ? 4 : 13;
   const spread = ak ? (rand(w) - 0.5) * 0.9 : 0;
-  w.projectiles.push({ id: w.nextId++, kind: 'slug', x: f.x + f.facing * 36, y: f.y + 62, z: f.z, vx: f.facing * (ak ? 17 : 19), vy: spread, owner: f.id, team: f.team, damage: Math.max(1, Math.round((ak ? 4 : 11) * f.stats.power)), life: ak ? 34 : 40, radius: 6, pierce: false, hits: [], gravity: 0, homing: 0 });
+  w.projectiles.push({ id: w.nextId++, kind: 'slug', x: f.x + f.facing * 36, y: f.y + 62, z: f.z, vx: f.facing * (ak ? 17 : 19), vy: spread, owner: f.id, team: f.team, damage: Math.max(1, Math.round((ak ? 4 : 11) * f.stats.power)), life: ak ? 34 : 40, radius: 6, pierce: false, hits: [], gravity: 0, homing: 0, wk });
   f.vx -= f.facing * (ak ? 0.5 : 1.2);
   w.events.push({ t: 'special', id: f.id, x: f.x + f.facing * 36, y: f.y + 62, z: f.z, kind: 'muzzle' });
   w.events.push({ t: 'sound', id: ak ? 'ak' : 'pistol', x: f.x });
@@ -1561,9 +1571,14 @@ function facingToward(t: Fighter, x: number): boolean {
 
 function resolveHit(w: World, a: Fighter, t: Fighter, m0: MoveDef, proj?: Projectile): void {
   let m = m0;
-  if (!proj) {
-    const mw = meleeOf(a, m0);
-    if (mw && (mw.knock || mw.burn)) m = { ...m0, knockdown: m0.knockdown || !!mw.knock, burnTarget: m0.burnTarget ?? mw.burn, kbx: m0.kbx + (mw.knock ? 2.5 : 0) };
+  let homerun = false;
+  const mw = proj ? null : meleeOf(a, m0);
+  if (mw) {
+    // effet propre à chaque arme
+    m = { ...m0, knockdown: m0.knockdown || !!mw.knock, burnTarget: m0.burnTarget ?? mw.burn, kbx: m0.kbx + (mw.knock ? 2.5 : 0) };
+    if (mw.fx === 'guardbreak' || mw.fx === 'sunder') m.guardBreak = true;
+    if (mw.fx === 'combo' || mw.fx === 'quake') m.hitstun = m0.hitstun + (mw.fx === 'quake' ? 16 : 4);
+    if (mw.fx === 'homerun' && rand(w) < 0.22) { homerun = true; m = { ...m, launch: true, kbx: m.kbx + 9, kby: Math.max(m.kby, 9), hitstop: m.hitstop + 6 }; }
   }
   const dir = proj ? sign(proj.vx) || a.facing : (t.x >= a.x ? 1 : -1);
   const srcX = proj ? proj.x - dir * 100 : a.x;
@@ -1598,6 +1613,8 @@ function resolveHit(w: World, a: Fighter, t: Fighter, m0: MoveDef, proj?: Projec
   // --- garde ---
   const guardOk = (t.state === 'guard' || t.state === 'block') && facingToward(t, srcX) && !m.unblockable && !(m.low && !t.lowGuard) && !(m.overhead && t.lowGuard);
   let dmg = computeDamage(w, a, t, m, proj);
+  if (homerun) dmg = Math.round(dmg * 1.4);
+  if (proj?.wk === 'pistol' && rand(w) < 0.25) { dmg *= 2; w.events.push({ t: 'text', x: t.x, y: t.y + 150, z: t.z, text: 'TIR À LA TÊTE !', color: '#ff5f5f' }); }
   const crit = !proj && hasBonus(a, 'crit') && rand(w) < 0.15;
   if (crit) dmg = Math.round(dmg * 1.6);
   // contre-coup : la cible était en préparation d'attaque
@@ -1667,6 +1684,13 @@ function resolveHit(w: World, a: Fighter, t: Fighter, m0: MoveDef, proj?: Projec
   if (counter) { w.events.push({ t: 'counter', x: t.x, y: t.y + 70, z: t.z }); w.events.push({ t: 'text', x: t.x, y: t.y + 155, z: t.z, text: 'CONTRE !', color: '#ff9f1c' }); w.events.push({ t: 'sound', id: 'counter', x: t.x }); }
   // onde de choc bonus
   if (heavyish && hasBonus(a, 'shockwave') && !proj) spawnShock(w, a, a.facing * 5, 45, 9);
+  if (mw?.fx === 'bleed') {
+    t.status.poison = Math.max(t.status.poison, 150);
+    if (t.status.poison === 150) w.events.push({ t: 'text', x: t.x, y: t.y + 150, z: t.z, text: 'SAIGNEMENT', color: '#ff5f5f' });
+  }
+  if (homerun) { w.events.push({ t: 'text', x: t.x, y: t.y + 160, z: t.z, text: 'HOME RUN !', color: '#ffe14d' }); w.events.push({ t: 'shake', power: 6 }); }
+  if (mw?.fx === 'quake' && t.hp > 0) spawnShock(w, t, 0, 64, 7, a);
+  if (mw?.fx === 'sunder' && guardOk === false && t.armor === false && m.kind === 'heavy') w.events.push({ t: 'text', x: t.x, y: t.y + 150, z: t.z, text: 'ARMURE BRISÉE', color: '#c0c6d6' });
   if (t.hp <= 0) {
     knockOut(w, t, a, dir, m);
     return;
@@ -1701,7 +1725,8 @@ function resolveHit(w: World, a: Fighter, t: Fighter, m0: MoveDef, proj?: Projec
   } else {
     setState(t, 'hit');
     t.hitFrames = Math.round(m.hitstun * (1 - Math.min(0.4, a.comboHits * 0.03))) + (counter ? 8 : 0);
-    t.vx = dir * m.kbx * kbScale;
+    t.vx = mw?.fx === 'impale' ? -dir * 3.2 : dir * m.kbx * kbScale;
+    if (mw?.fx === 'impale') { t.hitFrames += 10; }
   }
   t.facing = (-dir) as 1 | -1;
   void prevHp;
@@ -1712,9 +1737,10 @@ function computeDamage(w: World, a: Fighter, t: Fighter, m: MoveDef, proj?: Proj
   if (!proj && a.chargeBonus) base *= 1 + a.chargeBonus / 56;
   if (!proj) { const mw = meleeOf(a, m); if (mw) base *= mw.dmg; }
   if (hasBonus(a, 'berserk') && a.hp < a.hpMax * 0.35) base *= 1.5;
-  const scale = proj && proj.kind === 'slug' ? 1 : Math.max(0.35, 1 - a.comboHits * 0.07);
+  const mw2 = proj ? null : meleeOf(a, m);
+  const scale = proj && proj.kind === 'slug' ? 1 : mw2?.fx === 'combo' ? Math.max(0.55, 1 - a.comboHits * 0.035) : Math.max(0.35, 1 - a.comboHits * 0.07);
   base *= scale;
-  base /= t.stats.defense;
+  base /= mw2?.fx === 'sunder' ? Math.max(1, t.stats.defense * 0.6) : t.stats.defense;
   return Math.max(1, Math.round(base));
 }
 
@@ -1894,6 +1920,13 @@ function stepProjectiles(w: World): void {
       if (f.team === p.team || !alive(f) || p.hits.includes(f.id)) continue;
       if (f.invuln > 0 || f.state === 'down') continue;
       if (p.kind === 'bat' && f.y > 0 && p.y < f.y) continue;
+      if (f.weapon > 0 && f.weaponKind === 'laser' && (f.state === 'attack' || f.state === 'guard' || f.state === 'block') && p.kind !== 'shock' && Math.abs(f.z - p.z) <= 34 && Math.abs(f.x - p.x) <= C.HURT_HW + p.radius + 30 && Math.sign(p.vx || 1) === -f.facing) {
+        // le sabre renvoie le projectile à son tireur
+        p.team = f.team; p.owner = f.id; p.vx = -p.vx * 1.2; p.hits = []; p.life = Math.max(p.life, 50); p.damage = Math.round(p.damage * 1.3);
+        w.events.push({ t: 'text', x: f.x, y: f.y + 140, z: f.z, text: 'RENVOI !', color: '#7cf6ff' });
+        w.events.push({ t: 'sound', id: 'parry', x: f.x });
+        continue;
+      }
       if (Math.abs(f.z - p.z) > 34 + p.radius * 0.3) continue;
       if (Math.abs(f.x - p.x) > C.HURT_HW + p.radius) continue;
       if (p.y + p.radius < f.y || p.y - p.radius > f.y + C.HURT_H) continue;
@@ -1935,11 +1968,12 @@ function stepProjectiles(w: World): void {
 function projectileMove(p: Projectile): MoveDef {
   const shock = p.kind === 'shock';
   const slug = p.kind === 'slug';
+  const shot = p.wk === 'shotgun';
   const heavyProj = shock || p.kind === 'orb' || p.kind === 'bat' || p.kind === 'bottle';
   return {
     id: 'proj', name: '', kind: 'special', anim: 'special', startup: 0, active: 1, recovery: 0,
-    hit: { x: 0, w: 0, y0: -20, y1: 40, z: 40 }, damage: p.damage, hitstun: slug ? 9 : shock ? 24 : 18, blockstun: slug ? 5 : 12,
-    kbx: shock ? 6 : p.kind === 'bat' ? 7 : slug ? 1.2 : 4, kby: shock ? 5 : p.kind === 'bat' ? 4 : 0, hitstop: heavyProj ? 7 : slug ? 1 : 4, knockdown: heavyProj, launch: false,
+    hit: { x: 0, w: 0, y0: -20, y1: 40, z: 40 }, damage: p.damage, hitstun: shot ? 18 : p.wk === 'ak' ? 13 : slug ? 9 : shock ? 24 : 18, blockstun: slug ? 5 : 12,
+    kbx: shock ? 6 : p.kind === 'bat' ? 7 : shot ? 4 : slug ? 1.2 : 4, kby: shock ? 5 : p.kind === 'bat' ? 4 : 0, hitstop: heavyProj ? 7 : slug ? 1 : 4, knockdown: heavyProj, launch: false,
     burnTarget: p.kind === 'fire' ? 120 : undefined, freezeTarget: p.kind === 'ice' ? 60 : undefined, low: false,
   };
 }

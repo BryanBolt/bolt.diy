@@ -3,6 +3,7 @@ import { ROSTER, getChar, PALETTE, COMMANDS } from '../sim/chars';
 import { STAGES } from '../sim/stages';
 import { poseFor, drawStickman } from '../render/stickman';
 import type { Fighter } from '../sim/types';
+import { WEAPONS } from '../sim/types';
 import type { LobbyOptions, GameMode, PublicRoom } from '../../shared/protocol';
 import type { Profile, Settings } from '../core/storage';
 import { KEYMAP_P1, KEYMAP_P2, keyLabel, PAD_BUTTON_NAMES, PADMAP_DEFAULT, type KeyMap, type PadMap } from '../input/devices';
@@ -205,7 +206,11 @@ export function howToHtml(charId: string): string {
     ${COMMANDS.map((c) => `<tr><td><b>${esc(c.name)}</b></td><td><kbd>${esc(c.input)}</kbd></td><td class="small muted">${esc(c.assist)}</td><td class="small muted">${esc(c.note)}</td><td class="small">${esc(c.cost)}</td></tr>`).join('')}
   </table>
   <h3>Armes</h3>
-  <p class="small muted">Ramasse-les au sol (halo doré) ou dans les caisses. <b>Batte</b> et <b>Nunchaku</b> : coups légers plus longs et plus forts. <b>Pistolet</b> et <b>Kalachnikov</b> : Attaque tire (maintenir pour la rafale), Lourd lance l'arme. Les munitions sont affichées à côté de ta jauge de Super.</p>
+  <p class="small muted">Ramasse-les au sol (halo doré) ou dans les caisses. Armes blanches : plus d'allonge, plus de dégâts et un effet propre, mais elles s'usent. Armes à feu : Attaque tire (maintenir pour la rafale). <b>Lourd</b> lance l'arme (sans direction) quand elle est lançable ; elle retombe au sol avec sa durabilité restante.</p>
+  <table class="moves">
+    <tr><th>Arme</th><th>Effet</th><th>Utilisations</th><th>Lançable</th></tr>
+    ${Object.values(WEAPONS).map((w) => `<tr><td><b>${w.icon} ${esc(w.name)}</b></td><td class="small muted">${esc(w.desc)}</td><td class="small">${w.uses}</td><td class="small">${w.throwable ? 'oui' : 'non'}</td></tr>`).join('')}
+  </table>
   <h3>Réanimation</h3>
   <p class="small muted">Un allié KO se réanime en maintenant <b>Attaque</b> à côté de lui. KO toi-même ? Appuie sur <b>Attaque</b> pour te réanimer contre 40 pièces communes, ou attends : tu reviens avec une vie.</p>
   <div class="row" style="margin-top:14px"><button class="btn ghost" data-action="back">← Retour</button></div>`;
@@ -271,6 +276,7 @@ export function menuHtml(profile: Profile, hasTouch: boolean, version: string, n
       <button class="btn menu-item big" data-action="local"><span class="ico">🎮</span>Jouer en local<span class="sub">Solo ou jusqu'à 4 sur cet écran : claviers, manettes${hasTouch ? ', tactile' : ''}</span></button>
       <button class="btn menu-item big ${noNet ? '' : 'primary'}" data-action="online"><span class="ico">📡</span>Jouer en ligne<span class="sub">${noNet ? 'Indisponible sur cette page hébergée : il faut la version avec serveur' : 'Chacun sur son téléphone / PC, avec un code de salon'}</span></button>
       <button class="btn menu-item" data-action="howto"><span class="ico">📖</span>Comment jouer<span class="sub">Commandes, système de combat, liste des coups</span></button>
+      <button class="btn menu-item" data-action="idea"><span class="ico">💡</span>Proposer une idée<span class="sub">Écris ou dicte une amélioration : elle sera lue pour la prochaine version</span></button>
       <button class="btn menu-item" data-action="options"><span class="ico">⚙️</span>Options<span class="sub">Son, commandes, tactile, profil</span></button>
     </div>
     <p class="small muted" style="margin:14px 0 0">v${version} · Les parties se jouent en lockstep déterministe : aucune triche possible par l'hôte, tout le monde voit la même chose.</p>`;
@@ -320,6 +326,7 @@ export function pauseHtml(canQuit: boolean, isHost: boolean, online: boolean, ot
     <button class="btn primary" data-action="resume">▶ Reprendre</button>
     ${online ? '<button class="btn" data-action="invite">🔗 Inviter des amis (partager le lien)</button>' : ''}
     ${online && isHost && others.length ? `<h3>Joueurs</h3>${others.map((o) => `<div class="row between"><span>P${o.slot + 1} · ${esc(o.name)}</span><button class="btn sm danger" data-action="kick" data-slot="${o.slot}">✖ Expulser</button></div>`).join('')}` : ''}
+    <button class="btn" data-action="idea">💡 Proposer une idée</button>
     <button class="btn" data-action="controls">📖 Commandes</button>
     ${canQuit ? `<button class="btn danger" data-action="quit">${online ? (isHost ? '✖ Terminer la partie pour tout le monde' : '✖ Quitter la partie') : '✖ Quitter la partie'}</button>` : ''}
   </div>`;
@@ -331,6 +338,7 @@ export function endHtml(title: string, lines: string[], opts: { canReplay: boole
   <div class="col" style="margin-top:12px">
     ${opts.canReplay ? `<button class="btn primary" data-action="replay">🔁 Rejouer</button>` : ''}
     ${opts.canLobby ? `<button class="btn" data-action="lobby">${opts.online ? '🏠 Retour au salon' : '🏠 Retour au salon'}</button>` : opts.online ? `<span class="small muted">L'hôte décide de la suite…</span>` : ''}
+    <button class="btn" data-action="idea">💡 Proposer une idée / une amélioration</button>
     <button class="btn ghost" data-action="menu">Menu principal</button>
   </div>`;
 }

@@ -146,3 +146,20 @@ joueur et par frame) transitent par le serveur, qui ne fait que relayer. Une fra
 lorsque les entrées de tous sont connues : impossible de désynchroniser ou de tricher sur la position
 d'un combattant. Si un joueur quitte, son combattant passe sous contrôle de l'IA au même instant pour
 tout le monde. Un hash de l'état est comparé toutes les 60 frames pour détecter une désynchronisation.
+
+## Idées des joueurs
+
+Le bouton **💡 Proposer une idée** (menu principal, pause, fin de partie) ouvre un formulaire : texte ou **dictée vocale** (Chrome / Android / Safari récent). Les idées arrivent sur le serveur (`POST /api/ideas`) avec le contexte (mode, stage, appareil…).
+
+Variables d'environnement du serveur :
+
+| Variable | Rôle |
+|---|---|
+| `IDEAS_KEY` | clé pour consulter les idées : `https://TON-SITE/ideas?key=LA_CLE` (JSON : `/api/ideas?key=…`). Sans clé, la consultation est désactivée. |
+| `IDEAS_WEBHOOK` | URL (Discord, Slack, n8n, Make…) qui reçoit chaque idée en JSON. **Recommandé sur Render gratuit** : le disque y est effacé à chaque redémarrage. |
+| `GITHUB_TOKEN` + `GITHUB_REPO` | crée un ticket GitHub (`owner/repo`, label « idée ») par suggestion. |
+| `IDEAS_FILE` | fichier JSONL de stockage (défaut `data/ideas.jsonl`). |
+
+## Chat vocal : réseau
+
+Le chat vocal est en WebRTC direct entre joueurs. Deux joueurs sur des réseaux différents (4G/5G, box) ont besoin d'un relais **TURN**. Par défaut, le serveur annonce STUN Google + le relais public Open Relay. Pour ton propre TURN : `ICE_SERVERS='[{"urls":"stun:..."},{"urls":"turn:...","username":"...","credential":"..."}]'`. Le bouton 🩺 du chat vocal affiche un diagnostic copiable.

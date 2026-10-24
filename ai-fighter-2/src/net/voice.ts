@@ -18,9 +18,12 @@ interface Peer {
   pendingIce: RTCIceCandidateInit[];
   analyser?: AnalyserNode;
   level: number;
+  log: string[]; // journal de connexion (diagnostic)
+  gathered: Record<string, number>; // candidats ICE locaux par type : host / srflx / relay
+  gotHello: boolean;
 }
 
-const ICE_SERVERS: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }];
+const ICE_FALLBACK: RTCIceServer[] = [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }];
 
 /** off : pas dans la conversation · listen : écoute seule · ptt : appuyer-parler, en attente · talk : on parle (appuyé) · on / muted : micro ouvert actif / coupé */
 export type VoiceState = 'off' | 'listen' | 'ptt' | 'talk' | 'on' | 'muted';
@@ -181,15 +184,23 @@ export class VoiceChat {
   }
 
   private makePeer(slot: number): Peer {
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    const pc = new RTCPeerConnection({ iceServers: (this.net?.iceServers as RTCIceServer[] | null) ?? ICE_FALLBACK, iceCandidatePoolSize: 2 });
     const audio = document.createElement('audio');
     audio.autoplay = true;
     (audio as HTMLAudioElement & { playsInline?: boolean }).playsInline = true;
     audio.volume = this.volume;
     audio.style.display = 'none';
     document.body.appendChild(audio);
-    const peer: Peer = { slot, pc, audio, offered: false, pendingIce: [], level: 0 };
-    pc.onicecandidate = (e) => { if (e.candidate) this.send(slot, { k: 'ice', c: e.candidate.toJSON() }); };
+    const peer: Peer = { slot, pc, audio, offered: false, pendingIce: [], level: 0, log: [], gathered: {}, gotHello: false };
+    const note = (t: string) => { peer.log.push(`${Math.round(performance.now() / 100) / 10}s ${t}`); if (peer.log.length > 30) peer.log.shift(); };
+    pc.onicecandidate = (e) => {
+      if (e.candidate) {
+        const ty = e.candidate.type ?? 'inconnu';
+        peer.gathered[ty] = (peer.gathered[ty] ?? 0) + 1;
+        this.send(slot, { k: 'ice', c: e.candidate.toJSON() });
+      } else note('collecte des candidats terminée');
+    };
+    pc.oniceconnectionstatechange = () => note(`ICE ${pc.iceConnectionState}`);
     pc.ontrack = (e) => {
       audio.srcObject = e.streams[0] ?? new MediaStream([e.track]);
       void audio.play().catch(() => { /* lecture bloquée jusqu'à une interaction : le bouton micro en est une */ });
@@ -204,11 +215,70 @@ export class VoiceChat {
       }
     };
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'failed' || pc.connectionState === 'closed') this.closePeer(slot);
+      note(`connexion ${pc.connectionState}`);
+      if (pc.connectionState === 'connected') this.retries.delete(slot);
+      if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+        this.closePeer(slot);
+        this.retry(slot);
+      } else if (pc.connectionState === 'disconnected') {
+        // coupure passagère : on laisse 6 s, puis on repart de zéro
+        window.setTimeout(() => { const cur = this.peers.get(slot); if (cur === peer && pc.connectionState === 'disconnected') { this.closePeer(slot); this.retry(slot); } }, 6000);
+      }
       this.onChange?.();
     };
     this.peers.set(slot, peer);
     return peer;
+  }
+
+  private retries = new Map<number, number>();
+  /** Nouvelle tentative de liaison après un échec (jusqu'à 4 fois, de plus en plus espacées). */
+  private retry(slot: number): void {
+    if (!this.joined || !this.roster.includes(slot)) return;
+    const n = (this.retries.get(slot) ?? 0) + 1;
+    if (n > 4) { this.lastError = `Liaison vocale impossible avec le joueur ${slot + 1} (réseau trop restrictif ?). Ouvre le diagnostic 🩺.`; this.onChange?.(); return; }
+    this.retries.set(slot, n);
+    window.setTimeout(() => { if (this.joined && !this.peers.has(slot)) { this.told.delete(slot); this.announce(); } }, 1500 * n);
+  }
+
+  /** Relance la lecture des flux distants (les navigateurs mobiles la bloquent tant qu'il n'y a pas eu de geste). */
+  resumeAudio(): void {
+    if (this.ctx && this.ctx.state === 'suspended') void this.ctx.resume();
+    for (const p of this.peers.values()) if (p.audio.paused && p.audio.srcObject) void p.audio.play().catch(() => {});
+  }
+
+  /** Rapport de diagnostic lisible (copiable) : micro, serveurs, chemin réseau de chaque liaison. */
+  async diagnose(): Promise<string[]> {
+    const out: string[] = [];
+    out.push(`Navigateur : ${navigator.userAgent.slice(0, 90)}`);
+    out.push(`Connexion sécurisée (https) : ${VoiceChat.secure() ? 'oui' : 'NON → le micro est bloqué'}`);
+    out.push(`WebRTC / micro pris en charge : ${VoiceChat.supported() ? 'oui' : 'NON'}`);
+    out.push(`État : ${this.state} · mode ${this.mode}${this.stream ? ' · micro actif' : ' · pas de micro (écoute seule)'}`);
+    if (this.lastError) out.push(`Dernier message : ${this.lastError}`);
+    const ice = (this.net?.iceServers ?? ICE_FALLBACK) as RTCIceServer[];
+    const hasTurn = ice.some((s) => [s.urls].flat().some((u) => String(u).startsWith('turn')));
+    out.push(`Serveurs : ${ice.length} (${hasTurn ? 'avec relais TURN' : 'SANS relais TURN : échec probable entre deux réseaux différents'})`);
+    out.push(`Joueurs attendus : ${this.roster.length ? this.roster.map((s) => 'J' + (s + 1)).join(', ') : 'aucun (tu es seul dans le salon)'}`);
+    if (this.joined && !this.roster.length) out.push('→ Un seul joueur dans le salon : rien à connecter.');
+    for (const slot of this.roster) {
+      const p = this.peers.get(slot);
+      if (!p) { out.push(`J${slot + 1} : pas de liaison (${this.retries.get(slot) ? 'échec, nouvelle tentative…' : 'il n\'a pas activé la voix ?'})`); continue; }
+      let path = 'inconnu';
+      try {
+        const stats = await p.pc.getStats();
+        let pairId = '';
+        stats.forEach((r) => { if (r.type === 'transport' && (r as { selectedCandidatePairId?: string }).selectedCandidatePairId) pairId = (r as { selectedCandidatePairId: string }).selectedCandidatePairId; });
+        stats.forEach((r) => {
+          if (r.type === 'candidate-pair' && (r.id === pairId || (r as { nominated?: boolean }).nominated)) {
+            const loc = stats.get((r as { localCandidateId: string }).localCandidateId) as { candidateType?: string } | undefined;
+            const rem = stats.get((r as { remoteCandidateId: string }).remoteCandidateId) as { candidateType?: string } | undefined;
+            path = `local ${loc?.candidateType ?? '?'} ↔ distant ${rem?.candidateType ?? '?'}${loc?.candidateType === 'relay' || rem?.candidateType === 'relay' ? ' (via relais)' : ''}`;
+          }
+        });
+      } catch { /* stats indisponibles */ }
+      out.push(`J${slot + 1} : connexion ${p.pc.connectionState}, ICE ${p.pc.iceConnectionState}, chemin ${path}, candidats locaux ${JSON.stringify(p.gathered)}`);
+      out.push(`   journal : ${p.log.slice(-5).join(' | ') || '—'}`);
+    }
+    return out;
   }
 
   private closePeer(slot: number): void {

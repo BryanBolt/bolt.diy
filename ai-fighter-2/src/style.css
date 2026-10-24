@@ -306,3 +306,7 @@ kbd { border-radius: 2px; background: rgba(123, 228, 255, 0.12); border-color: v
 #touch.lefty .t-pause { right: auto; left: calc(14px + env(safe-area-inset-left)); }
 @media (max-height: 420px) { #touch .t-combos { bottom: auto; top: calc(10px + env(safe-area-inset-top)); right: calc(70px + env(safe-area-inset-right)); } #touch.lefty .t-combos { right: auto; left: calc(70px + env(safe-area-inset-left)); } }
 #invite { min-height: 40px; padding: 0 14px; border-color: #ffd98a !important; background: rgba(255, 217, 138, 0.2) !important; }
+.diagbox { position: fixed; inset: 0; z-index: 60; background: rgba(2, 8, 18, 0.8); display: flex; align-items: center; justify-content: center; padding: 14px; }
+.diagcard { width: min(96vw, 640px); max-height: 92vh; overflow: auto; padding: 16px; background: rgba(6, 22, 44, 0.97); clip-path: var(--bevel); border: 1px solid var(--edge); }
+.diagcard pre { white-space: pre-wrap; word-break: break-word; font: 12px/1.45 ui-monospace, Menlo, monospace; background: rgba(0,0,0,0.35); padding: 10px; margin: 0 0 10px; max-height: 50vh; overflow: auto; }
+#voicebox .vrow #voicediag { min-width: 34px; }

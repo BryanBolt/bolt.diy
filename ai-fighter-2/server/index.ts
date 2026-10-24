@@ -2,14 +2,14 @@
 // Lancement : npm start   (PORT=8787 par défaut)
 
 import { createServer } from 'node:http';
-import { readFile, stat } from 'node:fs/promises';
+import { readFile, stat, appendFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join, extname, resolve, dirname } from 'node:path';
 import { networkInterfaces } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer, WebSocket } from 'ws';
 import type { ClientMsg, ServerMsg, LobbyPlayer, LobbyOptions, LobbyState } from '../shared/protocol';
-import type { CtlEvent, PublicRoom } from '../shared/protocol';
+import type { CtlEvent, PublicRoom, IceServer } from '../shared/protocol';
 import { PROTOCOL_VERSION, MAX_PLAYERS, REJOIN_MARGIN, makeRoomCode, normalizeRoomCode, DEFAULT_OPTIONS, encodeRle } from '../shared/protocol';
 import { randomUUID } from 'node:crypto';
 
@@ -51,6 +51,16 @@ interface Room {
 }
 
 const RESERVE_MS = 20 * 60_000;
+/** Serveurs ICE envoyés aux clients : variable ICE_SERVERS (JSON) pour utiliser ton propre TURN, sinon STUN Google + relais public Open Relay. */
+function iceServers(): IceServer[] {
+  try {
+    if (process.env.ICE_SERVERS) { const v = JSON.parse(process.env.ICE_SERVERS); if (Array.isArray(v) && v.length) return v as IceServer[]; }
+  } catch { console.warn('ICE_SERVERS invalide (JSON attendu) : valeurs par défaut utilisées'); }
+  return [
+    { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+    { urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turn:openrelay.metered.ca:443?transport=tcp', 'turns:openrelay.metered.ca:443?transport=tcp'], username: 'openrelayproject', credential: 'openrelayproject' },
+  ];
+}
 const AFK_MS = Number(process.env.AFK_MS ?? 60_000);
 
 const rooms = new Map<string, Room>();
@@ -168,7 +178,7 @@ function handle(c: Client, msg: ClientMsg): void {
   switch (msg.t) {
     case 'hello':
       if (msg.v !== PROTOCOL_VERSION) send(c, { t: 'error', code: 'version', message: 'Version du jeu différente du serveur. Recharge la page.' });
-      else send(c, { t: 'welcome', v: PROTOCOL_VERSION });
+      else send(c, { t: 'welcome', v: PROTOCOL_VERSION, ice: iceServers() });
       return;
     case 'pong':
       c.rtt = Math.max(0, Date.now() - Number(msg.ts));
@@ -378,8 +388,89 @@ const MIME: Record<string, string> = {
   '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.map': 'application/json',
 };
 
+// ---- Idées / suggestions des joueurs ----
+// POST /api/ideas {text, category, ctx} : enregistré dans IDEAS_FILE (JSONL), transmis à IDEAS_WEBHOOK (Discord, Slack, n8n, Make…)
+// et/ou créé comme ticket GitHub (GITHUB_TOKEN + GITHUB_REPO). GET /ideas?key=IDEAS_KEY : liste lisible ; /api/ideas?key=… : JSON.
+const IDEAS_FILE = process.env.IDEAS_FILE ?? join(resolve(__dirname, '..'), 'data', 'ideas.jsonl');
+interface Idea { id: string; ts: number; text: string; category: string; name: string; ctx: Record<string, unknown> }
+const ideasMem: Idea[] = [];
+const ideaRate = new Map<string, number[]>();
+
+async function loadIdeas(): Promise<void> {
+  try {
+    const raw = await readFile(IDEAS_FILE, 'utf8');
+    for (const line of raw.split('\n')) if (line.trim()) { try { ideasMem.push(JSON.parse(line) as Idea); } catch { /* ligne abîmée */ } }
+  } catch { /* pas encore de fichier */ }
+}
+void loadIdeas();
+
+function readBody(req: import('node:http').IncomingMessage, max = 8192): Promise<string> {
+  return new Promise((resolveBody, reject) => {
+    let size = 0; const chunks: Buffer[] = [];
+    req.on('data', (c: Buffer) => { size += c.length; if (size > max) { reject(new Error('trop gros')); req.destroy(); } else chunks.push(c); });
+    req.on('end', () => resolveBody(Buffer.concat(chunks).toString('utf8')));
+    req.on('error', reject);
+  });
+}
+function esc(s: string): string { return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string); }
+
+async function forwardIdea(idea: Idea): Promise<void> {
+  const hook = process.env.IDEAS_WEBHOOK;
+  if (hook) {
+    try {
+      await fetch(hook, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ content: `💡 **${idea.category}** — ${idea.name || 'anonyme'}\n${idea.text}`.slice(0, 1900), text: idea.text, ...idea }) });
+    } catch (e) { console.warn('webhook idées : échec', (e as Error).message); }
+  }
+  const tok = process.env.GITHUB_TOKEN, repo = process.env.GITHUB_REPO;
+  if (tok && repo) {
+    try {
+      await fetch(`https://api.github.com/repos/${repo}/issues`, { method: 'POST', headers: { authorization: `Bearer ${tok}`, accept: 'application/vnd.github+json', 'content-type': 'application/json', 'user-agent': 'ai-fighter-2' }, body: JSON.stringify({ title: `💡 [${idea.category}] ${idea.text.slice(0, 70)}`, body: `${idea.text}\n\n---\nDe : ${idea.name || 'anonyme'}\nContexte : \`${JSON.stringify(idea.ctx)}\``, labels: ['idée'] }) });
+    } catch (e) { console.warn('ticket GitHub : échec', (e as Error).message); }
+  }
+}
+
+async function handleIdeas(req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse, url: URL): Promise<boolean> {
+  const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type', 'access-control-allow-methods': 'POST, GET, OPTIONS' };
+  if (url.pathname === '/api/ideas' && req.method === 'OPTIONS') { res.writeHead(204, cors); res.end(); return true; }
+  if (url.pathname === '/api/ideas' && req.method === 'POST') {
+    const fwd = String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim() || req.socket.remoteAddress || '?';
+    const now = Date.now();
+    const recent = (ideaRate.get(fwd) ?? []).filter((t) => now - t < 10 * 60_000);
+    if (recent.length >= 6) { res.writeHead(429, cors); res.end(JSON.stringify({ ok: false, error: 'trop de suggestions, réessaie plus tard' })); return true; }
+    try {
+      const body = JSON.parse(await readBody(req)) as Partial<Idea> & { ctx?: Record<string, unknown> };
+      const text = String(body.text ?? '').replace(/\s+/g, ' ').trim().slice(0, 1200);
+      if (text.length < 5) { res.writeHead(400, cors); res.end(JSON.stringify({ ok: false, error: 'idée trop courte' })); return true; }
+      const idea: Idea = { id: randomUUID().slice(0, 8), ts: now, text, category: String(body.category ?? 'Autre').slice(0, 24), name: cleanName(body.name, ''), ctx: (body.ctx && typeof body.ctx === 'object' ? body.ctx : {}) as Record<string, unknown> };
+      recent.push(now); ideaRate.set(fwd, recent);
+      ideasMem.push(idea);
+      try { await mkdir(dirname(IDEAS_FILE), { recursive: true }); await appendFile(IDEAS_FILE, JSON.stringify(idea) + '\n'); } catch (e) { console.warn('écriture idées impossible', (e as Error).message); }
+      void forwardIdea(idea);
+      console.log(`[idée] ${idea.category} · ${idea.name || 'anonyme'} : ${idea.text.slice(0, 80)}`);
+      res.writeHead(200, { ...cors, 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, id: idea.id }));
+    } catch {
+      res.writeHead(400, cors); res.end(JSON.stringify({ ok: false, error: 'requête invalide' }));
+    }
+    return true;
+  }
+  if ((url.pathname === '/ideas' || (url.pathname === '/api/ideas' && req.method === 'GET'))) {
+    const key = process.env.IDEAS_KEY;
+    if (!key) { res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' }); res.end('Définis la variable IDEAS_KEY sur le serveur pour consulter les idées (puis /ideas?key=TA_CLE).'); return true; }
+    if (url.searchParams.get('key') !== key) { res.writeHead(401, { 'content-type': 'text/plain; charset=utf-8' }); res.end('Clé invalide.'); return true; }
+    const list = ideasMem.slice().reverse();
+    if (url.pathname === '/api/ideas') { res.writeHead(200, { ...cors, 'content-type': 'application/json' }); res.end(JSON.stringify(list)); return true; }
+    const rows = list.map((i) => `<tr><td>${new Date(i.ts).toLocaleString('fr-FR')}</td><td>${esc(i.category)}</td><td>${esc(i.name)}</td><td>${esc(i.text)}</td><td><small>${esc(JSON.stringify(i.ctx))}</small></td></tr>`).join('');
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+    res.end(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Idées AI Fighter 2</title><style>body{font:14px system-ui;margin:16px;background:#0b1424;color:#eaf6ff}table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #26405e;padding:6px 8px;text-align:left;vertical-align:top}small{color:#86a6c4}a{color:#7be4ff}</style><h1>💡 ${list.length} idée${list.length > 1 ? 's' : ''}</h1><p><a href="/api/ideas?key=${encodeURIComponent(key)}">Télécharger en JSON</a></p><table><tr><th>Date</th><th>Type</th><th>Joueur</th><th>Idée</th><th>Contexte</th></tr>${rows}</table>`);
+    return true;
+  }
+  return false;
+}
+
 const http = createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://x');
+  if (await handleIdeas(req, res, url)) return;
   if (url.pathname === '/health') {
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ ok: true, rooms: rooms.size, clients: clients.size }));

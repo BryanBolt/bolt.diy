@@ -55,6 +55,36 @@ describe('armes', () => {
     expect(p2.weapon).toBe(2);
   });
 });
+describe('effets des armes', () => {
+  function duelist(wk: WeaponKind) {
+    const w = world();
+    const p = w.fighters.find((f) => f.slot === 0)!;
+    const e = w.fighters.find((f) => f.team !== 0)!;
+    p.weaponKind = wk; p.weapon = 8; p.x = 300; p.z = 140; p.facing = 1;
+    e.x = 335; e.z = 140; e.ai = null; e.controller = 'player'; e.slot = 3; e.hp = e.hpMax = 500;
+    return { w, p, e };
+  }
+  const swing = (w: ReturnType<typeof world>) => run(w, [IN.LIGHT, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+  it('katana : saignement', () => { const { w, e } = duelist('katana'); swing(w); expect(e.hp).toBeLessThan(500); expect(e.status.poison).toBeGreaterThan(0); });
+  it('sabre laser : brûlure', () => { const { w, e } = duelist('laser'); swing(w); expect(e.status.burn).toBeGreaterThan(0); });
+  it('marteau : onde de choc et chute', () => { const { w, e } = duelist('hammer'); swing(w); expect(e.hp).toBeLessThan(500); expect(['launch', 'down', 'ko', 'getup'].includes(e.state) || w.projectiles.some((q) => q.kind === 'shock')).toBe(true); });
+  it('hache : bien plus de dégâts que sans arme', () => {
+    const a = duelist('axe'); swing(a.w);
+    const b = duelist('axe'); b.p.weapon = 0; b.p.weaponKind = ''; swing(b.w);
+    expect(500 - a.e.hp).toBeGreaterThan(500 - b.e.hp);
+  });
+  it('épée : brise la garde', () => {
+    const { w, p, e } = duelist('sword');
+    e.guardMeter = 30; e.facing = -1;
+    for (let i = 0; i < 25; i++) step(w, [0, 0, 0, IN.GUARD]);
+    e.guardMeter = 30;
+    let broke = false;
+    for (const b of [IN.LIGHT, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]) { step(w, [b, 0, 0, IN.GUARD]); if (e.state === 'stagger') broke = true; }
+    void p;
+    expect(broke).toBe(true);
+  });
+});
+
 describe('menus de fin de niveau', () => {
   it('les appuis des premières frames sont ignorés (anti-martelage)', async () => {
     const { createWorld: cw, step: st } = await import('../src/sim/sim');

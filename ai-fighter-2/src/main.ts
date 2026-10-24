@@ -1,5 +1,6 @@
 // Point d'entrée : écrans, sessions (local / en ligne), boucle de jeu.
 import { drawLowPolyBackdrop } from './render/lowpoly';
+import { openIdeaBox, setIdeaContext, flushPendingIdeas } from './ui/ideas';
 import './style.css';
 import { InputManager } from './input/manager';
 import { Renderer } from './render/renderer';
@@ -24,7 +25,8 @@ import { drawQr } from './ui/qr';
 import { VoiceChat } from './net/voice';
 import { VIEW_W } from './sim/constants';
 
-const VERSION = '2.1.0';
+const VERSION = '2.2.0';
+(window as unknown as { __AIF2_VERSION: string }).__AIF2_VERSION = VERSION;
 
 type AppState = 'menu' | 'local-lobby' | 'online' | 'online-lobby' | 'options' | 'howto' | 'game';
 
@@ -117,6 +119,7 @@ function goMenu(): void {
     else if (a === 'local') goLocalLobby();
     else if (a === 'solo-open') { if (noNet) S.toast('Il faut la version avec serveur pour inviter des amis.', 5000); else void soloOpen(); }
     else if (a === 'online') { if (noNet) S.toast('Le jeu en ligne demande la version avec serveur (voir le README du dépôt). Ici : solo et multijoueur local sur cet appareil.', 7000); else goOnline(); }
+    else if (a === 'idea') openIdeaBox();
     else if (a === 'howto') goHowTo(settings().lastChar);
     else if (a === 'options') goOptions();
   });
@@ -819,6 +822,7 @@ function showPauseMenu(): void {
     const a = actionOf(e);
     if (a === 'resume') { session?.queue(session.localSlots[0], IN.PAUSE); }
     else if (a === 'invite') void invite();
+    else if (a === 'idea') openIdeaBox();
     else if (a === 'kick') { net?.send({ t: 'kick', slot: Number(dataOf(e).slot) }); S.toast('Joueur expulsé.'); showPauseMenu(); }
     else if (a === 'controls') { goHowTo(lastStartConfig?.config.players.find((p) => p.slot === session?.localSlots[0])?.charId ?? 'kai'); }
     else if (a === 'quit') { S.hide(); pauseShown = false; quitToLobby(); }
@@ -842,6 +846,7 @@ function showEndMenu(): void {
       if (gameOnline) net?.send({ t: 'start', seed: (Math.random() * 0xffffffff) >>> 0 });
       else if (lastStartConfig) startGame(lastStartConfig.config, (Math.random() * 0xffffffff) >>> 0, lastStartConfig.localSlots, lastStartConfig.allSlots, 0, null);
     } else if (a === 'lobby') quitToLobby();
+    else if (a === 'idea') openIdeaBox();
     else if (a === 'menu') { endSession(); saveLocalGame(null); if (gameOnline && net) { saveOnlineResume(null); net.send({ t: 'leave' }); net.close(); net = null; } goMenu(); }
   });
 }
@@ -1004,7 +1009,7 @@ document.addEventListener('visibilitychange', () => {
 voice.setMode(settings().voiceMode);
 const voiceBox = document.createElement('div');
 voiceBox.id = 'voicebox';
-voiceBox.innerHTML = '<button id="invite" type="button" aria-label="Inviter des amis">🔗 Inviter</button><button id="voice" type="button" aria-label="Chat vocal"></button><div class="vrow"><button id="voicemode" type="button"></button><button id="voiceleave" type="button" title="Quitter le chat vocal" aria-label="Quitter le chat vocal">✕</button></div>';
+voiceBox.innerHTML = '<button id="invite" type="button" aria-label="Inviter des amis">🔗 Inviter</button><button id="voice" type="button" aria-label="Chat vocal"></button><div class="vrow"><button id="voicemode" type="button"></button><button id="voicediag" type="button" title="Diagnostic du chat vocal" aria-label="Diagnostic du chat vocal">🩺</button><button id="voiceleave" type="button" title="Quitter le chat vocal" aria-label="Quitter le chat vocal">✕</button></div>';
 document.body.appendChild(voiceBox);
 const voiceBtn = voiceBox.querySelector('#voice') as HTMLButtonElement;
 voiceBox.querySelector('#invite')!.addEventListener('click', () => { synth.unlock(); void invite(); });
@@ -1059,6 +1064,20 @@ voiceModeBtn.addEventListener('click', () => {
   S.toast(next === 'ptt' ? 'Appuyer-parler : maintiens le bouton, la touche V ou Select (manette).' : 'Micro ouvert : tout le monde t\'entend en continu. Touche V pour couper.', 4500);
 });
 voiceLeaveBtn.addEventListener('click', () => { voice.leave(); S.toast('Chat vocal quitté.'); });
+voiceBox.querySelector('#voicediag')!.addEventListener('click', async () => {
+  const lines = await voice.diagnose();
+  const box = document.createElement('div');
+  box.className = 'diagbox';
+  box.innerHTML = `<div class="diagcard"><h2>Diagnostic du chat vocal</h2><pre></pre><div class="row"><button class="btn sm primary" data-d="copy">Copier le rapport</button><button class="btn sm" data-d="idea">Envoyer au développeur</button><button class="btn sm ghost" data-d="close">Fermer</button></div></div>`;
+  (box.querySelector('pre') as HTMLElement).textContent = lines.join('\n');
+  box.addEventListener('click', (e) => {
+    const d = (e.target as HTMLElement).closest('[data-d]')?.getAttribute('data-d');
+    if (d === 'close' || e.target === box) box.remove();
+    else if (d === 'copy') { void navigator.clipboard?.writeText(lines.join('\n')).then(() => S.toast('Rapport copié.'), () => S.toast('Copie impossible : sélectionne le texte à la main.')); }
+    else if (d === 'idea') { box.remove(); openIdeaBox({ category: 'Bug', text: 'Chat vocal : problème.\n\n' + lines.join('\n') }); }
+  });
+  document.body.appendChild(box);
+});
 window.addEventListener('keydown', (e) => {
   if (e.code !== 'KeyV' || e.repeat || document.activeElement?.tagName === 'INPUT' || voice.state === 'off') return;
   if (voice.mode === 'ptt') keyTalk = true;
@@ -1079,12 +1098,17 @@ function padTalk(): boolean {
 touch.onPause = () => { if (session) session.queue(session.localSlots[0], IN.PAUSE); };
 
 // clic/touche : déverrouille l'audio
-window.addEventListener('pointerdown', () => synth.unlock(), { passive: true });
+window.addEventListener('pointerdown', () => { synth.unlock(); voice.resumeAudio(); }, { passive: true });
 window.addEventListener('keydown', () => synth.unlock());
 
 // service worker (production uniquement)
 if (import.meta.env.PROD && 'serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
 
+setIdeaContext(() => {
+  const w = session?.world;
+  return { mode: w?.mode ?? state, stage: w?.stage?.name ?? '', wave: w?.waveIndex ?? -1, difficulty: w?.difficulty ?? -1, players: w ? w.fighters.filter((f) => f.slot >= 0).length : 0, char: settings().lastChar, online: gameOnline };
+});
+void flushPendingIdeas();
 applySettings();
 // accès de débogage en développement (tests automatisés)
 if (import.meta.env.DEV) (window as unknown as { __aif2: unknown }).__aif2 = { get session() { return session; }, get net() { return net; }, get resyncs() { return resyncCount; }, voice };

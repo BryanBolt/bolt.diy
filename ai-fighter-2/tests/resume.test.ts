@@ -40,7 +40,7 @@ function waitFor<T extends ServerMsg['t']>(net: NetClient, type: T, ms = 5000): 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 beforeAll(async () => {
-  server = spawn(process.execPath, ['--import', 'tsx', 'server/index.ts'], { env: { ...process.env, PORT: String(PORT), AFK_MS: '2500' }, stdio: 'ignore' });
+  server = spawn(process.execPath, ['--import', 'tsx', 'server/index.ts'], { env: { ...process.env, PORT: String(PORT), AFK_MS: '2500', IDEAS_KEY: 'secret', IDEAS_FILE: '/tmp/aif2-test-ideas-' + PORT + '.jsonl' }, stdio: 'ignore' });
   for (let i = 0; i < 60; i++) {
     try { const r = await fetch(`http://localhost:${PORT}/health`); if (r.ok) return; } catch { /* pas encore prêt */ }
     await sleep(150);
@@ -248,4 +248,22 @@ describe('reprise de partie en ligne', () => {
     await kickedB;
     a.close(); b.close();
   }, 40000);
+
+  it('les idées des joueurs sont enregistrées, limitées en débit, et lisibles avec la clé', async () => {
+    const base = `http://localhost:${PORT}`;
+    const post = (body: unknown) => fetch(`${base}/api/ideas`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    const r1 = await post({ text: 'Ajouter un mode capture du drapeau', category: 'Gameplay', name: 'Bryan', ctx: { stage: 'Dojo' } });
+    expect(r1.status).toBe(200);
+    expect((await r1.json()).ok).toBe(true);
+    expect((await post({ text: 'ok' })).status).toBe(400); // trop court
+    const noKey = await fetch(`${base}/api/ideas`);
+    expect(noKey.status).toBe(401);
+    const list = await (await fetch(`${base}/api/ideas?key=secret`)).json() as { text: string; category: string }[];
+    expect(list.some((i) => i.text.includes('capture du drapeau') && i.category === 'Gameplay')).toBe(true);
+    const page = await (await fetch(`${base}/ideas?key=secret`)).text();
+    expect(page).toContain('capture du drapeau');
+    let limited = false;
+    for (let i = 0; i < 8; i++) if ((await post({ text: `idée de test numéro ${i}`, category: 'Autre' })).status === 429) limited = true;
+    expect(limited).toBe(true);
+  }, 20000);
 });
