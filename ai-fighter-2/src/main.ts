@@ -30,7 +30,7 @@ import { drawQr } from './ui/qr';
 import { VoiceChat } from './net/voice';
 import { VIEW_W } from './sim/constants';
 
-const VERSION = '2.2.0';
+const VERSION = '2.3.0';
 (window as unknown as { __AIF2_VERSION: string }).__AIF2_VERSION = VERSION;
 
 type AppState = 'menu' | 'local-lobby' | 'online' | 'online-lobby' | 'options' | 'howto' | 'game';

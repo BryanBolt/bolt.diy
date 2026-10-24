@@ -112,6 +112,20 @@ Toutes les touches sont remappables dans **Options**.
 - **Chat vocal** : bouton 🎙️ sur le bord droit de l'écran (salon et partie en ligne). Un premier appui rejoint la conversation (le navigateur demande l'autorisation du micro). **Par défaut c'est appuyer-parler : le micro est coupé et n'émet que pendant que tu maintiens le bouton, la touche `V` ou le bouton Select d'une manette.** Le petit bouton « Appuyer-parler / Micro ouvert » change de mode (le choix est mémorisé) ; en micro ouvert, un appui sur le bouton ou sur `V` coupe / réactive le micro. Le ✕ quitte la conversation. Les voix passent directement entre les joueurs (WebRTC), le serveur ne relaie que la mise en relation. Rien ne démarre sans action du joueur ; si le micro est refusé, on peut quand même écouter. Un 🔊 s'affiche à côté du joueur qui parle. Le micro exige une adresse **https** (Render) ou `localhost` ; sur des réseaux très stricts la connexion directe peut échouer. Casque conseillé.
 - **Reprise de partie** : en ligne, le serveur garde ta place 20 minutes. Si ton téléphone se coupe, le jeu se reconnecte tout seul ; si tu recharges la page ou rouvres l'appli, le menu propose « Reprendre la partie en ligne ». Ton combattant est joué par une IA pendant l'absence, puis tu reprends la main au même instant pour tout le monde. En local, la partie est sauvegardée toutes les 5 secondes : « Reprendre la partie locale » la reconstruit et démarre en pause.
 
+### Nouveautés de jeu (v2.3)
+
+- **Réactions élémentaires** (façon Magicka) : feu sur cible ralentie ou gelée = **FONTE** ; feu sur poison = **explosion toxique** ; glace sur cible mouillée = **GEL TOTAL** ; éclair sur cible mouillée = **ÉLECTROCUTION** (×1,8) ; glace sur brûlé = **VAPEUR**. Les Abysses mouillent tout le monde.
+- **Rogue-lite** : bonus entre les vagues avec **raretés** (commun → légendaire, plus fréquentes avec les vagues), bonus **cumulables** (Force, Vitesse, Crit…), **synergies** (Choc thermique, Soif de sang, Forteresse…) et bonus de **coop** (+6 % par allié partageant un bonus).
+- **Équipes en ligne** : chaque joueur choisit 🔵 / 🔴 dans le salon, les IA complètent le 2 contre 2, anneaux d'équipe au sol.
+- **Défi du jour** (menu) : même graine et même modificateur pour tout le monde (Lune, Verre, Nuée, Sac à bonus), classement du serveur (`/api/daily`, fichier `DAILY_FILE`).
+- **Rediffusions** : « 🎬 Revoir la partie » en fin de match (vitesse ×0,25 à ×4, saut, moments forts ⭐) et « 🔗 Partager la rediffusion » (lien `?replay=ID`, `/api/replay`, fichier `REPLAYS_FILE`). Le déterminisme rejoue la partie à l'identique à partir de la graine et des entrées.
+- **Stages interactifs** : projette les ennemis dans la cloison (dojo), l'enseigne néon, l'étal du marché (pièces + soin), le rail électrique du métro, la baie vitrée de la tour (défenestration), le pylône Tesla ; courant sous-marin dans les Abysses.
+- **Boss** : zones d'attaque annoncées au sol (cercle qui se remplit, élément selon le boss), plus de zones à chaque phase, puis **fenêtre de point faible** (dégâts ×1,8).
+- **Mini-jeux** entre les stages : planches à casser (matraquer) et barre de timing ; les gains vont à la cagnotte.
+- **Cosmétiques** : chapeaux et auras débloqués par la progression, choisis dans le salon, visibles en ligne.
+- **Application installable** (PWA) : bouton « Installer l'application », jeu complet en cache dès la 1re visite (solo et local hors ligne).
+- **Tactile** : gestes (toucher = attaque, glisser ↑ saut / ↓ garde / ↔ lourd, appui long = Ki, 2 doigts = Super) et **mode une main** (Options).
+
 ## Les héros
 
 Kai (karaté équilibré), Tora (muay-thaï, armure, brise-garde), Zed (ninja, kunaïs, téléportation), Vex (fouet à longue allonge, lasso),
