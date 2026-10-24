@@ -312,3 +312,4 @@ kbd { border-radius: 2px; background: rgba(123, 228, 255, 0.12); border-color: v
 .diagcard { width: min(96vw, 640px); max-height: 92vh; overflow: auto; padding: 16px; background: rgba(6, 22, 44, 0.97); clip-path: var(--bevel); border: 1px solid var(--edge); }
 .diagcard pre { white-space: pre-wrap; word-break: break-word; font: 12px/1.45 ui-monospace, Menlo, monospace; background: rgba(0,0,0,0.35); padding: 10px; margin: 0 0 10px; max-height: 50vh; overflow: auto; }
 #voicebox .vrow #voicediag { min-width: 34px; }
+#touch .t-grab { right: calc(-2px * var(--tsize)); bottom: calc(196px * var(--tsize)); width: calc(54px * var(--tsize)); height: calc(54px * var(--tsize)); font-size: calc(18px * var(--tsize)); background: rgba(255,255,255,0.18); }

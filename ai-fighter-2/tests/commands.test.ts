@@ -81,14 +81,16 @@ describe('commandes en jeu', () => {
     expect(w.fighters[0].lastCmd).toBe('Lune montante');
     expect(maxY).toBeGreaterThan(40);
   });
-  it('Attaque + Lourd simultanés : saisie qui touche et projette', () => {
+  it('Attaque + Lourd simultanés : saisie, puis projection', () => {
     const w = world();
     const dummy = w.fighters[1];
     dummy.x = w.fighters[0].x + 40;
     dummy.z = w.fighters[0].z;
     const hp = dummy.hp;
-    play(w, [A | K, ...hold(0, 25)]);
+    play(w, [A | K, ...hold(0, 14)]);
     expect(w.fighters[0].lastCmd).toBe('Saisie');
+    expect(dummy.state).toBe('held'); // la cible est tenue
+    play(w, [K | R, ...hold(0, 6)]); // projection devant
     expect(dummy.hp).toBeLessThan(hp);
   });
   it('Spécial + avant (raccourci manette) = boule de Ki', () => {

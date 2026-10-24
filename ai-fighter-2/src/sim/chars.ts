@@ -247,7 +247,8 @@ export const COMMANDS: CommandInfo[] = [
   { id: 'c_hundred', name: 'Cent pieds', input: '↓ ↘ → + Lourd', assist: '—', note: 'Rafale de 6 coups de pied', cost: '20 Ki' },
   { id: 'c_sonic', name: 'Onde basse', input: '← → + Attaque', assist: '—', note: 'Projectile rapide à ras du sol', cost: 'gratuit' },
   { id: 'c_flash', name: 'Salto éclair', input: '↓ ↑ + Lourd', assist: '—', note: 'Salto invincible, projette en l\'air', cost: 'gratuit' },
-  { id: 'c_grab', name: 'Saisie', input: 'Attaque + Lourd', assist: '—', note: 'Imparable par la garde, projette l\'adversaire', cost: 'gratuit' },
+  { id: 'c_grab', name: 'Saisie', input: 'Attaque + Lourd', assist: '—', note: 'Imparable par la garde. Une fois l\'adversaire tenu : Attaque = coup, Lourd = projection (+ direction), Garde = étranglement', cost: 'gratuit' },
+  { id: 'c_takedown', name: 'Amenée au sol', input: '↓ + Attaque + Lourd', assist: '—', note: 'Jiu-jitsu : plaque l\'adversaire au sol, puis frappe au sol (Attaque), étrangle (Garde) ou relâche (Lourd)', cost: 'gratuit' },
   { id: 'c_piledriver', name: 'Piledriver (360°)', input: 'tour complet + Attaque', assist: '—', note: 'Saisie dévastatrice au corps à corps', cost: '30 Super' },
   { id: 'c_onein', name: 'Poing d\'un pouce', input: '↘ + Attaque', assist: '—', note: 'Frappe très courte, très puissante, brise-garde', cost: '10 Ki' },
   { id: 'c_ewgf', name: 'Poing éclair', input: '→ N ↓ ↘ + Attaque', assist: '—', note: 'Lanceur ultra rapide, ouvre les jongles', cost: '10 Ki' },
@@ -286,7 +287,8 @@ function commandMoves(c: CharDef): Record<string, MoveDef> {
   m.c_hundred = mv('heavy', { id: 'c_hundred', name: 'Cent pieds', anim: 'flurrykick', startup: 6, active: 18, recovery: 22, damage: 4, hit: { x: 30, w: 76, y0: 0, y1: 90, z: 32 }, kbx: 1.4, kby: 0, hitstun: 18, hitstop: 3, knockdown: false, lunge: 0, kiCost: 20, multi: { hits: 6, every: 3 } });
   m.c_sonic = mv('special', { id: 'c_sonic', hit: { x: 0, w: 0, y0: 0, y1: 0, z: 0 }, damage: 0, name: 'Onde basse', anim: 'special', startup: 7, active: 2, recovery: 18, kiCost: 0, projectile: { kind: 'ki', speed: 13, life: 60, damage: 9, radius: 13, y: 28 } });
   m.c_flash = mv('launcher', { id: 'c_flash', name: 'Salto éclair', anim: 'flash', startup: 5, active: 10, recovery: 26, damage: 13, hit: { x: 10, w: 60, y0: 20, y1: 140, z: 36 }, launch: true, kbx: 2, kby: 11, hitstop: 8, lungeAir: 12, lunge: -1.5, invuln: true });
-  m.c_grab = mv('heavy', { id: 'c_grab', name: 'Saisie', anim: 'grab', startup: 6, active: 3, recovery: 28, damage: 16, hit: { x: 22, w: 46, y0: 10, y1: 100, z: 26 }, unblockable: true, knockdown: true, kbx: 8, kby: 8, hitstop: 10 });
+  m.c_grab = mv('heavy', { id: 'c_grab', name: 'Saisie', anim: 'grab', startup: 6, active: 3, recovery: 22, damage: 0, hit: { x: 22, w: 50, y0: 10, y1: 100, z: 28 }, unblockable: true, grab: true, grabMode: 0, hitstop: 4 });
+  m.c_takedown = mv('heavy', { id: 'c_takedown', name: 'Amenée au sol', anim: 'grab', startup: 8, active: 3, recovery: 24, damage: 0, hit: { x: 22, w: 50, y0: 0, y1: 90, z: 28 }, unblockable: true, grab: true, grabMode: 1, hitstop: 4, low: true });
   m.c_piledriver = mv('heavy', { id: 'c_piledriver', name: 'Piledriver', anim: 'slam', startup: 8, active: 3, recovery: 40, damage: 30, hit: { x: 20, w: 46, y0: 10, y1: 100, z: 26 }, unblockable: true, knockdown: true, kbx: 3, kby: 4, hitstop: 16, superCost: 30, invuln: true });
   m.c_onein = mv('heavy', { id: 'c_onein', name: "Poing d'un pouce", anim: 'cross', startup: 9, active: 3, recovery: 20, damage: 19, hit: { x: 14, w: 42, y0: 20, y1: 100, z: 28 }, kbx: 12, kby: 3, knockdown: true, hitstop: 12, kiCost: 10, guardBreak: true });
   m.c_ewgf = mv('launcher', { id: 'c_ewgf', name: 'Poing éclair', anim: 'uppercut', startup: 8, active: 3, recovery: 24, damage: 14, hit: { x: 30, w: 58, y0: 0, y1: 120, z: 32 }, launch: true, kbx: 2.5, kby: 11, hitstop: 10, lunge: 6, kiCost: 10 });
@@ -423,6 +425,10 @@ export const ENEMY_CHAR: Record<string, string> = {
   gunner: 'orion',
   shield: 'frost',
   bomber: 'blaze',
+  mage: 'blaze',
+  tank: 'gorr',
+  shaman: 'orion',
+  grappler: 'tora',
 };
 
 export const ENEMY_NAMES: Record<string, string[]> = {
@@ -432,6 +438,10 @@ export const ENEMY_NAMES: Record<string, string[]> = {
   gunner: ['Tireur', 'Sniper', 'Canonnier', 'Artilleur'],
   shield: ['Bouclier', 'Rempart', 'Mur', 'Garde'],
   bomber: ['Lanceur', 'Artificier', 'Pyro', 'Cocktail'],
+  mage: ['Pyromancien', 'Cryomancien', 'Envenimeur', 'Foudroyeur'],
+  tank: ['Colosse', 'Titan', 'Mastodonte', 'Rempart'],
+  shaman: ['Shaman', 'Guérisseur', 'Oracle', 'Moine'],
+  grappler: ['Lutteur', 'Catcheur', 'Judoka', 'Étrangleur'],
 };
 
 export const PALETTE: { name: string; main: string; dark: string; glow: string }[] = [

@@ -27,12 +27,19 @@ function pickTarget(w: World, f: Fighter): Fighter | null {
 export function aiInput(w: World, f: Fighter): number {
   const ai = f.ai;
   if (!ai) return 0;
-  if (f.state === 'ko' || f.state === 'down' || f.state === 'hit' || f.state === 'launch' || f.state === 'frozen' || f.state === 'stagger') {
+  if (f.state === 'hold') {
+    // tient sa victime : quelques coups puis une projection
+    if (f.holdFrames < 14) return f.holdFrames % 7 === 3 ? IN.LIGHT : 0;
+    const r = rand(w);
+    if ((f.holdMode & 1) === 1) return IN.HEAVY;
+    return r < 0.45 ? IN.HEAVY | (f.facing > 0 ? IN.RIGHT : IN.LEFT) : r < 0.75 ? IN.HEAVY : IN.HEAVY | (f.facing > 0 ? IN.LEFT : IN.RIGHT);
+  }
+  if (f.state === 'ko' || f.state === 'down' || f.state === 'hit' || f.state === 'launch' || f.state === 'frozen' || f.state === 'stagger' || f.state === 'held') {
     // sortie de sol plus rapide pour les boss
     return 0;
   }
   ai.timer--;
-  if ((ai.kind === 'gunner' || ai.kind === 'bomber' || ai.kind === 'boss') && f.ki < C.KI_MAX) f.ki = Math.min(C.KI_MAX, f.ki + (ai.kind === 'boss' ? 0.15 : 0.25));
+  if ((ai.kind === 'gunner' || ai.kind === 'bomber' || ai.kind === 'mage' || ai.kind === 'shaman' || ai.kind === 'boss') && f.ki < C.KI_MAX) f.ki = Math.min(C.KI_MAX, f.ki + (ai.kind === 'boss' ? 0.15 : 0.25));
   // éviter les dangers de stage
   for (const h of w.hazards) {
     if (h.state === 'idle') continue;
@@ -61,8 +68,9 @@ export function aiInput(w: World, f: Fighter): number {
   const dirTo = dx >= 0 ? 1 : -1;
   const isBoss = kind === 'boss' || kind === 'bot';
   const react = C.DIFF_REACT[w.difficulty] + (isBoss ? 0.12 : 0) + ai.level * 0.012;
-  const range = kind === 'gunner' ? 260 : kind === 'bomber' ? 220 : kind === 'brute' ? 72 : kind === 'ninja' ? 58 : kind === 'shield' ? 60 : 64;
+  const range = kind === 'gunner' ? 260 : kind === 'mage' ? 250 : kind === 'shaman' ? 230 : kind === 'tank' ? 78 : kind === 'grappler' ? 54 : kind === 'bomber' ? 220 : kind === 'brute' ? 72 : kind === 'ninja' ? 58 : kind === 'shield' ? 60 : 64;
   const meleeRange = 62 + f.stats.reach;
+  const caster = kind === 'gunner' || kind === 'bomber' || kind === 'mage' || kind === 'shaman';
 
   // --- limite du nombre d'attaquants simultanés sur une même cible ---
   let attackers = 0;
@@ -78,7 +86,7 @@ export function aiInput(w: World, f: Fighter): number {
     const low = f.hp < f.hpMax * 0.25;
     if (low && r < 0.25 && !isBoss) ai.intent = 'retreat';
     else if (crowded && r < 0.7) ai.intent = 'flank';
-    else if ((kind === 'gunner' || kind === 'bomber') && adx < 150 && r < 0.6) ai.intent = 'retreat';
+    else if (caster && adx < 150 && r < 0.6) ai.intent = 'retreat';
     else if (kind === 'shield' && adx < 90 && r < 0.55) ai.intent = 'guard';
     else if (adx > range + 16 || adz > 18) ai.intent = 'approach';
     else if (r < ai.aggro) ai.intent = 'attack';
@@ -139,8 +147,8 @@ export function aiInput(w: World, f: Fighter): number {
     }
     case 'retreat': {
       inp |= dirTo > 0 ? IN.LEFT : IN.RIGHT;
-      if ((kind === 'gunner' || kind === 'bomber') && f.ki >= 20 && adz < 24 && rand(w) < 0.08) inp |= IN.SPECIAL;
-      if (adx > 230) ai.intent = kind === 'gunner' || kind === 'bomber' ? 'attack' : 'approach';
+      if (caster && f.ki >= 20 && adz < 24 && rand(w) < 0.08) inp |= IN.SPECIAL;
+      if (adx > 230) ai.intent = caster ? 'attack' : 'approach';
       break;
     }
     case 'guard': {
@@ -166,7 +174,7 @@ export function aiInput(w: World, f: Fighter): number {
       const r = rand(w);
       const superReady = f.superMeter >= C.SUPER_MAX;
       const kiReady = f.ki >= 25;
-      if (kind === 'gunner' || kind === 'bomber') {
+      if (caster) {
         if (adx > 100 && kiReady && adz < (kind === 'bomber' ? 30 : 20)) inp |= IN.SPECIAL;
         else if (adx < meleeRange + 10) inp |= r < 0.7 ? IN.LIGHT : IN.HEAVY;
         else inp |= dirTo > 0 ? IN.RIGHT : IN.LEFT;
@@ -188,6 +196,16 @@ export function aiInput(w: World, f: Fighter): number {
       if (target.state === 'launch' && isBoss && r < 0.5) { inp |= IN.JUMP; break; }
       if (f.y > 0) { inp |= r < 0.5 ? IN.LIGHT : IN.HEAVY; break; }
       switch (kind) {
+        case 'grappler':
+          if (r < 0.55) inp |= IN.LIGHT | IN.HEAVY; // saisie
+          else if (r < 0.7) inp |= IN.DOWN | IN.LIGHT | IN.HEAVY; // amenée au sol
+          else inp |= IN.LIGHT;
+          break;
+        case 'tank':
+          if (r < 0.6) inp |= IN.HEAVY;
+          else if (r < 0.8) inp |= IN.HEAVY | (dirTo > 0 ? IN.RIGHT : IN.LEFT);
+          else inp |= IN.LIGHT;
+          break;
         case 'brute':
           if (kiReady && r < 0.3) inp |= IN.SPECIAL;
           else if (r < 0.55) inp |= IN.HEAVY;

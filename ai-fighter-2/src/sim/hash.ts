@@ -12,7 +12,7 @@ function stateCode(s: string): number {
 export function hashWorld(w: World): number {
   const nums: number[] = [w.frame, w.rng, w.phase.length, w.waveIndex, w.score, w.coins, w.arenaL, w.round, w.roundTimer];
   for (const f of w.fighters) {
-    nums.push(f.id, f.x, f.y, f.z, f.vx, f.vy, f.hp, f.ki, f.superMeter, stateCode(f.state), f.controller === 'player' ? 1 : 0, f.weapon, f.stateFrame, f.facing, f.comboHits, f.team, f.freeze, f.invuln, f.form, f.kiCharge, f.holding, f.heldBy, f.carry.length);
+    nums.push(f.id, f.x, f.y, f.z, f.vx, f.vy, f.hp, f.ki, f.superMeter, stateCode(f.state), f.controller === 'player' ? 1 : 0, f.weapon, f.stateFrame, f.facing, f.comboHits, f.team, f.freeze, f.invuln, f.form, f.kiCharge, f.holding, f.heldBy, f.holdMode, f.carry.length);
   }
   for (const p of w.projectiles) nums.push(p.id, p.x, p.y, p.z, p.vx, p.life);
   for (const it of w.items) nums.push(it.id, it.x, it.y, it.life);

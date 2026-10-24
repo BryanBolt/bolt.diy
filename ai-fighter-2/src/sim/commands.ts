@@ -103,7 +103,7 @@ export function readCommand(f: Fighter, c: CommandCtx): string | null {
   const fwdNow = (m & D.FWD) !== 0 && !(m & D.DOWN);
   const dfNow = (m & D.FWD) !== 0 && (m & D.DOWN) !== 0;
   if (!c.onGround) return H && fwdNow && c.ki >= 8 ? 'c_rider' : L && fwdNow ? 'c_airflying' : null;
-  if (L && H) return 'c_grab';
+  if (L && H) return (m & D.DOWN) ? 'c_takedown' : 'c_grab';
   // techniques cultes
   if (H && motions.dqcb(f, c.now) && c.superMeter >= 60) return 'c_purple';
   if (H && motions.dqcf(f, c.now) && c.superMeter >= 50) return 'c_omni';

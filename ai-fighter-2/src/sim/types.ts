@@ -20,6 +20,8 @@ export const IN = {
 export type FState =
   | 'idle'
   | 'charge'
+  | 'hold'
+  | 'held'
   | 'walk'
   | 'run'
   | 'jump'
@@ -51,7 +53,7 @@ export type MoveKind =
   | 'super'
   | 'finisher';
 
-export type ProjectileKind = 'ki' | 'fire' | 'ice' | 'shuriken' | 'bullet' | 'orb' | 'shock' | 'bottle' | 'bat' | 'slug' | 'poison' | 'bolt' | 'rock' | 'wind';
+export type ProjectileKind = 'ki' | 'fire' | 'ice' | 'shuriken' | 'bullet' | 'orb' | 'shock' | 'bottle' | 'bat' | 'slug' | 'poison' | 'bolt' | 'rock' | 'wind' | 'crate';
 
 export interface ProjectileDef {
   kind: ProjectileKind;
@@ -96,6 +98,8 @@ export interface MoveDef {
   poisonTarget?: number; // empoisonne la cible N frames
   slowTarget?: number; // ralentit la cible N frames
   stunTarget?: number; // étourdit (frames de hitstun en plus)
+  grab?: boolean; // saisie : au lieu de frapper, empoigne la cible (prise debout ou au sol)
+  grabMode?: number;
   pull?: boolean; // attire la cible vers le lanceur (lasso)
   superCost?: number;
   projectile?: ProjectileDef;
@@ -155,7 +159,7 @@ export interface SkeletonStyle {
   stance: string; // posture de combat : karate | boxer | ninja | whip | monk | agile
 }
 
-export type EnemyKind = 'thug' | 'brute' | 'ninja' | 'gunner' | 'shield' | 'bomber' | 'boss';
+export type EnemyKind = 'thug' | 'brute' | 'ninja' | 'gunner' | 'shield' | 'bomber' | 'mage' | 'tank' | 'shaman' | 'grappler' | 'boss';
 
 export type BonusId =
   | 'power'
@@ -268,6 +272,7 @@ export interface Fighter {
   holding: number; // id du combattant qu'on tient (saisie / immobilisation), -1 sinon
   heldBy: number; // id du combattant qui nous tient, -1 sinon
   holdFrames: number;
+  holdMode: number; // 0 prise debout · 1 au sol (jiu-jitsu) · 2 étranglement
   backHold: number; // frames passées à maintenir « arrière » (pas arrière sans se retourner)
 }
 
@@ -293,6 +298,7 @@ export interface Projectile {
   bonus?: BonusId[];
   wk?: WeaponKind;
   uses?: number; // durabilité / munitions restantes de l'arme lancée
+  cv?: string; // variante de caisse lancée
 }
 
 export interface Item {
@@ -305,6 +311,7 @@ export interface Item {
   vy: number;
   vx?: number;
   uses?: number; // durabilité / munitions restantes (arme ramassée)
+  cv?: string; // variante de caisse : wood | metal | explosive | ice | poison
   life: number;
   hp?: number;
 }
@@ -318,7 +325,8 @@ export type SimEvent =
   | { t: 'shake'; power: number }
   | { t: 'spawn'; id: number }
   | { t: 'phase'; phase: Phase }
-  | { t: 'pickup'; kind: Item['kind']; x: number; y: number; z: number }
+  | { t: 'pickup'; kind: Item['kind']; x: number; y: number; z: number; v?: string }
+  | { t: 'boom'; x: number; y: number; z: number; elem: string; r: number }
   | { t: 'special'; id: number; x: number; y: number; z: number; kind: string }
   | { t: 'bonus'; slot: number; bonus: BonusId }
   | { t: 'hazard'; kind: HazardKind; state: 'warn' | 'active' | 'end'; x: number; z: number }

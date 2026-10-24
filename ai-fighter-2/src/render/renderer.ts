@@ -3,6 +3,7 @@ import type { World, Fighter, Projectile, Item } from '../sim/types';
 import { VIEW_W, VIEW_H, HURT_HW, HURT_H, REVIVE_FRAMES, REVIVE_COST } from '../sim/constants';
 import { getChar, PALETTE } from '../sim/chars';
 import { drawWeapon, weaponLength } from './weapons';
+import { drawCrate } from './crates';
 import { drawStickman, poseFor, colorsFor, lerpPose, computeRig, figureScale, type Pose } from './stickman';
 import { RagdollSystem, stiffnessFor, cloneRig, RIG_KEYS, type P, type Rig } from './ragdoll';
 import { drawStage, setStageExtent, themeAccent, drawForeground } from './stage';
@@ -382,6 +383,7 @@ export class Renderer {
     }
     const bs = f.boss ? 1.28 : 1;
     this.drawPower(f, sx, sy, s * bs, col);
+    if (f.carry && f.state !== 'ko') { ctx.save(); ctx.translate(sx, sy - 150 * s * bs + Math.sin(this.time * 0.2) * 1.5); drawCrate(ctx, f.carry, s * bs * 0.8, this.time, false); ctx.restore(); }
     // ragdoll : les membres suivent la pose avec une raideur selon l'état (mous en vol et au sol)
     const stiff = stiffnessFor(f.state);
     const S = figureScale(f, s * bs);
@@ -647,6 +649,13 @@ export class Renderer {
         drawWeapon(ctx, wk, s * 0.95, this.time, 4);
         break;
       }
+      case 'crate': {
+        ctx.translate(sx, sy);
+        ctx.rotate(this.time * 0.22 * Math.sign(p.vx || 1));
+        ctx.translate(0, 22 * s);
+        drawCrate(ctx, p.cv ?? 'wood', s * 0.95, this.time, false);
+        break;
+      }
       case 'bullet': {
         ctx.fillStyle = '#00f0ff';
         ctx.shadowColor = '#00f0ff';
@@ -709,20 +718,9 @@ export class Renderer {
     ctx.save();
     ctx.translate(sx, sy + bob);
     switch (it.kind) {
-      case 'crate': {
-        const w = 44 * s, h = 40 * s;
-        ctx.fillStyle = '#b07a3b';
-        ctx.strokeStyle = '#141622';
-        ctx.lineWidth = 3;
-        ctx.fillRect(-w / 2, -h, w, h);
-        ctx.strokeRect(-w / 2, -h, w, h);
-        ctx.beginPath();
-        ctx.moveTo(-w / 2, -h); ctx.lineTo(w / 2, 0);
-        ctx.moveTo(w / 2, -h); ctx.lineTo(-w / 2, 0);
-        ctx.stroke();
-        if ((it.hp ?? 2) < 2) { ctx.strokeStyle = '#5a3a16'; ctx.beginPath(); ctx.moveTo(-w * 0.3, -h * 0.9); ctx.lineTo(0, -h * 0.4); ctx.lineTo(-w * 0.1, -h * 0.1); ctx.stroke(); }
+      case 'crate':
+        drawCrate(ctx, it.cv ?? 'wood', s, this.time + it.id * 7, (it.hp ?? 2) < ((it.cv ?? 'wood') === 'metal' ? 4 : 2));
         break;
-      }
       case 'heal':
         ctx.fillStyle = '#39d353';
         ctx.strokeStyle = '#141622';

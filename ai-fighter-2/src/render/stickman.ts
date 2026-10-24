@@ -124,6 +124,10 @@ const AUTH: Record<string, AuthPose> = {
 };
 
 Object.assign(AUTH, {
+  hold0: A(10, 0, [80, 6], [86, 6], [28, 'g'], [-30, 'g'], 42, { hx: 6 }),
+  hold1: A(34, 6, [70, 40], [78, 40], [44, 'g'], [-40, 'g'], 30, { hx: 8 }),
+  hold2: A(14, 4, [48, 84], [58, 84], [28, 'g'], [-30, 'g'], 41, { hx: 7 }),
+  held0: A(-20, -14, [-50, 30], [-70, 30], [8, 'g'], [-6, 'g'], 46),
   kicharge: A(14, 2, [-26, 70], [-30, 74], [30, 'g'], [-30, 'g'], 36),
   stance_karate: A(1, 0, [62, 62], [-12, 122], [34, 'g'], [-28, 'g'], 44),
   stance_boxer: A(3, 0, [36, 112], [20, 132], [18, 'g'], [-22, 'g'], 46),
@@ -192,8 +196,17 @@ function cycle(f: Fighter, time: number, run: boolean): Pose {
   });
 }
 
-/** Calcule la pose courante d'un combattant (rendu uniquement : Math.sin autorisé). */
+/** Pose courante d'un combattant ; les bras se lèvent quand il porte une caisse. */
 export function poseFor(f: Fighter, time: number): Pose {
+  const p = poseCore(f, time);
+  if (f.carry && (f.state === 'idle' || f.state === 'walk' || f.state === 'run' || f.state === 'guard' || f.state === 'block')) {
+    return { ...p, lean: Math.min(p.lean, 2), aF: [168, 6], aB: [172, 4] };
+  }
+  return p;
+}
+
+/** Calcule la pose courante d'un combattant (rendu uniquement : Math.sin autorisé). */
+function poseCore(f: Fighter, time: number): Pose {
   const s = f.state;
   const ph = time * 0.11 + f.id * 1.7;
   const breathe = Math.sin(ph);
@@ -207,6 +220,12 @@ export function poseFor(f: Fighter, time: number): Pose {
       const p = POSES.kicharge;
       const sh = Math.sin(time * 0.9) * 1.6;
       return { ...p, h: p.h + sh * 0.5, aF: [p.aF[0] + sh * 4, p.aF[1]], aB: [p.aB[0] - sh * 4, p.aB[1]] };
+    }
+    case 'hold':
+      return f.holdMode >= 2 ? POSES.hold2 : (f.holdMode & 1) === 1 ? POSES.hold1 : POSES.hold0;
+    case 'held': {
+      const p = (f.holdMode & 1) === 1 ? POSES.down : POSES.held0;
+      return { ...p, lean: p.lean + Math.sin(time * 1.4) * (f.holdFrames > 20 ? 7 : 3) };
     }
     case 'walk':
       return cycle(f, time, false);

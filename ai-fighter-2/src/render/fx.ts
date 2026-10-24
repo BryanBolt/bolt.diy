@@ -89,8 +89,18 @@ export class Fx {
         case 'shake':
           this.shake = Math.max(this.shake, e.power);
           break;
+        case 'boom': {
+          const col = e.elem === 'fire' ? '#ff8a3d' : e.elem === 'ice' ? '#bff3ff' : '#9aff6a';
+          this.ring(e.x, e.y, e.z, '#ffffff', e.r * 1.6);
+          this.ring(e.x, e.y, e.z, col, e.r * 1.1);
+          this.burst(e.x, e.y, e.z, 34, col, 'spark', 5, 9);
+          this.burst(e.x, e.y, e.z, 14, e.elem === 'fire' ? '#ffe14d' : '#ffffff', 'star', 7, 6);
+          this.punch = Math.max(this.punch, 0.05);
+          this.flash.set(-1, 0.5);
+          break;
+        }
         case 'pickup':
-          this.burst(e.x, e.y, e.z, e.kind === 'crate' ? 14 : 8, e.kind === 'heal' ? '#7cff9a' : e.kind === 'ki' ? '#7cf6ff' : e.kind === 'coin' ? '#ffe14d' : '#c9a060', e.kind === 'crate' ? 'shard' : 'coin', 5, 4);
+          this.burst(e.x, e.y, e.z, e.kind === 'crate' ? 14 : 8, e.kind === 'crate' && e.v ? ({ metal: '#b9c3d0', explosive: '#ff6a4a', ice: '#bff3ff', poison: '#9aff6a' } as Record<string, string>)[e.v] ?? '#c9a060' : e.kind === 'heal' ? '#7cff9a' : e.kind === 'ki' ? '#7cf6ff' : e.kind === 'coin' ? '#ffe14d' : '#c9a060', e.kind === 'crate' ? 'shard' : 'coin', 5, 4);
           break;
         case 'special':
           if (e.kind === 'super') {

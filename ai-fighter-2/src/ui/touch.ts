@@ -34,6 +34,7 @@ export class TouchOverlay {
         <div class="t-btn t-guard" data-bit="${IN.GUARD}"><span>Y</span><small>Garde</small></div>
         <div class="t-btn t-special" data-bit="${IN.SPECIAL}"><span>Ki</span><small>Spécial</small></div>
         <div class="t-btn t-super" data-bit="${IN.SUPER}"><span>★</span><small>Super</small></div>
+        <div class="t-btn t-grab" data-bit="${IN.LIGHT | IN.HEAVY}"><span>✋</span><small>Saisie</small></div>
       </div>
       <button class="t-pause" aria-label="Pause">❚❚</button>`;
     this.stick = this.root.querySelector('.t-stick') as HTMLDivElement;

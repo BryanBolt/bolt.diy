@@ -32,6 +32,8 @@ interface State { cur: Rig; prev: Rig }
 /** Raideur selon l'état : 1 = suit la pose, proche de 0 = mou. */
 export function stiffnessFor(state: string): number {
   switch (state) {
+    case 'held': return 0.3;
+    case 'hold': return 0.7;
     case 'launch': return 0.12;
     case 'ko': return 0.1;
     case 'down': return 0.12;
