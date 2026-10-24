@@ -297,14 +297,15 @@ function renderLocalLobby(): void {
 function changeOption(o: LobbyOptions, key: string, dir: number): void {
   const modes: GameMode[] = ['campaign', 'duel', 'survival', 'training'];
   switch (key) {
-    case 'mode': o.mode = modes[(modes.indexOf(o.mode) + dir + modes.length) % modes.length]; if (o.mode === 'duel') o.stage = Math.min(o.stage, 6); break;
+    case 'mode': o.mode = modes[(modes.indexOf(o.mode) + dir + modes.length) % modes.length]; if (o.mode === 'duel') o.stage = Math.min(o.stage, STAGES.length); break;
     case 'difficulty': o.difficulty = ((o.difficulty + dir + 4) % 4) as 0 | 1 | 2 | 3; break;
     case 'rounds': { const r: (1 | 3 | 5)[] = [1, 3, 5]; o.rounds = r[(r.indexOf(o.rounds) + dir + 3) % 3]; break; }
     case 'bots': o.bots = Math.max(0, Math.min(3, o.bots + dir)); break;
     case 'teams': o.teams = !o.teams; break;
     case 'isPublic': o.isPublic = !o.isPublic; break;
+    case 'gravity': o.gravity = (((o.gravity ?? 0) + dir + 3) % 3) as 0 | 1 | 2; break;
     case 'stage': {
-      const max = o.mode === 'duel' ? 6 : Math.min(STAGES.length - 1, loadProfile().stageReached);
+      const max = o.mode === 'duel' ? STAGES.length : Math.min(STAGES.length - 1, loadProfile().stageReached);
       o.stage = (o.stage + dir + max + 1) % (max + 1);
       break;
     }
@@ -358,7 +359,7 @@ function buildConfig(cards: LobbyCard[], o: LobbyOptions): SimConfig {
       bots.push({ charId: ch.id, name: `${ch.name} (IA)`, color: nextFreeColor([...cards, ...bots.map((b, k) => ({ slot: 9 + k, name: '', charId: b.charId, color: b.color, ready: true, isHost: false, local: false }))], ch.color), team: o.teams ? idx % 2 : idx, level: 2 + o.difficulty });
     }
   }
-  return { mode: o.mode, difficulty: o.difficulty, rounds: o.rounds, teams: o.teams, stageIndex: o.stage, players, bots };
+  return { mode: o.mode, difficulty: o.difficulty, rounds: o.rounds, teams: o.teams, stageIndex: o.stage, gravity: o.gravity ?? 0, players, bots };
 }
 
 function startLocalGame(): void {

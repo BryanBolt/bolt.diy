@@ -1,3 +1,4 @@
+import { STAGES } from '../src/sim/stages';
 import { describe, it, expect } from 'vitest';
 import { createWorld, step, setSlotAi, isOver } from '../src/sim/sim';
 import type { SimConfig, SimEvent } from '../src/sim/types';
@@ -34,6 +35,6 @@ describe('campagne complète (IA aux commandes)', () => {
     expect(seen.has('rage')).toBe(true);
     expect([...seen].filter((s) => s.startsWith('hazard:')).length).toBeGreaterThanOrEqual(3);
     expect(seen.has('counter')).toBe(true);
-    expect(w.stageIndex).toBe(5);
+    expect(w.stageIndex).toBe(STAGES.length - 1);
   });
 });

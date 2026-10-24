@@ -32,7 +32,7 @@ export function esc(s: string): string {
 
 export const MODE_LABEL: Record<GameMode, string> = { campaign: 'Campagne', duel: 'Duel', survival: 'Survie', training: 'Entraînement' };
 export const MODE_DESC: Record<GameMode, string> = {
-  campaign: '6 stages, vagues d\'ennemis, boss, bonus à choisir. Coop jusqu\'à 4.',
+  campaign: '7 stages, vagues d\'ennemis, boss, bonus à choisir. Coop jusqu\'à 4.',
   duel: 'Versus : 1 contre 1, chacun pour soi ou par équipes, jusqu\'à 4 combattants (bots possibles).',
   survival: 'Vagues infinies de plus en plus dures. Jusqu\'où irez-vous ?',
   training: 'Mannequin, affichage des boîtes de collision, liste des coups.',
@@ -135,6 +135,7 @@ export function lobbyHtml(v: LobbyView): string {
     o.mode === 'duel' ? optBtn('rounds', 'Manches', `Meilleur des ${o.rounds}`) : '',
     o.mode === 'duel' ? optBtn('bots', 'Bots', String(o.bots)) : '',
     o.mode === 'duel' ? optBtn('teams', 'Équipes', o.teams ? '2 équipes' : 'Chacun pour soi') : '',
+    optBtn('gravity', 'Gravité', ['Normale', '🌙 Lunaire', '🚀 Apesanteur'][o.gravity ?? 0]),
     v.online ? optBtn('isPublic', 'Visibilité', o.isPublic ? '🌐 Public' : '🔒 Privé') : '',
     o.mode === 'campaign' || o.mode === 'duel' ? optBtn('stage', o.mode === 'duel' ? 'Arène' : 'Départ', `${o.stage + 1}. ${stageName}`) : '',
   ].join('');
@@ -245,7 +246,7 @@ export function optionsHtml(s: Settings, profile: Profile, pads: string[]): stri
       <label class="toggle"><input type="checkbox" data-set="touchLeft" ${s.touchLeft ? 'checked' : ''}> Mode gaucher (boutons à gauche)</label>
       <h3>Profil</h3>
       <label class="field">Ton pseudo <input type="text" maxlength="14" value="${esc(s.name)}" data-set="name" placeholder="Joueur"></label>
-      <p class="small muted">Stages terminés : ${profile.stageReached}/6 · Duels gagnés : ${profile.duelWins} · Meilleure survie : vague ${profile.bestSurvival} · Record : ${profile.bestScore} pts · KO : ${profile.totalKo}</p>
+      <p class="small muted">Stages terminés : ${profile.stageReached}/${STAGES.length} · Duels gagnés : ${profile.duelWins} · Meilleure survie : vague ${profile.bestSurvival} · Record : ${profile.bestScore} pts · KO : ${profile.totalKo}</p>
       <button class="btn danger sm" data-action="reset-profile">Effacer la progression</button>
     </div>
     <div class="col">
@@ -269,7 +270,7 @@ function labelFor(k: string): string {
 export function menuHtml(profile: Profile, hasTouch: boolean, version: string, noNet = false, resume: { online?: string; local?: string } = {}): string {
   return `<div class="row between" style="align-items:flex-end">
       <h1 class="logo">AI <span>FIGHTER</span> 2<small>BEAT'EM UP · 1 À 4 JOUEURS</small></h1>
-      <div class="small muted" style="text-align:right">Stages : ${profile.stageReached}/6<br>Record : ${profile.bestScore} pts</div>
+      <div class="small muted" style="text-align:right">Stages : ${profile.stageReached}/${STAGES.length}<br>Record : ${profile.bestScore} pts</div>
     </div>
     ${resume.online || resume.local ? `<div class="resume">${resume.online ? `<button class="btn primary big" data-action="resume-online">↩ Reprendre la partie en ligne <span class="sub">salon ${esc(resume.online)} · tes coéquipiers t'attendent, une IA joue à ta place</span></button>` : ''}${resume.local ? `<button class="btn primary big" data-action="resume-local">↩ Reprendre la partie locale <span class="sub">${esc(resume.local)} · reprise là où tu t'étais arrêté</span></button>` : ''}</div>` : ''}
     <div class="grid menu" style="margin-top:18px">

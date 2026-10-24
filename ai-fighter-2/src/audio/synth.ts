@@ -234,7 +234,7 @@ export class Synth {
 
   // ------------------------------------------------------------ musique
   startMusic(theme: string): void {
-    const name = SONGS[theme] ? theme : 'dojo';
+    const name = SONGS[theme] ? theme : theme === 'abyss' ? 'tower' : 'dojo';
     if (this.songName === name && this.song) return;
     this.song = SONGS[name];
     this.songName = name;

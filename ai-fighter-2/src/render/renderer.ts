@@ -191,6 +191,14 @@ export class Renderer {
     ctx.restore();
 
     // vignette légère
+    if (fx.lightFlash > 0.02) {
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = `rgba(255,255,255,${Math.min(0.7, fx.lightFlash * 0.6)})`;
+      ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+      ctx.restore();
+    }
     ctx.setTransform(this.scale, 0, 0, this.scale, 0, 0); // l'interface colle aux bords réels de l'écran
     const vg = ctx.createRadialGradient(view.w / 2, view.h / 2, view.h * 0.5, view.w / 2, view.h / 2, view.w * 0.75);
     vg.addColorStop(0, 'rgba(0,0,0,0)');
@@ -383,6 +391,7 @@ export class Renderer {
     }
     const bs = f.boss ? 1.28 : 1;
     this.drawPower(f, sx, sy, s * bs, col);
+    if (f.state === 'guard' || f.state === 'block') this.drawShield(f, sx, sy, s * bs);
     if (f.carry && f.state !== 'ko') { ctx.save(); ctx.translate(sx, sy - 150 * s * bs + Math.sin(this.time * 0.2) * 1.5); drawCrate(ctx, f.carry, s * bs * 0.8, this.time, false); ctx.restore(); }
     // ragdoll : les membres suivent la pose avec une raideur selon l'état (mous en vol et au sol)
     const stiff = stiffnessFor(f.state);
@@ -390,7 +399,7 @@ export class Renderer {
     const rel = computeRig(f, pose, S, f.facing);
     const abs = cloneRig(rel);
     for (const k of ['hip', ...RIG_KEYS] as const) { (abs[k] as P).x += sx; (abs[k] as P).y += sy; }
-    const sim = this.ragdolls.step(f.id, abs, stiff <= 0.82 ? stiff : 1, this.lastDt / 16.7, sy + f.y * s);
+    const sim = this.ragdolls.step(f.id, abs, stiff <= 0.82 ? stiff : 1, this.lastDt / 16.7, sy + f.y * s, f.facing);
     let rig: Rig | undefined;
     if (stiff <= 0.82) {
       rig = cloneRig(sim);
@@ -549,6 +558,37 @@ export class Renderer {
     }
   }
 
+  /** Bouclier de garde : demi-dôme facetté devant le combattant ; s'illumine au blocage, rougit quand la garde va casser. */
+  private drawShield(f: Fighter, sx: number, sy: number, s: number): void {
+    const ctx = this.ctx;
+    const low = f.guardMeter < 30;
+    const hit = f.state === 'block' ? 1 - Math.min(1, f.stateFrame / 10) : 0;
+    const parry = f.state === 'guard' && f.guardFrames <= 7;
+    const cx = sx + f.facing * 22 * s, cy = sy - (f.lowGuard ? 38 : 58) * s, R = (f.lowGuard ? 40 : 54) * s;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.translate(cx, cy);
+    ctx.scale(f.facing, 1);
+    const col = low ? '255,90,90' : parry ? '255,255,255' : '120,225,255';
+    const g = ctx.createRadialGradient(0, 0, R * 0.2, 0, 0, R);
+    g.addColorStop(0, `rgba(${col},0)`);
+    g.addColorStop(1, `rgba(${col},${0.22 + hit * 0.45 + (parry ? 0.3 : 0)})`);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.arc(0, 0, R, -1.15, 1.15);
+    ctx.closePath();
+    ctx.fill();
+    // facettes
+    ctx.strokeStyle = `rgba(${col},${0.35 + hit * 0.5})`;
+    ctx.lineWidth = 2 * s;
+    ctx.beginPath();
+    for (let i = -2; i <= 2; i++) { const a = i * 0.46; ctx.moveTo(Math.cos(a) * R * 0.45, Math.sin(a) * R * 0.45); ctx.lineTo(Math.cos(a) * R, Math.sin(a) * R); }
+    ctx.arc(0, 0, R, -1.15, 1.15);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   /** Effets de puissance : aura de charge, éclairs d'incantation, colonne d'énergie ascendante. */
   private drawPower(f: Fighter, sx: number, sy: number, s: number, col: { main: string; glow: string }): void {
     const ctx = this.ctx;
@@ -561,6 +601,7 @@ export class Renderer {
     if (power <= 0.05) return;
     const t = this.time;
     ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
     // halo
     const R = (46 + power * 52) * s;
     const g = ctx.createRadialGradient(sx, sy - 52 * s, 4, sx, sy - 52 * s, R);
@@ -666,6 +707,7 @@ export class Renderer {
       default: {
         const colors: Record<string, [string, string]> = { ki: ['#bff6ff', '#4fe3ff'], fire: ['#ffe14d', '#ff6a2a'], ice: ['#ffffff', '#7cf6ff'], orb: ['#ffffff', '#a86bff'], bottle: ['#7cff9a', '#39d353'], poison: ['#eaffd0', '#6cff3a'], bolt: ['#ffffff', '#ffe14d'], rock: ['#e6d3b0', '#8a6a3a'], wind: ['#ffffff', '#bfe8ff'] };
         const [c0, c1] = colors[p.kind] ?? colors.ki;
+        if (p.kind !== 'rock' && p.kind !== 'bottle') ctx.globalCompositeOperation = 'lighter';
         const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, r * 1.4);
         g.addColorStop(0, c0);
         g.addColorStop(0.5, c1);

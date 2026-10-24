@@ -13,7 +13,7 @@ interface Theme {
   floor: [string, string];
   line: string;
   accent: string;
-  kind: 'dojo' | 'city' | 'market' | 'metro' | 'tower' | 'core' | 'arena';
+  kind: 'dojo' | 'city' | 'market' | 'metro' | 'tower' | 'core' | 'arena' | 'abyss';
 }
 
 const THEMES: Record<string, Theme> = {
@@ -23,6 +23,7 @@ const THEMES: Record<string, Theme> = {
   metro: { sky: ['#121418', '#1f2730'], far: '#262e38', mid: '#333d49', floor: ['#3d4652', '#262c35'], line: '#5c6a7a', accent: '#8fd3ff', kind: 'metro' },
   tower: { sky: ['#9fd3ff', '#dff1ff'], far: '#7fb3d9', mid: '#5b8cb3', floor: ['#dfe7ef', '#b9c6d2'], line: '#8ea3b5', accent: '#2a7de1', kind: 'tower' },
   core: { sky: ['#06030f', '#1a0533'], far: '#2a0b4d', mid: '#3f0f6e', floor: ['#1a1030', '#0d0818'], line: '#7a3cff', accent: '#00f0ff', kind: 'core' },
+  abyss: { sky: ['#03244a', '#0a5a86'], far: '#0b3d63', mid: '#116a8f', floor: ['#c9b27a', '#8a7448'], line: '#e6d6a0', accent: '#7cf6ff', kind: 'abyss' },
   arena: { sky: ['#2b1d12', '#5a3a1e'], far: '#6b4a2a', mid: '#8c6239', floor: ['#b08552', '#8c6239'], line: '#5a3a1e', accent: '#ffd166', kind: 'arena' },
 };
 
@@ -86,6 +87,7 @@ export function drawStage(ctx: CanvasRenderingContext2D, themeId: string, camX: 
   ctx.translate(-camX * 0.25, 0);
   for (const p of props.far) drawFar(ctx, t, p, time);
   ctx.restore();
+  if (t.kind === 'abyss') drawAbyssLife(ctx, camX, time);
   // horizon lumineux
   if (t.kind === 'city' || t.kind === 'core') {
     const hg = ctx.createLinearGradient(0, FLOOR_TOP - 90, 0, FLOOR_TOP);
@@ -146,6 +148,17 @@ function drawFar(ctx: CanvasRenderingContext2D, t: Theme, p: Prop, time: number)
   const r = new Rng(p.seed);
   ctx.fillStyle = t.far;
   switch (t.kind) {
+    case 'abyss': {
+      // récifs et flèches de corail, facettés (low poly)
+      const hh = p.h * 0.9;
+      ctx.globalAlpha = 0.7;
+      ctx.fillStyle = t.far;
+      ctx.beginPath(); ctx.moveTo(p.x - p.w * 0.6, base); ctx.lineTo(p.x - p.w * 0.1, base - hh); ctx.lineTo(p.x + p.w * 0.2, base - hh * 0.55); ctx.lineTo(p.x + p.w * 0.7, base); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#0f4c78';
+      ctx.beginPath(); ctx.moveTo(p.x + p.w * 0.2, base - hh * 0.55); ctx.lineTo(p.x - p.w * 0.1, base - hh); ctx.lineTo(p.x + p.w * 0.1, base - hh * 0.2); ctx.closePath(); ctx.fill();
+      ctx.globalAlpha = 1;
+      break;
+    }
     case 'dojo':
     case 'arena': {
       // montagnes
@@ -212,6 +225,19 @@ function drawFar(ctx: CanvasRenderingContext2D, t: Theme, p: Prop, time: number)
 function drawMid(ctx: CanvasRenderingContext2D, t: Theme, p: Prop, time: number): void {
   const base = FLOOR_TOP - 2;
   switch (t.kind) {
+    case 'abyss': {
+      // corail low poly qui ondule
+      const sway = Math.sin(time * 0.04 + p.x) * 3;
+      ctx.fillStyle = '#ff7a8a';
+      for (let i = 0; i < 3; i++) {
+        const bx = p.x + i * 14, hh = 40 + ((p.seed >> (i * 3)) & 31) + i * 6;
+        ctx.beginPath(); ctx.moveTo(bx - 7, base); ctx.lineTo(bx + sway * (hh / 60), base - hh); ctx.lineTo(bx + 7, base); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#ffb0bc';
+        ctx.beginPath(); ctx.moveTo(bx, base); ctx.lineTo(bx + sway * (hh / 60), base - hh); ctx.lineTo(bx + 7, base); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#ff7a8a';
+      }
+      break;
+    }
     case 'dojo': {
       // piliers en bois + lanterne
       ctx.fillStyle = t.mid;
@@ -402,6 +428,37 @@ function drawFloorDetail(ctx: CanvasRenderingContext2D, t: Theme, camX: number, 
 }
 
 /** Premier plan (parallaxe > 1), dessiné par-dessus les combattants. */
+/** Rayons de lumière, banc de poissons low poly et bulles : l'eau vit en arrière-plan. */
+function drawAbyssLife(ctx: CanvasRenderingContext2D, camX: number, time: number): void {
+  // rayons
+  for (let i = 0; i < 6; i++) {
+    const x = ((i * 190 + time * 0.25 - camX * 0.15) % (VW + 300)) - 150;
+    ctx.fillStyle = `rgba(190,245,255,${0.05 + 0.03 * Math.sin(time * 0.02 + i)})`;
+    ctx.beginPath(); ctx.moveTo(x, -EY); ctx.lineTo(x + 50, -EY); ctx.lineTo(x + 170, FLOOR_TOP); ctx.lineTo(x + 60, FLOOR_TOP); ctx.closePath(); ctx.fill();
+  }
+  // poissons : triangles (corps) + queue, deux couches de profondeur
+  for (let i = 0; i < 16; i++) {
+    const layer = i % 2 ? 0.45 : 0.7;
+    const dir = i % 3 === 0 ? -1 : 1;
+    const speed = 0.35 + (i % 5) * 0.12;
+    const span = VW + 400;
+    const x = ((((i * 137) % span) + dir * time * speed - camX * layer * 0.4) % span + span) % span - 200;
+    const y = 60 + ((i * 53) % 190) + Math.sin(time * 0.03 + i) * 8;
+    const sz = 10 + (i % 4) * 4;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(dir, 1);
+    ctx.globalAlpha = 0.55 + layer * 0.3;
+    const hue = [18, 50, 190, 320][i % 4];
+    ctx.fillStyle = `hsl(${hue}, 85%, 60%)`;
+    ctx.beginPath(); ctx.moveTo(sz, 0); ctx.lineTo(-sz * 0.4, -sz * 0.55); ctx.lineTo(-sz * 0.8, 0); ctx.lineTo(-sz * 0.4, sz * 0.5); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = `hsl(${hue}, 85%, 42%)`;
+    ctx.beginPath(); ctx.moveTo(-sz * 0.4, 0); ctx.lineTo(-sz * 1.1, -sz * 0.45 + Math.sin(time * 0.3 + i) * 3); ctx.lineTo(-sz * 1.1, sz * 0.45 + Math.sin(time * 0.3 + i) * 3); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.fillRect(sz * 0.45, -sz * 0.18, 2.4, 2.4);
+    ctx.restore();
+  }
+}
+
 export function drawForeground(ctx: CanvasRenderingContext2D, themeId: string, camX: number, time: number): void {
   const t = themeOf(themeId);
   ctx.save();
@@ -410,6 +467,16 @@ export function drawForeground(ctx: CanvasRenderingContext2D, themeId: string, c
   ctx.globalAlpha = 0.85;
   for (let x = off - 700; x < VW + 700; x += 700) {
     switch (t.kind) {
+      case 'abyss': {
+        for (let k = 0; k < 4; k++) {
+          const bx = x + 80 + k * 22;
+          ctx.strokeStyle = k % 2 ? '#1d9b6b' : '#27c283'; ctx.lineWidth = 6; ctx.lineCap = 'round';
+          ctx.beginPath(); ctx.moveTo(bx, VB);
+          ctx.quadraticCurveTo(bx + Math.sin(time * 0.05 + k + x) * 14, VB - 60, bx + Math.sin(time * 0.05 + k * 1.7 + x) * 22, VB - 120 - k * 14);
+          ctx.stroke();
+        }
+        break;
+      }
       case 'dojo':
         ctx.fillStyle = '#3b2412';
         ctx.fillRect(x + 40, VB - 120, 14, 120);

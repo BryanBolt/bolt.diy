@@ -65,6 +65,16 @@ export const STAGES: StageDef[] = [
     boss: { charId: 'nova', level: 10, name: 'NOVA, singularité', line: 'J\'ai analysé 10 000 combats. Tu es le 10 001e. Statistiquement, tu perds.', rageLine: 'Recalcul… Probabilité de défaite : non nulle. Inacceptable.', minions: 'ninja' },
     hazard: 'laser',
   },
+  {
+    id: 'abyss',
+    name: 'Abysses',
+    tagline: 'Gravité réduite : maintiens Saut pour nager. Les poissons ne jugent pas.',
+    theme: 'abyss',
+    width: 2800,
+    grav: 0.3,
+    waves: [w(['mage', 10], ['grappler', 10], ['ninja', 10]), w(['tank', 10], ['shaman', 10], ['mage', 11], ['gunner', 10]), w(['tank', 11], ['grappler', 11], ['mage', 11], ['ninja', 11], ['shaman', 11])],
+    boss: { charId: 'gorr', level: 12, name: 'Gorr, le léviathan', line: 'GRRR. (Il parle couramment le poisson.)', rageLine: 'GRRRRRRR !!', minions: 'mage' },
+  },
 ];
 
 export const SURVIVAL_STAGE: StageDef = {

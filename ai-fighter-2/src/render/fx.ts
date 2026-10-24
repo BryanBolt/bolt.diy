@@ -41,6 +41,7 @@ export class Fx {
   superOwner = -1;
   cracks: { x: number; z: number; life: number; seed: number; size: number }[] = [];
   hits: { target: number; attacker: number; dir: number; power: number }[] = []; // impulsions physiques à appliquer au rendu
+  lightFlash = 0; // éclair blanc plein écran (transformation, explosion)
   punch = 0; // à-coup de zoom sur les gros impacts
   impacts: { x: number; y: number; z: number; life: number; ang: number; color: string; size: number }[] = [];
   reduce = false;
@@ -96,7 +97,7 @@ export class Fx {
           this.burst(e.x, e.y, e.z, 34, col, 'spark', 5, 9);
           this.burst(e.x, e.y, e.z, 14, e.elem === 'fire' ? '#ffe14d' : '#ffffff', 'star', 7, 6);
           this.punch = Math.max(this.punch, 0.05);
-          this.flash.set(-1, 0.5);
+          this.lightFlash = Math.max(this.lightFlash, 0.6);
           break;
         }
         case 'pickup':
@@ -105,6 +106,7 @@ export class Fx {
         case 'special':
           if (e.kind === 'super') {
             this.superFocus = 1;
+            this.lightFlash = 0.55;
             this.superOwner = e.id;
             this.ring(e.x, e.y + 50, e.z, '#ffd166', 160);
             this.burst(e.x, e.y + 50, e.z, 30, '#ffd166', 'spark', 4, 8);
@@ -114,6 +116,7 @@ export class Fx {
             this.burst(e.x, e.y + 50, e.z, 46, '#ffffff', 'spark', 5, 11);
             this.superFocus = 0.8;
             this.superOwner = e.id;
+            this.lightFlash = 1;
             this.punch = Math.max(this.punch, 0.07);
           } else if (e.kind === 'charge') {
             this.ring(e.x, e.y + 8, e.z, '#7cf6ff', 54);
@@ -244,6 +247,7 @@ export class Fx {
       this.cracks = this.cracks.filter((c) => c.life > 0);
       this.impacts = this.impacts.filter((im) => im.life > 0);
       this.punch *= 0.86;
+      this.lightFlash *= 0.88;
       for (const t of this.texts) { t.life--; t.y += 0.7; }
       this.texts = this.texts.filter((t) => t.life > 0);
       for (const g of this.ghosts) g.life--;
@@ -278,6 +282,7 @@ export class Fx {
     else if (t === 'market' || t === 'arena') add('ember', 0.4, () => ({ x: Math.random() * 960, y: 560, vx: (Math.random() - 0.5) * 0.6, vy: -0.8 - Math.random(), max: 240 }));
     else if (t === 'dojo') add('petal', 0.25, () => ({ x: Math.random() * 1000, y: -10, vx: -0.6 - Math.random() * 0.5, vy: 0.7 + Math.random() * 0.6, max: 500 }));
     else if (t === 'metro') add('spark', 0.08, () => ({ x: Math.random() * 960, y: 200 + Math.random() * 100, vx: (Math.random() - 0.5) * 3, vy: 2, max: 30 }));
+    else if (t === 'abyss') { add('bubble', 0.7, () => ({ x: Math.random() * 1000, y: 560, vx: (Math.random() - 0.5) * 0.4, vy: -0.7 - Math.random() * 1.1, max: 420 })); }
     else if (t === 'core') add('digit', 0.5, () => ({ x: Math.random() * 960, y: 560, vx: 0, vy: -1.5 - Math.random() * 2, max: 200 }));
     else if (t === 'tower') add('cloud', 0.02, () => ({ x: 1000, y: 40 + Math.random() * 120, vx: -0.25, vy: 0, max: 4500 }));
     for (const a of this.ambient) { a.life++; a.x += a.vx; a.y += a.vy; if (a.kind === 'petal') a.x += Math.sin(a.life * 0.05) * 0.8; }
@@ -293,6 +298,11 @@ export class Fx {
           ctx.strokeStyle = 'rgba(180,200,255,0.35)';
           ctx.lineWidth = 1.2;
           ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(a.x - a.vx * 1.5, a.y - a.vy * 1.2); ctx.stroke();
+          break;
+        case 'bubble':
+          ctx.strokeStyle = `rgba(210,250,255,${0.55 * (1 - t)})`;
+          ctx.lineWidth = 1.2;
+          ctx.beginPath(); ctx.arc(a.x + Math.sin(a.life * 0.07) * 3, a.y, 2 + (a.life % 7) * 0.4, 0, Math.PI * 2); ctx.stroke();
           break;
         case 'ember':
           ctx.fillStyle = `rgba(255,${140 + Math.round(60 * Math.sin(a.life * 0.2))},60,${0.8 * (1 - t)})`;

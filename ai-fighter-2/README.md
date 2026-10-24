@@ -120,7 +120,7 @@ Gorr (colosse) et Nova (boss final) se débloquent en campagne.
 
 ## Modes
 
-- **Campagne** (coop 1-4) : 6 stages, 3 vagues + boss chacun, bonus entre les vagues, 4 difficultés. Le stage de départ est débloqué au fur et à mesure.
+- **Campagne** (coop 1-4) : 7 stages, 3 vagues + boss chacun, bonus entre les vagues, 4 difficultés. Le stage de départ est débloqué au fur et à mesure.
 - **Duel** : meilleur des 1/3/5, jusqu'à 4 combattants, chacun pour soi ou 2 équipes, bots IA en renfort, timer de 99 s.
 - **Survie** : vagues infinies, record sauvegardé.
 - **Entraînement** : mannequin qui régénère, affichage des boîtes de collision (Options).

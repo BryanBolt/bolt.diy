@@ -28,6 +28,7 @@ export interface LobbyOptions {
   stage: number; // index de stage de départ
   teams: boolean; // duel par équipes
   isPublic: boolean; // salon visible dans la liste (rejoignable sans code)
+  gravity: 0 | 1 | 2; // 0 normale · 1 lunaire · 2 apesanteur
 }
 
 /** Salon public affiché dans la liste. */
@@ -143,4 +144,5 @@ export const DEFAULT_OPTIONS: LobbyOptions = {
   stage: 0,
   teams: false,
   isPublic: false,
+  gravity: 0,
 };

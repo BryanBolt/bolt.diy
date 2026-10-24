@@ -33,6 +33,7 @@ export function createWorld(config: SimConfig, seed: number): World {
     items: [],
     nextId: 1,
     phase: 'intro',
+    grav: 1,
     phaseTimer: 0,
     phaseFrame: 0,
     paused: false,
@@ -70,6 +71,7 @@ export function createWorld(config: SimConfig, seed: number): World {
     f.ai = makeAi('bot', b.level, w);
     w.fighters.push(f);
   }
+  w.grav = [1, 0.35, 0.08][clamp(config.gravity ?? 0, 0, 2)];
   if (config.mode === 'duel') startDuelRound(w, true);
   else if (config.mode === 'training') startTraining(w);
   else startStage(w, config.mode === 'survival' ? SURVIVAL_STAGE : STAGES[clamp(config.stageIndex, 0, STAGES.length - 1)]);
@@ -244,6 +246,7 @@ function placePlayers(w: World, x0: number): void {
 }
 
 function startStage(w: World, stage: StageDef): void {
+  w.grav = Math.min([1, 0.35, 0.08][clamp(w.config.gravity ?? 0, 0, 2)], stage.grav ?? 1);
   w.stage = stage;
   w.waveIndex = -1;
   w.fighters = w.fighters.filter((f) => f.team === 0);
@@ -577,6 +580,7 @@ const BOTTLE: ProjectileDef = { kind: 'bottle', speed: 6.5, life: 110, damage: 1
 function startDuelRound(w: World, first: boolean): void {
   const stages = DUEL_STAGES;
   w.stage = stages[clamp(w.stageIndex, 0, stages.length - 1)];
+  w.grav = Math.min([1, 0.35, 0.08][clamp(w.config.gravity ?? 0, 0, 2)], w.stage.grav ?? 1);
   w.projectiles = [];
   w.items = [];
   w.arenaL = 0;
@@ -1218,7 +1222,7 @@ function stepFighter(w: World, f: Fighter, inp: number, acting: boolean): void {
   // saut
   if ((pressed & IN.JUMP || (f.bufferedInput & IN.JUMP && onGround)) && (onGround || (f.airJumps < 2 && hasBonus(f, 'doublejump') && f.airJumps >= 1))) {
     f.bufferedInput &= ~IN.JUMP;
-    f.vy = C.JUMP_V * f.stats.jump;
+    f.vy = C.JUMP_V * f.stats.jump * jumpMul(w);
     f.airJumps++;
     if (f.state === 'run') f.vx = f.facing * C.RUN * f.stats.speed;
     setState(f, 'jump');
@@ -1264,6 +1268,8 @@ function stepFighter(w: World, f: Fighter, inp: number, acting: boolean): void {
       setStateKeep(f, 'idle');
     }
   } else {
+    // nage / vol : maintenir Saut pousse vers le haut quand la gravité est faible
+    if (w.grav < 0.5 && (inp & IN.JUMP)) f.vy = Math.min(f.vy + 0.5, 5.5);
     const asp = f.stats.speed * (f.status.slow > 0 ? 0.55 : 1);
     f.vx += dirX * C.AIR_CONTROL * asp;
     f.vx = clamp(f.vx, -C.RUN * asp, C.RUN * asp);
@@ -1464,6 +1470,11 @@ function throwHeld(w: World, a: Fighter, v: Fighter, vx: number, vy: number, dmg
   v.vx = vx; v.vy = vy; v.y = 0.1;
   v.lastHitBy = a.id;
   if (wasMount) a.nextMoveFrame = w.frame + 8;
+}
+
+/** Vitesse de saut : plus haut quand la gravité baisse, sans partir dans l'espace. */
+function jumpMul(w: World): number {
+  return w.grav >= 1 ? 1 : Math.sqrt(w.grav * (1 + (1 - w.grav) * 2.6));
 }
 
 function startShoot(w: World, f: Fighter): void {
@@ -1838,8 +1849,8 @@ function resolveHit(w: World, a: Fighter, t: Fighter, m0: MoveDef, proj?: Projec
   if (counter) dmg = Math.round(dmg * 1.3);
   if (!proj && meleeOf(a, m)) { a.weapon--; if (a.weapon === 0) { a.weaponKind = ''; w.events.push({ t: 'text', x: a.x, y: a.y + 125, z: a.z, text: 'ARME CASSÉE', color: '#ccc' }); w.events.push({ t: 'sound', id: 'cratebreak', x: a.x }); } }
   if (guardOk) {
-    const chip = Math.round(dmg * (m.kind === 'super' || m.kind === 'special' ? 0.25 : 0.12));
-    const guardDmg = m.guardBreak ? 60 : dmg * 1.3;
+    const chip = Math.round(dmg * (m.kind === 'super' || m.kind === 'special' ? 0.2 : 0.08));
+    const guardDmg = m.guardBreak ? 60 : dmg * 0.95;
     t.guardMeter -= guardDmg;
     if (t.guardMeter <= 0) {
       t.guardMeter = 50;
@@ -1905,6 +1916,8 @@ function resolveHit(w: World, a: Fighter, t: Fighter, m0: MoveDef, proj?: Projec
   w.events.push({ t: 'hit', x: t.x - dir * 8, y: t.y + (m.hit.y0 + m.hit.y1) / 2, z: t.z, power, blocked: false, crit, dir, attacker: a.id, target: t.id });
   w.events.push({ t: 'sound', id: m.kind === 'super' ? 'superhit' : heavyish || m.kind === 'special' ? 'hitheavy' : 'hit', x: t.x });
   if (heavyish || m.kind === 'super' || crit) w.events.push({ t: 'shake', power: crit ? 5 : m.kind === 'super' ? 5 : 3 });
+  // ralenti bref sur les gros impacts : sensation de puissance
+  if (crit || counter || power > 1.15 || (m.launch && power > 0.8)) w.slowmo = Math.max(w.slowmo, crit || counter ? 10 : 7);
   if (crit) w.events.push({ t: 'text', x: t.x, y: t.y + 140, z: t.z, text: 'CRITIQUE', color: '#ffe14d' });
   if (counter) { w.events.push({ t: 'counter', x: t.x, y: t.y + 70, z: t.z }); w.events.push({ t: 'text', x: t.x, y: t.y + 155, z: t.z, text: 'CONTRE !', color: '#ff9f1c' }); w.events.push({ t: 'sound', id: 'counter', x: t.x }); }
   // onde de choc bonus
@@ -2143,7 +2156,13 @@ function separate(w: World): void {
 function physics(w: World, f: Fighter): void {
   const inAir = f.y > 0 || f.vy > 0;
   if (inAir) {
-    f.vy -= C.GRAV * (f.state === 'launch' ? 0.9 : 1);
+    f.vy -= C.GRAV * w.grav * (f.state === 'launch' ? 0.9 : 1);
+    if (w.grav < 1) {
+      // milieu dense / apesanteur : traînée sur les deux axes et plafond
+      f.vy *= 1 - (1 - w.grav) * 0.03;
+      f.vx *= 1 - (1 - w.grav) * 0.012;
+      if (f.y > 280) { f.y = 280; if (f.vy > 0) f.vy = 0; }
+    }
     if (f.state === 'launch' || f.state === 'ko') f.vx *= 0.992; // traînée de l'air
     f.y += f.vy;
     if (f.y <= 0) {
@@ -2217,7 +2236,7 @@ function stepProjectiles(w: World): void {
       }
       if (best) p.vy = approach(p.vy, clamp((best.y + 50 - p.y) * 0.1, -3, 3), p.homing);
     }
-    p.vy -= p.gravity;
+    p.vy -= p.gravity * w.grav;
     p.x = q(p.x + p.vx);
     p.y = q(p.y + p.vy);
     if (p.y < 0) p.life = 0;
@@ -2292,7 +2311,7 @@ function stepItems(w: World): void {
     // physique des objets au sol : chute, rebond amorti, glissade, limites de l'arène
     const airborneIt = it.y > 0 || it.vy > 0;
     if (airborneIt) {
-      it.vy -= 0.5;
+      it.vy -= 0.5 * Math.max(0.25, w.grav);
       it.y += it.vy;
       if (it.y <= 0) {
         it.y = 0;

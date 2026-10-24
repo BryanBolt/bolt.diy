@@ -46,11 +46,22 @@ export function stiffnessFor(state: string): number {
   }
 }
 
+/** Si l'angle plie du mauvais côté (signe du produit vectoriel), le segment distal est redressé dans le prolongement. */
+function limitJoint(a: P, b: P, c: P, sign: number): void {
+  const ux = b.x - a.x, uy = b.y - a.y, vx = c.x - b.x, vy = c.y - b.y;
+  const cross = ux * vy - uy * vx;
+  if (cross * sign >= 0) return;
+  const ul = Math.hypot(ux, uy) || 1, vl = Math.hypot(vx, vy) || 1;
+  // on ramène le segment sur la droite (le genou / coude se bloque à plat)
+  c.x = b.x + (ux / ul) * vl;
+  c.y = b.y + (uy / ul) * vl;
+}
+
 export class RagdollSystem {
   private m = new Map<number, State>();
 
   /** target : pose cible en coordonnées écran absolues. Retourne le squelette simulé. */
-  step(id: number, target: Rig, stiff: number, frames: number, groundY: number): Rig {
+  step(id: number, target: Rig, stiff: number, frames: number, groundY: number, facing = 1): Rig {
     let st = this.m.get(id);
     if (!st) { st = { cur: cloneRig(target), prev: cloneRig(target) }; this.m.set(id, st); }
     const n = Math.max(1, Math.min(3, Math.round(frames)));
@@ -80,6 +91,13 @@ export class RagdollSystem {
           dx *= diff; dy *= diff;
           if (a === 'hip') { pb.x -= dx; pb.y -= dy; } else { pa.x += dx * 0.5; pa.y += dy * 0.5; pb.x -= dx * 0.5; pb.y -= dy * 0.5; }
         }
+      }
+      // articulations humaines : le genou ne plie que vers l'arrière, le coude que vers l'avant (pas d'hyper-extension)
+      for (let pass = 0; pass < 2; pass++) {
+        limitJoint(cur.hip, cur.lFk, cur.lFa, facing);
+        limitJoint(cur.hip, cur.lBk, cur.lBa, facing);
+        limitJoint(cur.sh, cur.aFe, cur.aFw, -facing);
+        limitJoint(cur.sh, cur.aBe, cur.aBw, -facing);
       }
       // sol
       for (const k of RIG_KEYS) {

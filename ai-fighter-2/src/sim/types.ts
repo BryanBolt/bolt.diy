@@ -362,6 +362,7 @@ export interface StageDef {
   waves: WaveSpec[];
   boss: { charId: string; level: number; name: string; line: string; rageLine: string; minions?: EnemyKind };
   hazard?: HazardKind;
+  grav?: number; // gravité propre au stage (multiplicateur, 1 = normale)
   music?: string;
 }
 
@@ -422,6 +423,7 @@ export interface SimConfig {
   rounds: number;
   teams: boolean;
   stageIndex: number;
+  gravity?: number; // 0 normale · 1 lunaire · 2 apesanteur
   players: { slot: number; charId: string; name: string; color: number; team: number }[];
   bots: { charId: string; name: string; color: number; team: number; level: number }[];
 }
@@ -438,6 +440,7 @@ export interface World {
   items: Item[];
   nextId: number;
   phase: Phase;
+  grav: number; // multiplicateur de gravité courant
   phaseTimer: number;
   phaseFrame: number; // frame d'entrée dans la phase (verrou anti-appui involontaire dans les menus)
   paused: boolean;
