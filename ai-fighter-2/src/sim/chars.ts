@@ -167,58 +167,58 @@ patch(novaMoves, 'special', { projectile: { kind: 'bullet', speed: 14, life: 60,
 patch(novaMoves, 'special2', { damage: 14, hit: { x: 0, w: 180, y0: 0, y1: 150, z: 60 }, multi: { hits: 3, every: 6 }, kby: 9 });
 patch(novaMoves, 'super', { multi: { hits: 6, every: 4 }, damage: 10, projectile: { kind: 'orb', speed: 6, life: 90, damage: 15, radius: 30, y: 60, pierce: true, count: 2 } });
 
-const DEFAULT_SKEL: SkeletonStyle = { scale: 1, thickness: 5, headR: 11, accessory: 'none' };
+const DEFAULT_SKEL: SkeletonStyle = { scale: 1, thickness: 5, headR: 11, accessory: 'none', torso: 1, legs: 1, arms: 1, trim: '', stance: 'agile' };
 
 export const ROSTER: CharDef[] = [
   defineChar({
     id: 'kai', name: 'Kai', title: 'Le karatéka', desc: 'Équilibré. Enchaînements propres, Onde Ki à distance, Lune montante anti-aérienne.',
     color: 0, stats: { speed: 1, power: 1, defense: 1, hpMax: 120, jump: 1, reach: 0 }, moves: kaiMoves,
-    skeleton: { accessory: 'headband' },
+    skeleton: { accessory: 'headband', trim: 'belt gloves', stance: 'karate' },
   }),
   defineChar({
     id: 'tora', name: 'Tora', title: 'Le tigre de Bangkok', desc: 'Lent mais dévastateur. Coups lourds blindés qui brisent la garde.',
     color: 1, stats: { speed: 0.86, power: 1.3, defense: 1.2, hpMax: 150, jump: 0.9, reach: 4 }, moves: toraMoves,
-    skeleton: { thickness: 6.5, headR: 12, accessory: 'bands' },
+    skeleton: { thickness: 6.5, headR: 12, accessory: 'bands', torso: 0.94, legs: 0.9, arms: 1.12, trim: 'gloves belt', stance: 'boxer' },
   }),
   defineChar({
     id: 'zed', name: 'Zed', title: 'L\'ombre furtive', desc: 'Très rapide, fragile. Kunaïs en éventail et Pas de l\'ombre derrière la cible.',
     color: 2, stats: { speed: 1.22, power: 0.82, defense: 0.85, hpMax: 95, jump: 1.15, reach: 0 }, moves: zedMoves,
-    skeleton: { thickness: 4.2, headR: 10, accessory: 'scarf' },
+    skeleton: { thickness: 4.2, headR: 10, accessory: 'scarf', legs: 1.1, trim: 'boots', stance: 'ninja' },
   }),
   defineChar({
     id: 'vex', name: 'Vex', title: 'La dompteuse', desc: 'Fouet d\'énergie à grande allonge. Le Lasso ramène l\'ennemi à toi.',
     color: 3, stats: { speed: 0.98, power: 0.92, defense: 0.95, hpMax: 110, jump: 1, reach: 18 }, moves: vexMoves,
-    skeleton: { thickness: 4.6, accessory: 'ponytail' },
+    skeleton: { thickness: 4.6, accessory: 'ponytail', legs: 1.08, trim: 'gloves boots', stance: 'whip' },
   }),
   defineChar({
     id: 'orion', name: 'Orion', title: 'Le maître du Ki', desc: 'Zoneur : sphères perçantes, éventail de Ki, super à distance.',
     color: 4, stats: { speed: 0.95, power: 1.05, defense: 0.9, hpMax: 105, jump: 1, reach: 0 }, moves: orionMoves,
-    skeleton: { accessory: 'halo' },
+    skeleton: { accessory: 'halo', torso: 1.05, arms: 1.06, trim: 'sash', stance: 'monk' },
   }),
   defineChar({
     id: 'blaze', name: 'Blaze', title: 'La pyromane', desc: 'Pression constante : chaque coup lourd enflamme, dégâts sur la durée.',
     color: 5, stats: { speed: 1.08, power: 1.05, defense: 0.9, hpMax: 105, jump: 1.05, reach: 0 }, moves: blazeMoves,
-    skeleton: { accessory: 'flamehair' },
+    skeleton: { accessory: 'flamehair', trim: 'boots gloves', stance: 'agile' },
   }),
   defineChar({
     id: 'frost', name: 'Frost', title: 'Le gardien polaire', desc: 'Contrôle : gèle l\'ennemi sur place, Mur de glace défensif.',
     color: 6, stats: { speed: 0.94, power: 1, defense: 1.1, hpMax: 125, jump: 0.95, reach: 2 }, moves: frostMoves,
-    skeleton: { accessory: 'hood' },
+    skeleton: { accessory: 'hood', legs: 1.04, trim: 'sash gloves', stance: 'monk' },
   }),
   defineChar({
     id: 'shade', name: 'Shade', title: 'Le contre-attaquant', desc: 'Technique : Miroir contre les coups, Forme ombre traverse les ennemis.',
     color: 7, stats: { speed: 1.05, power: 1, defense: 0.95, hpMax: 110, jump: 1.05, reach: 0 }, moves: shadeMoves,
-    skeleton: { accessory: 'cape' },
+    skeleton: { accessory: 'cape', torso: 1.04, legs: 1.06, trim: 'belt', stance: 'ninja' },
   }),
   defineChar({
     id: 'gorr', name: 'Gorr', title: 'Le colosse', desc: 'Énorme. Tout fait mal. Débloqué en finissant le stage 3.',
     color: 8, stats: { speed: 0.78, power: 1.5, defense: 1.4, hpMax: 190, jump: 0.8, reach: 10 }, moves: gorrMoves,
-    unlock: { kind: 'stage', value: 3 }, skeleton: { scale: 1.2, thickness: 8, headR: 13, accessory: 'horns' },
+    unlock: { kind: 'stage', value: 3 }, skeleton: { scale: 1.2, thickness: 8, headR: 13, accessory: 'horns', torso: 0.96, arms: 1.06, trim: 'gloves belt', stance: 'boxer' },
   }),
   defineChar({
     id: 'nova', name: 'Nova', title: 'La singularité', desc: 'IA de combat finale. Débloquée en finissant la campagne.',
     color: 9, stats: { speed: 1.1, power: 1.15, defense: 1.05, hpMax: 130, jump: 1.1, reach: 2 }, moves: novaMoves,
-    unlock: { kind: 'stage', value: 6 }, skeleton: { accessory: 'visor' },
+    unlock: { kind: 'stage', value: 6 }, skeleton: { accessory: 'visor', trim: 'sash boots', stance: 'whip' },
   }),
 ];
 
@@ -285,16 +285,16 @@ function commandMoves(c: CharDef): Record<string, MoveDef> {
   m.c_hop = mv('launcher', { id: 'c_hop', name: 'Coup-sauté', anim: 'knee', startup: 12, active: 3, recovery: 20, damage: 12, hit: { x: 28, w: 58, y0: 40, y1: 115, z: 32 }, launch: true, kbx: 2, kby: 9, hitstop: 8, overhead: true, lunge: 2 });
   m.c_side = mv('light', { id: 'c_side', name: 'Coup latéral', anim: 'kick', startup: 8, active: 4, recovery: 14, damage: 9, hit: { x: 50, w: 86, y0: 30, y1: 90, z: 30 }, kbx: 6, hitstun: 20, lunge: 3, cancelFrom: 11, next: ['l2', 'l3', 'heavy', 'launcher', 'special', 'special2', 'super'] });
   const Z = { x: 0, w: 0, y0: 0, y1: 0, z: 0 };
-  m.c_wave = mv('special', { id: 'c_wave', name: 'Onde Tonnerre', hit: Z, damage: 0, anim: 'special', startup: 22, active: 4, recovery: 30, kiCost: 25, projectile: { kind: 'orb', speed: 12, life: 70, damage: 22, radius: 40, y: 58, pierce: true } });
+  m.c_wave = mv('special', { id: 'c_wave', name: 'Onde Tonnerre', hit: Z, damage: 0, anim: 'wave', startup: 22, active: 4, recovery: 30, kiCost: 25, projectile: { kind: 'orb', speed: 12, life: 70, damage: 22, radius: 40, y: 58, pierce: true } });
   m.c_rocket = mv('special', { id: 'c_rocket', name: 'Poing fusée', hit: Z, damage: 0, anim: 'cross', startup: 12, active: 3, recovery: 26, kiCost: 14, projectile: { kind: 'bat', speed: 14, life: 45, damage: 15, radius: 18, y: 55, pierce: true } });
-  m.c_falcon = mv('heavy', { id: 'c_falcon', name: 'Poing du faucon', anim: 'heavy', startup: 26, active: 4, recovery: 34, damage: 36, hit: { x: 16, w: 60, y0: 10, y1: 120, z: 34 }, kbx: 14, kby: 6, knockdown: true, hitstop: 18, armor: true, lunge: 5, kiCost: 30 });
-  m.c_meteor = mv('heavy', { id: 'c_meteor', name: 'Météores', anim: 'jab', startup: 8, active: 42, recovery: 22, damage: 3, hit: { x: 20, w: 78, y0: 10, y1: 120, z: 34 }, kbx: 1.2, hitstun: 20, hitstop: 2, multi: { hits: 14, every: 3 }, lunge: 0.5, kiCost: 40 });
+  m.c_falcon = mv('heavy', { id: 'c_falcon', name: 'Poing du faucon', anim: 'falcon', startup: 26, active: 4, recovery: 34, damage: 36, hit: { x: 16, w: 60, y0: 10, y1: 120, z: 34 }, kbx: 14, kby: 6, knockdown: true, hitstop: 18, armor: true, lunge: 5, kiCost: 30 });
+  m.c_meteor = mv('heavy', { id: 'c_meteor', name: 'Météores', anim: 'barrage', startup: 8, active: 42, recovery: 22, damage: 3, hit: { x: 20, w: 78, y0: 10, y1: 120, z: 34 }, kbx: 1.2, hitstun: 20, hitstop: 2, multi: { hits: 14, every: 3 }, lunge: 0.5, kiCost: 40 });
   m.c_purple = mv('special', { id: 'c_purple', name: 'Pourpre vide', hit: Z, damage: 0, anim: 'super', startup: 34, active: 4, recovery: 40, superCost: 60, invuln: true, projectile: { kind: 'orb', speed: 6, life: 130, damage: 42, radius: 70, y: 60, pierce: true } });
-  m.c_omni = mv('heavy', { id: 'c_omni', name: 'Omnislash', anim: 'super', startup: 10, active: 34, recovery: 26, damage: 5, hit: { x: 10, w: 90, y0: 0, y1: 130, z: 40 }, kbx: 1, hitstun: 20, hitstop: 2, multi: { hits: 10, every: 3 }, teleport: 40, superCost: 50, invuln: true });
-  m.c_serious = mv('heavy', { id: 'c_serious', name: 'Coup sérieux', anim: 'heavy', startup: 24, active: 3, recovery: 50, damage: 55, hit: { x: 14, w: 70, y0: 0, y1: 130, z: 40 }, kbx: 20, kby: 8, knockdown: true, hitstop: 24, superCost: 40, armor: true, guardBreak: true });
+  m.c_omni = mv('heavy', { id: 'c_omni', name: 'Omnislash', anim: 'slash', startup: 10, active: 34, recovery: 26, damage: 5, hit: { x: 10, w: 90, y0: 0, y1: 130, z: 40 }, kbx: 1, hitstun: 20, hitstop: 2, multi: { hits: 10, every: 3 }, teleport: 40, superCost: 50, invuln: true });
+  m.c_serious = mv('heavy', { id: 'c_serious', name: 'Coup sérieux', anim: 'serious', startup: 24, active: 3, recovery: 50, damage: 55, hit: { x: 14, w: 70, y0: 0, y1: 130, z: 40 }, kbx: 20, kby: 8, knockdown: true, hitstop: 24, superCost: 40, armor: true, guardBreak: true });
   m.c_step = mv('heavy', { id: 'c_step', name: 'Pas éclair', anim: 'backstab', startup: 4, active: 4, recovery: 14, damage: 12, hit: { x: 0, w: 70, y0: 0, y1: 120, z: 36 }, teleport: 60, kbx: 5, kby: 2, knockdown: true, hitstop: 6, invuln: true, kiCost: 8 });
-  m.c_rasen = mv('special', { id: 'c_rasen', name: 'Sphère tournoyante', anim: 'special', startup: 14, active: 14, recovery: 24, damage: 5, hit: { x: 24, w: 62, y0: 10, y1: 110, z: 34 }, kbx: 2, kby: 1, hitstun: 20, hitstop: 3, multi: { hits: 6, every: 2 }, lunge: 2, kiCost: 20 });
-  m.c_rider = mv('air', { id: 'c_rider', name: 'Rider Kick', anim: 'dive', startup: 6, active: 20, recovery: 14, damage: 18, hit: { x: 20, w: 76, y0: -40, y1: 80, z: 34 }, lunge: 7, lungeAir: -9, kbx: 8, kby: 3, hitstun: 26, knockdown: true, hitstop: 10, kiCost: 8 });
+  m.c_rasen = mv('special', { id: 'c_rasen', name: 'Sphère tournoyante', anim: 'palm', startup: 14, active: 14, recovery: 24, damage: 5, hit: { x: 24, w: 62, y0: 10, y1: 110, z: 34 }, kbx: 2, kby: 1, hitstun: 20, hitstop: 3, multi: { hits: 6, every: 2 }, lunge: 2, kiCost: 20 });
+  m.c_rider = mv('air', { id: 'c_rider', name: 'Rider Kick', anim: 'rider', startup: 6, active: 20, recovery: 14, damage: 18, hit: { x: 20, w: 76, y0: -40, y1: 80, z: 34 }, lunge: 7, lungeAir: -9, kbx: 8, kby: 3, hitstun: 26, knockdown: true, hitstop: 10, kiCost: 8 });
   m.shoot = mv('light', { id: 'shoot', name: 'Tir', anim: 'shoot', startup: 1, active: 1, recovery: 3, damage: 0, hit: { x: 0, w: 0, y0: 0, y1: 0, z: 0 } });
   m.c_flurry = mv('light', { id: 'c_flurry', name: 'Rafale du dragon', anim: 'jab', startup: 4, active: 14, recovery: 16, damage: 3, hit: { x: 30, w: 62, y0: 20, y1: 100, z: 30 }, kbx: 0.8, hitstun: 14, hitstop: 2, multi: { hits: 6, every: 2 }, lunge: 1 });
   m.c_airflying = mv('air', { id: 'c_airflying', name: 'Coup volant', anim: 'airkick', startup: 5, active: 12, recovery: 12, damage: 11, hit: { x: 30, w: 70, y0: -30, y1: 70, z: 30 }, lunge: 6, kbx: 5, hitstun: 22, knockdown: true });

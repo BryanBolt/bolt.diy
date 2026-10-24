@@ -143,6 +143,11 @@ export interface SkeletonStyle {
   thickness: number;
   headR: number;
   accessory: string; // 'headband' | 'scarf' | 'horns' | 'hood' | 'none' ...
+  torso: number; // proportions (1 = normal)
+  legs: number;
+  arms: number;
+  trim: string; // détails de couleur contrastée : 'belt' 'gloves' 'boots' 'sash'
+  stance: string; // posture de combat : karate | boxer | ninja | whip | monk | agile
 }
 
 export type EnemyKind = 'thug' | 'brute' | 'ninja' | 'gunner' | 'shield' | 'bomber' | 'boss';
