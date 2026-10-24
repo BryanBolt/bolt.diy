@@ -10,9 +10,16 @@ export interface Rig {
 export const RIG_KEYS = ['mid', 'sh', 'neck', 'head', 'aFe', 'aFw', 'aBe', 'aBw', 'lFk', 'lFa', 'lBk', 'lBa'] as const;
 const BONES: [keyof Rig, keyof Rig][] = [
   ['hip', 'mid'], ['mid', 'sh'], ['sh', 'neck'], ['neck', 'head'],
+  // colonne rigide : liaisons croisées pour que le tronc ne se plie pas en deux
+  ['hip', 'sh'], ['hip', 'neck'], ['mid', 'neck'], ['sh', 'head'], ['mid', 'head'],
   ['sh', 'aFe'], ['aFe', 'aFw'], ['sh', 'aBe'], ['aBe', 'aBw'],
   ['hip', 'lFk'], ['lFk', 'lFa'], ['hip', 'lBk'], ['lBk', 'lBa'],
 ];
+
+/** Raideur relative par articulation : la tête, les mains et les pieds traînent plus (effet « pantin »). */
+const MULT: Record<string, number> = { mid: 1.5, sh: 1.4, neck: 1.2, head: 0.6, aFe: 0.8, aFw: 0.62, aBe: 0.8, aBw: 0.62, lFk: 0.95, lFa: 0.8, lBk: 0.95, lBa: 0.8 };
+/** Poids de l'impulsion d'un coup sur chaque articulation. */
+const IMP: Record<string, number> = { mid: 0.5, sh: 0.7, neck: 0.8, head: 1.1, aFe: 0.9, aFw: 1.3, aBe: 0.9, aBw: 1.3, lFk: 0.7, lFa: 1.0, lBk: 0.7, lBa: 1.0 };
 
 export function cloneRig(r: Rig): Rig {
   const c = { headR: r.headR } as Rig;
@@ -25,15 +32,15 @@ interface State { cur: Rig; prev: Rig }
 /** Raideur selon l'état : 1 = suit la pose, proche de 0 = mou. */
 export function stiffnessFor(state: string): number {
   switch (state) {
-    case 'launch': return 0.1;
-    case 'ko': return 0.07;
-    case 'down': return 0.09;
-    case 'hit': case 'stagger': return 0.34;
-    case 'block': case 'parry': return 0.6;
+    case 'launch': return 0.12;
+    case 'ko': return 0.1;
+    case 'down': return 0.12;
+    case 'hit': case 'stagger': return 0.3;
+    case 'block': case 'parry': return 0.55;
     case 'getup': return 0.4;
-    case 'attack': return 0.82;
+    case 'attack': return 0.62;
     case 'frozen': return 1;
-    default: return 0.9;
+    default: return 0.74; // debout : pantin souple, la tête et les bras suivent avec un léger retard
   }
 }
 
@@ -57,7 +64,8 @@ export class RagdollSystem {
         const vx = (c.x - p.x) * (0.9 + 0.08 * stiff), vy = (c.y - p.y) * (0.9 + 0.08 * stiff);
         p.x = c.x; p.y = c.y;
         c.x += vx; c.y += vy + 0.55 * loose * loose;
-        c.x += (t.x - c.x) * stiff; c.y += (t.y - c.y) * stiff;
+        const sk = Math.min(1, stiff * (MULT[k] ?? 1));
+        c.x += (t.x - c.x) * sk; c.y += (t.y - c.y) * sk;
       }
       // os : longueurs de la pose cible
       for (let pass = 0; pass < 3; pass++) {
@@ -79,6 +87,17 @@ export class RagdollSystem {
       cur.headR = target.headR;
     }
     return st.cur;
+  }
+
+  /** Impulsion d'un coup (style « party game ») : les membres partent dans la direction du choc. */
+  impulse(id: number, vx: number, vy: number): void {
+    const st = this.m.get(id);
+    if (!st) return;
+    for (const k of RIG_KEYS) {
+      const p = st.prev[k] as P;
+      const w = IMP[k] ?? 0.6;
+      p.x -= vx * w; p.y -= vy * w;
+    }
   }
 
   forget(alive: Set<number>): void {

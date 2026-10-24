@@ -839,7 +839,7 @@ function requestLandscape(): void {
 
 function updateRotateHint(): void {
   const portrait = window.innerHeight > window.innerWidth;
-  const need = state === 'game' && portrait && touch.root.style.display !== 'none';
+  const need = false && state === 'game' && portrait && touch.root.style.display !== 'none'; // le mode portrait est géré par le rendu
   if (need && !rotateHint) {
     rotateHint = document.createElement('div');
     rotateHint.className = 'rotate-hint';

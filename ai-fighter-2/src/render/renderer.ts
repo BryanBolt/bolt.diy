@@ -26,6 +26,7 @@ export class Renderer {
   private smooth = new Map<number, Pose>();
   private ragdolls = new RagdollSystem();
   private lastDt = 16.7;
+  private pcx = VIEW_W / 2;
   private fpsAcc = 0;
   private fpsCount = 0;
   fps = 60;
@@ -47,11 +48,14 @@ export class Renderer {
     this.canvas.height = Math.round(h * dpr);
     this.canvas.style.width = `${w}px`;
     this.canvas.style.height = `${h}px`;
-    this.scale = Math.min(w / VIEW_W, h / VIEW_H) * dpr;
+    const portrait = h > w * 1.05;
+    // paysage : on ajuste à la hauteur (le décor s'étend sur les côtés) ; portrait : on zoome (≈500 px de large visibles)
+    this.scale = (portrait ? w / 500 : Math.min(w / VIEW_W, h / VIEW_H)) * dpr;
     view.w = this.canvas.width / this.scale;
     view.h = this.canvas.height / this.scale;
     this.exX = (view.w - VIEW_W) / 2;
-    this.exY = (view.h - VIEW_H) / 2;
+    // portrait : l'action se place vers 42 % de la hauteur, les commandes tactiles occupent le bas
+    this.exY = portrait ? view.h * 0.42 - VIEW_H / 2 : (view.h - VIEW_H) / 2;
     this.offX = this.exX * this.scale;
     this.offY = this.exY * this.scale;
   }
@@ -76,6 +80,17 @@ export class Renderer {
     const targetZoom = w.slowmo > 0 ? 1.08 : fx.superFocus > 0.5 ? 1.05 : 1;
     this.cam.zoom += (targetZoom + fx.punch - this.cam.zoom) * 0.22;
     this.cam.x = w.camX;
+    if (view.w < 900) {
+      // portrait : la zone visible est plus étroite que celle de la simulation, la caméra suit donc les joueurs de plus près
+      const ps = (w.mode === 'duel' ? w.fighters : w.fighters.filter((f) => f.team === 0)).filter((f) => f.state !== 'ko');
+      if (ps.length) {
+        const mean = ps.reduce((a, f) => a + f.x, 0) / ps.length;
+        const lo = view.w / 2, hi = Math.max(lo, (w.locked ? w.arenaR : (w.stage?.width ?? VIEW_W)) - view.w / 2);
+        const target = Math.max(lo, Math.min(hi, mean));
+        this.pcx += (target - this.pcx) * 0.14;
+      }
+      this.cam.x = this.pcx - VIEW_W / 2;
+    } else this.pcx = w.camX + VIEW_W / 2;
     this.cam.shakeX = fx.shakeX;
     this.cam.shakeY = fx.shakeY;
     if (w.slowmo > 0 || fx.superFocus > 0.5) {
@@ -99,7 +114,7 @@ export class Renderer {
 
     const theme = w.stage?.theme ?? 'dojo';
     fx.theme = theme;
-    setStageExtent(view.w, this.exY, this.exY);
+    setStageExtent(view.w, this.exY, view.h - VIEW_H - this.exY);
     ctx.save();
     ctx.translate(-this.exX, 0);
     drawStage(ctx, theme, this.cam.x + this.cam.shakeX - this.exX, w.stage?.width ?? VIEW_W, this.time, { l: w.arenaL, r: w.arenaR, locked: w.locked });
@@ -134,6 +149,12 @@ export class Renderer {
     fx.drawCracks(ctx, this.cam);
     for (const it of w.items) this.drawItemShadow(it);
 
+    // impulsions des coups : la cible part dans le sens du choc, l'attaquant est entraîné par son geste
+    for (const h of fx.hits) {
+      this.ragdolls.impulse(h.target, h.dir * (3 + h.power * 7), -(1.5 + h.power * 3));
+      this.ragdolls.impulse(h.attacker, h.dir * (1 + h.power * 2.5), 0);
+    }
+    fx.hits.length = 0;
     // images rémanentes
     this.ghostTick++;
     for (const f of w.fighters) {

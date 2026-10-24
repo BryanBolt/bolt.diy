@@ -64,7 +64,8 @@ export function drawHud(ctx: CanvasRenderingContext2D, w: World, fx: Fx, cam: Ca
   const n = Math.max(1, panelPlayers.length);
   const leftCount = duel ? Math.ceil(n / 2) : n;
   const rightCount = n - leftCount;
-  const sideW = duel ? view.w / 2 - 90 : view.w - 40;
+  const narrow = view.w < 760; // portrait
+  const sideW = duel ? view.w / 2 - (narrow ? 60 : 90) : view.w - 40 - (narrow ? 62 : 0);
   const pw = Math.min(230, sideW / Math.max(1, Math.max(leftCount, rightCount)) - 8);
   const panelX = (i: number): number => {
     if (!duel || i < leftCount) return 20 + i * (pw + 8);
@@ -72,7 +73,7 @@ export function drawHud(ctx: CanvasRenderingContext2D, w: World, fx: Fx, cam: Ca
     return view.w - 20 - (rightCount - k) * (pw + 8) + 8;
   };
   panelPlayers.forEach((f, i) => drawPlayerPanel(ctx, f, panelX(i), 14, pw, info, w, time));
-  const centerY = !duel && n > 2 ? 92 : 30;
+  const centerY = narrow ? 96 : !duel && n > 2 ? 92 : 30;
   // --- ennemis : petites barres au-dessus de la tête ---
   for (const f of w.fighters) {
     if (f.team === 0 || f.state === 'ko' || (duel)) continue;

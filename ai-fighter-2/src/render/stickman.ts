@@ -63,9 +63,9 @@ function resolve(p: AuthPose): Pose {
 const A = (lean: number, tilt: number, aF: [number, number], aB: [number, number], lF: [number, Knee], lB: [number, Knee], h = 50, extra: Partial<AuthPose> = {}): AuthPose => ({ lean, tilt, aF, aB, lF, lB, h, ...extra });
 
 const AUTH: Record<string, AuthPose> = {
-  idle: A(3, 0, [12, 25], [-6, 18], [6, 'g'], [-8, 'g'], 51),
-  guard: A(6, 0, [48, 108], [34, 118], [22, 'g'], [-22, 'g'], 44),
-  lowGuard: A(10, 0, [50, 100], [34, 110], [40, 'g'], [-36, 'g'], 34),
+  idle: A(0, 0, [12, 25], [-6, 18], [6, 'g'], [-8, 'g'], 51),
+  guard: A(3, 0, [48, 108], [34, 118], [22, 'g'], [-22, 'g'], 44),
+  lowGuard: A(6, 0, [50, 100], [34, 110], [40, 'g'], [-36, 'g'], 34),
   jump: A(6, 0, [70, 60], [-30, 35], [30, 80], [64, 100], 38, { air: true }),
   fall: A(-4, -8, [-40, 60], [-60, 70], [20, 30], [-10, 50], 40, { air: true }),
   hit: A(-20, -12, [-45, 22], [-22, 42], [-18, 'g'], [14, 'g'], 48),
@@ -121,12 +121,12 @@ const AUTH: Record<string, AuthPose> = {
 };
 
 Object.assign(AUTH, {
-  stance_karate: A(4, 0, [62, 62], [-12, 122], [34, 'g'], [-28, 'g'], 44),
-  stance_boxer: A(8, 0, [36, 112], [20, 132], [18, 'g'], [-22, 'g'], 46),
-  stance_ninja: A(14, 2, [50, 100], [30, 110], [38, 'g'], [-34, 'g'], 40),
-  stance_whip: A(2, 0, [20, 50], [-4, 40], [10, 'g'], [-10, 'g'], 51),
+  stance_karate: A(1, 0, [62, 62], [-12, 122], [34, 'g'], [-28, 'g'], 44),
+  stance_boxer: A(3, 0, [36, 112], [20, 132], [18, 'g'], [-22, 'g'], 46),
+  stance_ninja: A(6, 1, [50, 100], [30, 110], [38, 'g'], [-34, 'g'], 40),
+  stance_whip: A(0, 0, [20, 50], [-4, 40], [10, 'g'], [-10, 'g'], 51),
   stance_monk: A(0, 0, [70, 34], [-8, 110], [20, 'g'], [-20, 'g'], 47),
-  stance_agile: A(6, 0, [72, 34], [-20, 100], [14, 'g'], [-16, 'g'], 49),
+  stance_agile: A(2, 0, [72, 34], [-20, 100], [14, 'g'], [-16, 'g'], 49),
   wave0: A(-6, 0, [-30, 100], [-40, 95], [30, 'g'], [-34, 'g'], 40),
   wave1: A(14, 2, [90, 0], [92, 0], [36, 'g'], [-38, 'g'], 40),
   falcon0: A(-24, -6, [40, 60], [-120, 20], [24, 'g'], [-30, 'g'], 42),
@@ -178,7 +178,7 @@ function cycle(f: Fighter, time: number, run: boolean): Pose {
   const sw = Math.sin(w), cw = Math.cos(w);
   const amp = run ? 42 : 24, flex = run ? 105 : 45, armAmp = run ? 46 : 22;
   return resolve({
-    lean: run ? 20 : 5,
+    lean: run ? 14 : 2,
     tilt: run ? 4 : 0,
     aF: [-sw * armAmp, run ? 95 : 22],
     aB: [sw * armAmp, run ? 90 : 28],
@@ -338,14 +338,14 @@ export function computeRig(f: Fighter, pose: Pose, S: number, fx: number): Rig {
   const hipX = pose.hx * S * fx;
   const hipY = -pose.h * sk.legs * S;
   const standing = pose.h > 22;
-  const lean = (pose.lean + (standing ? 4 : 0)) * DEG;
+  const lean = pose.lean * DEG;
   const TL = L.torso * sk.torso * S;
-  const a1 = lean * 0.45 - (standing ? 0.04 : 0), a2 = lean * 1.3 + (standing ? 0.07 : 0); // dos arrondi, buste projeté en avant
+  const a1 = lean * 0.3 - (standing ? 0.05 : 0), a2 = lean * 1.0 + (standing ? 0.04 : 0); // légère courbure en S, dos droit au repos
   const midX = hipX + Math.sin(a1) * TL * 0.5 * fx, midY = hipY - Math.cos(a1) * TL * 0.5;
   const neckX = midX + Math.sin(a2) * TL * 0.5 * fx, neckY = midY - Math.cos(a2) * TL * 0.5;
   const shX = midX + Math.sin(a2) * TL * 0.4 * fx, shY = midY - Math.cos(a2) * TL * 0.4;
   const headR = sk.headR * 1.12 * S;
-  const headAng = a2 + (pose.tilt + (standing ? 9 : 0)) * DEG; // tête légèrement en avant
+  const headAng = a2 + (pose.tilt + (standing ? 2 : 0)) * DEG;
   const headX = neckX + Math.sin(headAng) * (headR + 2 * S) * fx;
   const headY = neckY - Math.cos(headAng) * (headR + 2 * S);
   const joint = (ox: number, oy: number, a1d: number, l1: number, a2d: number, l2: number): [P, P] => {

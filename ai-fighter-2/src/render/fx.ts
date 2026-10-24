@@ -40,6 +40,7 @@ export class Fx {
   superFocus = 0; // assombrissement pendant un super
   superOwner = -1;
   cracks: { x: number; z: number; life: number; seed: number; size: number }[] = [];
+  hits: { target: number; attacker: number; dir: number; power: number }[] = []; // impulsions physiques à appliquer au rendu
   punch = 0; // à-coup de zoom sur les gros impacts
   impacts: { x: number; y: number; z: number; life: number; ang: number; color: string; size: number }[] = [];
   reduce = false;
@@ -69,6 +70,7 @@ export class Fx {
             if (e.power > 0.8) this.punch = Math.max(this.punch, 0.035 + e.power * 0.02);
             if (e.power > 1.05 && e.y < 40) this.cracks.push({ x: e.x, z: e.z, life: 150, seed: Math.floor(e.x * 7 + e.z), size: 30 + e.power * 26 });
           }
+          this.hits.push({ target: e.target, attacker: e.attacker, dir: e.dir, power: e.blocked ? 0.25 : e.power });
           const a = world.fighters.find((f) => f.id === e.attacker);
           if (a && !e.blocked && a.comboHits >= 2) this.comboPops.set(a.id, { hits: a.comboHits, life: 60 });
           break;
