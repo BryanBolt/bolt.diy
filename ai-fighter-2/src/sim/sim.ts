@@ -1091,7 +1091,7 @@ function stepFighter(w: World, f: Fighter, inp: number, acting: boolean): void {
       if (pressed & (IN.LIGHT | IN.HEAVY | IN.JUMP | IN.GUARD | IN.LEFT | IN.RIGHT | IN.UP | IN.DOWN)) f.holdFrames += f.controller === 'player' ? 9 : 5;
       else if (f.controller === 'ai' && rand(w) < 0.05) f.holdFrames += 9;
       f.holdFrames = Math.max(0, f.holdFrames - 0.3);
-      if (f.holdFrames >= (a.holdMode >= 2 ? 95 : 70)) {
+      if (f.holdFrames >= (a.holdMode >= 2 ? 95 : 70) + (getChar(a.charId).passive === 'titan' ? 30 : 0)) {
         w.events.push({ t: 'text', x: f.x, y: 135, z: f.z, text: 'ÉCHAPPÉ !', color: '#7cff9a' });
         w.events.push({ t: 'sound', id: 'parry', x: f.x });
         releaseHold(w, a, -a.facing * 5);
@@ -1457,6 +1457,7 @@ function releaseHold(w: World, a: Fighter, push = 0): void {
 /** Fin de prise par une projection : le tenu part en l'air (ragdoll). */
 function throwHeld(w: World, a: Fighter, v: Fighter, vx: number, vy: number, dmg: number): void {
   const wasMount = (a.holdMode & 1) === 1;
+  if (getChar(a.charId).passive === 'titan') dmg = Math.round(dmg * 1.5);
   releaseHold(w, a);
   damageRaw(w, v, Math.max(1, Math.round(dmg * a.stats.power / v.stats.defense)), a.id);
   w.events.push({ t: 'hit', x: v.x, y: v.y + 60, z: v.z, power: 1.2, blocked: false, crit: false, dir: sign(vx) || a.facing, attacker: a.id, target: v.id });
@@ -1841,6 +1842,11 @@ function resolveHit(w: World, a: Fighter, t: Fighter, m0: MoveDef, proj?: Projec
   const guardOk = (t.state === 'guard' || t.state === 'block') && facingToward(t, srcX) && !m.unblockable && !(m.low && !t.lowGuard) && !(m.overhead && t.lowGuard);
   let dmg = computeDamage(w, a, t, m, proj);
   if (homerun) dmg = Math.round(dmg * 1.4);
+  // capacités passives des héros
+  const pa = getChar(a.charId).passive, pt = getChar(t.charId).passive;
+  if (pa === 'whiplash' && Math.abs(t.x - a.x) > 78) { dmg = Math.round(dmg * 1.3); }
+  if (pa === 'ambush' && !proj && t.facing === a.facing) { dmg = Math.round(dmg * 1.5); w.events.push({ t: 'text', x: t.x, y: t.y + 150, z: t.z, text: 'DANS LE DOS !', color: '#b07cff' }); }
+  if (pt === 'bulwark' && t.state === 'attack') dmg = Math.max(1, Math.round(dmg * 0.75));
   if (proj?.wk === 'pistol' && rand(w) < 0.25) { dmg *= 2; w.events.push({ t: 'text', x: t.x, y: t.y + 150, z: t.z, text: 'TIR À LA TÊTE !', color: '#ff5f5f' }); }
   const crit = !proj && hasBonus(a, 'crit') && rand(w) < 0.15;
   if (crit) dmg = Math.round(dmg * 1.6);
@@ -1904,8 +1910,30 @@ function resolveHit(w: World, a: Fighter, t: Fighter, m0: MoveDef, proj?: Projec
     else if (el === 'poison') t.status.poison = Math.max(t.status.poison, 120);
     else if (el === 'shock') m = { ...m, hitstun: m.hitstun + 10 };
   }
+  // effets passifs après l'impact
+  switch (pa) {
+    case 'focus': a.ki = Math.min(C.KI_MAX, a.ki + 4); break;
+    case 'overload': a.ki = Math.min(C.KI_MAX, a.ki + 2); break;
+    case 'ember': t.status.burn = Math.max(t.status.burn, 70); t.status.burnDps = Math.max(t.status.burnDps, 1); break;
+    case 'chill': t.status.slow = Math.max(t.status.slow, 70); break;
+    case 'ambush': if (t.facing === a.facing) t.status.poison = Math.max(t.status.poison, 100); break;
+    default: break;
+  }
   // combo
   a.comboHits++;
+  if (pa === 'astral' && !proj && a.comboHits % 3 === 0) {
+    w.projectiles.push({ id: w.nextId++, kind: 'orb', x: a.x + a.facing * 30, y: a.y + 70, z: a.z, vx: a.facing * 7, vy: 0, owner: a.id, team: a.team, damage: Math.max(1, Math.round(7 * a.stats.power)), life: 50, radius: 12, pierce: false, hits: [t.id], gravity: 0, homing: 0.3 });
+    w.events.push({ t: 'text', x: a.x, y: a.y + 140, z: a.z, text: 'ÉTOILE', color: '#7da8ff' });
+  }
+  if (pa === 'overload' && !proj && a.comboHits % 5 === 0) {
+    const other = w.fighters.find((o) => o !== t && o.team !== a.team && alive(o) && Math.abs(o.x - t.x) < 170 && Math.abs(o.z - t.z) < 70);
+    if (other) {
+      damageRaw(w, other, Math.max(1, Math.round(9 * a.stats.power)), a.id);
+      w.events.push({ t: 'hit', x: other.x, y: other.y + 70, z: other.z, power: 0.8, blocked: false, crit: false, dir, attacker: a.id, target: other.id });
+      w.events.push({ t: 'text', x: other.x, y: other.y + 130, z: other.z, text: 'ARC !', color: '#ffe14d' });
+      if (other.hp <= 0) knockOut(w, other, a, dir, null);
+    }
+  }
   a.comboTimer = C.COMBO_RESET;
   a.comboDamage += dmg;
   // hit-stop

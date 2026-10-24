@@ -145,6 +145,10 @@ export interface CharDef {
   unlock?: { kind: 'stage' | 'wins' | 'start'; value: number };
   playable: boolean;
   skeleton?: Partial<SkeletonStyle>;
+  /** capacité passive propre au héros (voir sim.ts : resolveHit) */
+  passive?: string;
+  /** libellé court de la passive (écran d'aide) */
+  passiveText?: string;
 }
 
 export interface SkeletonStyle {

@@ -394,6 +394,56 @@ const PERSONAL: Record<string, { cmds: Record<string, MoveDef>; sigs: string[] }
     c_superfire: shot('c_superfire', 'Supernova', 'super', 16, 30, 0, { kind: 'orb', speed: 6, life: 110, damage: 28, radius: 60, y: 60, pierce: true }, { superCost: 50, invuln: true, kiCost: undefined }),
   } },
 };
+// ---------------------------------------------------------------------------
+// Style de jeu propre à chaque héros : passive, longueur et nature de l'enchaînement léger, finisseurs P/K + E.
+// ---------------------------------------------------------------------------
+const STYLE: Record<string, { passive: string; text: string; chain?: string[]; fin: Partial<MoveDef> & { dmg?: number; spd?: number } }> = {
+  kai: { passive: 'focus', text: 'Concentration : chaque coup qui touche recharge 2× plus de ki.', fin: { dmg: 1.05 } },
+  tora: { passive: 'bulwark', text: 'Rempart : encaisse 25 % de dégâts en moins en attaquant. Enchaînement court (2 coups) mais lourd.', chain: ['l1', 'l2'], fin: { dmg: 1.35, spd: 1.25, armor: true } },
+  zed: { passive: 'flow', text: 'Flux : enchaînement de 4 coups ultra-rapides, finisseurs rapides.', chain: ['l1', 'l2', 'l3', 'l4'], fin: { dmg: 0.9, spd: 0.75, poisonTarget: 90 } },
+  vex: { passive: 'whiplash', text: 'Pointe du fouet : +30 % de dégâts à longue portée. Enchaînement de 4 avec un fouet final qui fait tomber.', chain: ['l1', 'l2', 'l3', 'l4'], fin: { dmg: 1, slowTarget: 80 } },
+  orion: { passive: 'astral', text: 'Astral : tous les 3 coups d\'un combo, une étoile guidée part toute seule.', fin: { dmg: 1 } },
+  blaze: { passive: 'ember', text: 'Braise : tous ses coups enflamment.', fin: { dmg: 1, burnTarget: 110 } },
+  frost: { passive: 'chill', text: 'Givre : tous ses coups ralentissent.', fin: { dmg: 1, slowTarget: 140 } },
+  shade: { passive: 'ambush', text: 'Embuscade : ×1,5 dans le dos et empoisonne. Enchaînement de 4 coups.', chain: ['l1', 'l2', 'l3', 'l4'], fin: { dmg: 1.05, poisonTarget: 140 } },
+  gorr: { passive: 'titan', text: 'Titan : projections ×1,5, très dur à faire lâcher prise. Enchaînement de 2 coups massifs.', chain: ['l1', 'l2'], fin: { dmg: 1.4, spd: 1.3, armor: true, knockdown: true } },
+  nova: { passive: 'overload', text: 'Surcharge : ki ×1,5 et, tous les 5 coups, un arc électrique frappe un autre ennemi. Enchaînement de 4 coups.', chain: ['l1', 'l2', 'l3', 'l4'], fin: { dmg: 1, stunTarget: 12 } },
+};
+const L4: Record<string, Partial<MoveDef> & { name: string; anim: string }> = {
+  zed: { name: 'Salto-croc', anim: 'kick', startup: 6, active: 4, recovery: 12, damage: 9, kbx: 6, knockdown: true },
+  vex: { name: 'Fouet final', anim: 'cross', startup: 8, active: 5, recovery: 16, damage: 11, kbx: 7, knockdown: true, hit: { x: 56, w: 120, y0: 20, y1: 100, z: 36 } },
+  shade: { name: 'Faux de la nuit', anim: 'uppercut', startup: 7, active: 4, recovery: 15, damage: 12, kby: 8, launch: true },
+  nova: { name: 'Éclair final', anim: 'cross', startup: 7, active: 4, recovery: 14, damage: 10, kbx: 6, knockdown: true, stunTarget: 14 },
+};
+for (const ch of ROSTER) {
+  const st = STYLE[ch.id];
+  if (!st) continue;
+  ch.passive = st.passive;
+  ch.passiveText = st.text;
+  if (L4[ch.id]) {
+    const l4 = L4[ch.id];
+    ch.moves.l4 = mv('light', { id: 'l4', ...l4 });
+    ch.moves.l3.next = [...(ch.moves.l3.next ?? []), 'l4'];
+    ch.moves.l4.next = ['heavy', 'launcher', 'special', 'special2', 'super'];
+    ch.moves.l4.cancelFrom = 11;
+  }
+  if (st.chain) ch.lightChain = st.chain;
+  if (st.chain && st.chain.length === 2) {
+    // enchaînement court : le 2ᵉ coup est un vrai coup lourd
+    ch.moves.l2.damage += 5; ch.moves.l2.startup += 2; ch.moves.l2.recovery += 4; ch.moves.l2.kbx += 3; ch.moves.l2.hitstop += 2;
+    ch.moves.l2.next = ['heavy', 'launcher', 'special', 'special2', 'super'];
+  }
+  // finisseurs : mêmes saisies, effet et rythme selon le héros
+  const { dmg = 1, spd = 1, ...rest } = st.fin;
+  for (const id of Object.keys(ch.moves)) {
+    if (!id.startsWith('c_cmb_')) continue;
+    const m = ch.moves[id];
+    m.damage = Math.max(1, Math.round(m.damage * dmg));
+    if (m.projectile) m.projectile = { ...m.projectile, damage: Math.max(1, Math.round(m.projectile.damage * dmg)) };
+    m.startup = Math.max(3, Math.round(m.startup * spd)); m.recovery = Math.max(8, Math.round(m.recovery * spd));
+    Object.assign(m, rest);
+  }
+}
 const CULTE = ['c_wave', 'c_rocket', 'c_falcon', 'c_meteor', 'c_purple', 'c_omni', 'c_serious', 'c_step', 'c_rasen', 'c_rider'];
 const REDUNDANT = ['c_hundred', 'c_sonic', 'c_flash', 'c_onein', 'c_ewgf', 'c_hop'];
 for (const ch of ROSTER) {

@@ -189,6 +189,7 @@ export function howToHtml(charId: string): string {
       <h3>Liste des coups</h3>
       <div class="tabs">${tabs}</div>
       <p class="small muted" style="margin:0 0 6px">${esc(c.title)} — ${esc(c.desc)}</p>
+      ${c.passiveText ? `<p class="small" style="margin:0 0 6px;color:var(--accent)">✦ ${esc(c.passiveText)}</p>` : ''}
       <table class="moves">
         <tr><th>Commande</th><th>Coup</th><th></th></tr>
         ${row('Attaque', 'l1')}${row('Attaque, Attaque', 'l2')}${row('Attaque ×3', 'l3')}

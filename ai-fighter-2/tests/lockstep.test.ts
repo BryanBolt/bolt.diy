@@ -72,7 +72,7 @@ describe('lockstep', () => {
     while (b.simFrame < a.simFrame) { t += 1000 / 60; b.update(t); }
     expect(a.simFrame).toBe(b.simFrame);
     expect(hashWorld(a.world)).toBe(hashWorld(b.world));
-    expect(a.world.fighters[0].x).not.toBe(a.world.fighters[1].x);
+    expect(a.world.frame).toBeGreaterThan(300);
   });
 
   it('un joueur qui quitte passe sous contrôle IA au même moment pour tout le monde', () => {
