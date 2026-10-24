@@ -258,7 +258,7 @@ export interface Fighter {
   backHold: number; // frames passées à maintenir « arrière » (pas arrière sans se retourner)
 }
 
-export type WeaponKind = 'bat' | 'nunchaku' | 'ak' | 'pistol';
+export type WeaponKind = 'bat' | 'nunchaku' | 'ak' | 'pistol' | 'katana' | 'sword' | 'spear' | 'axe' | 'hammer' | 'laser' | 'shotgun';
 
 export interface Projectile {
   id: number;
@@ -279,6 +279,7 @@ export interface Projectile {
   homing: number;
   bonus?: BonusId[];
   wk?: WeaponKind;
+  uses?: number; // durabilité / munitions restantes de l'arme lancée
 }
 
 export interface Item {
@@ -289,6 +290,8 @@ export interface Item {
   y: number;
   z: number;
   vy: number;
+  vx?: number;
+  uses?: number; // durabilité / munitions restantes (arme ramassée)
   life: number;
   hp?: number;
 }
@@ -369,11 +372,20 @@ export const SHOP_ITEMS: { id: string; name: string; desc: string; cost: number;
   { id: 'ak', name: 'Kalachnikov', desc: 'Fusil d\'assaut : Attaque tire en rafale (30 balles)', cost: 45, icon: '🔫' },
 ];
 
-export const WEAPONS: Record<WeaponKind, { name: string; uses: number; icon: string; gun: boolean }> = {
-  bat: { name: 'Batte', uses: 10, icon: '🏏', gun: false },
-  nunchaku: { name: 'Nunchaku', uses: 14, icon: '🥢', gun: false },
-  ak: { name: 'Kalachnikov', uses: 30, icon: '🔫', gun: true },
-  pistol: { name: 'Pistolet', uses: 12, icon: '🔫', gun: true },
+/** gun : arme à feu ; reach/dmg : bonus d'allonge et multiplicateur de dégâts des coups au corps à corps ; throwable : Lourd = lancer ; knock : fait tomber ; burn : brûle. */
+export interface WeaponDef { name: string; uses: number; icon: string; gun: boolean; reach: number; dmg: number; throwable: boolean; knock?: boolean; burn?: number }
+export const WEAPONS: Record<WeaponKind, WeaponDef> = {
+  bat: { name: 'Batte', uses: 10, icon: '🏏', gun: false, reach: 34, dmg: 1.45, throwable: true },
+  nunchaku: { name: 'Nunchaku', uses: 14, icon: '🥢', gun: false, reach: 44, dmg: 1.3, throwable: true },
+  katana: { name: 'Katana', uses: 18, icon: '🗡️', gun: false, reach: 52, dmg: 1.6, throwable: false },
+  sword: { name: 'Épée', uses: 16, icon: '⚔️', gun: false, reach: 46, dmg: 1.9, throwable: false },
+  spear: { name: 'Lance', uses: 14, icon: '🔱', gun: false, reach: 78, dmg: 1.5, throwable: true },
+  axe: { name: 'Hache', uses: 12, icon: '🪓', gun: false, reach: 40, dmg: 2.2, throwable: true, knock: true },
+  hammer: { name: 'Marteau', uses: 10, icon: '🔨', gun: false, reach: 38, dmg: 2.5, throwable: true, knock: true },
+  laser: { name: 'Sabre laser', uses: 20, icon: '✨', gun: false, reach: 56, dmg: 1.8, throwable: false, burn: 80 },
+  ak: { name: 'Kalachnikov', uses: 30, icon: '🔫', gun: true, reach: 0, dmg: 1, throwable: true },
+  pistol: { name: 'Pistolet', uses: 12, icon: '🔫', gun: true, reach: 0, dmg: 1, throwable: true },
+  shotgun: { name: 'Fusil à pompe', uses: 8, icon: '💥', gun: true, reach: 0, dmg: 1, throwable: true },
 };
 
 export interface BonusChoice {
@@ -406,6 +418,7 @@ export interface World {
   nextId: number;
   phase: Phase;
   phaseTimer: number;
+  phaseFrame: number; // frame d'entrée dans la phase (verrou anti-appui involontaire dans les menus)
   paused: boolean;
   pausedBy: number;
   stageIndex: number;

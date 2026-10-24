@@ -112,7 +112,7 @@ export function lobbyHtml(v: LobbyView): string {
     const pal = PALETTE[c.color % PALETTE.length];
     return `<div class="pcard ${c.ready ? 'ready' : ''}" data-slot="${s}" style="--pc:${pal.main}">
       <div class="tag" style="color:${pal.main}">P${s + 1} · ${esc(c.name)}</div>
-      ${c.isHost ? '<div class="host">★ hôte</div>' : ''}
+      ${c.isHost ? '<div class="host">★ hôte</div>' : v.online && v.isHost && !c.local ? `<button class="btn sm danger" style="position:absolute;top:4px;right:6px;min-height:26px;padding:2px 8px" data-action="kick" data-slot="${s}" title="Expulser ce joueur">✖ Expulser</button>` : ''}
       <div class="portrait"><canvas data-portrait data-char="${ch.id}" data-color="${c.color}" data-locked="${locked ? 1 : 0}"></canvas></div>
       <div class="cname">${esc(ch.name)}</div>
       <div class="ctitle">${esc(ch.title)}</div>
@@ -314,11 +314,12 @@ export function onlineHtml(s: Settings, prefillCode: string, serverUrl: string):
   <div class="row" style="margin-top:14px"><button class="btn ghost" data-action="back">← Retour</button></div>`;
 }
 
-export function pauseHtml(canQuit: boolean, isHost: boolean, online: boolean): string {
+export function pauseHtml(canQuit: boolean, isHost: boolean, online: boolean, others: { slot: number; name: string }[] = []): string {
   return `<h2>Pause</h2>
   <div class="col">
     <button class="btn primary" data-action="resume">▶ Reprendre</button>
     ${online ? '<button class="btn" data-action="invite">🔗 Inviter des amis (partager le lien)</button>' : ''}
+    ${online && isHost && others.length ? `<h3>Joueurs</h3>${others.map((o) => `<div class="row between"><span>P${o.slot + 1} · ${esc(o.name)}</span><button class="btn sm danger" data-action="kick" data-slot="${o.slot}">✖ Expulser</button></div>`).join('')}` : ''}
     <button class="btn" data-action="controls">📖 Commandes</button>
     ${canQuit ? `<button class="btn danger" data-action="quit">${online ? (isHost ? '✖ Terminer la partie pour tout le monde' : '✖ Quitter la partie') : '✖ Quitter la partie'}</button>` : ''}
   </div>`;

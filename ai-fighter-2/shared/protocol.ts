@@ -3,7 +3,7 @@
 // entrées de chaque joueur. Toute la simulation tourne côté client en
 // lockstep déterministe.
 
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 6;
 /** Délai (en frames) entre le retour d'un joueur et sa reprise des commandes : laisse le temps à tous les clients de l'apprendre. */
 export const REJOIN_MARGIN = 120;
 export const MAX_PLAYERS = 4;
@@ -59,6 +59,7 @@ export type ClientMsg =
   | { t: 'join'; code: string; name: string; charId: string; color: number }
   | { t: 'rejoin'; code: string; token: string } // retour dans une partie en cours après une coupure
   | { t: 'leave' }
+  | { t: 'kick'; slot: number } // l'hôte expulse un joueur
   | { t: 'rtc'; to: number; data: string } // signalisation du chat vocal (relayée telle quelle au joueur `to`)
   | { t: 'resync' } // demande à reconstruire la partie depuis le journal du serveur (après une désynchronisation)
   | { t: 'lobby'; charId?: string; color?: number; ready?: boolean; name?: string }
@@ -89,7 +90,8 @@ export type ServerMsg =
   | { t: 'lobby'; state: LobbyState }
   | { t: 'start'; seed: number; options: LobbyOptions; players: LobbyPlayer[]; delay: number }
   | { t: 'input'; slot: number; f: number; bits: number[] }
-  | { t: 'drop'; slot: number; from: number } // le joueur a quitté : une IA le remplace à partir de la frame `from`
+  | { t: 'drop'; slot: number; from: number; afk?: boolean } // le joueur a quitté (ou est inactif : afk) : une IA le remplace à partir de la frame `from`
+  | { t: 'kicked' } // tu as été expulsé du salon par l'hôte
   | { t: 'rejoin'; slot: number; from: number; join?: { name: string; charId: string; color: number } } // le joueur est revenu (ou nouveau joueur : `join`) : il prend la main à la frame `from`
   | { t: 'resume'; seed: number; options: LobbyOptions; players: LobbyPlayer[]; delay: number; slot: number; from: number; log: { slot: number; rle: number[] }[]; events: CtlEvent[] }
   | { t: 'desync'; f: number }

@@ -341,7 +341,7 @@ function drawBonusChoice(ctx: CanvasRenderingContext2D, w: World, info: HudInfo,
   ctx.fillText('CHOISIS UN BONUS', view.w / 2, 90);
   ctx.font = `13px ${FONT}`;
   ctx.fillStyle = '#ccc';
-  ctx.fillText(`← → choisir · Attaque valider · Lourd relancer (25 🪙, tu as ${w.coins})  ·  ${Math.ceil(w.phaseTimer / FPS)} s`, view.w / 2, 112);
+  ctx.fillText(w.frame - w.phaseFrame < 50 ? 'Patiente un instant…' : `← → choisir · Attaque valider · Lourd relancer (25 🪙, tu as ${w.coins})  ·  ${Math.ceil(w.phaseTimer / FPS)} s`, view.w / 2, 112);
   const rows = w.bonusChoices;
   const rowH = Math.min(120, 380 / Math.max(1, rows.length));
   rows.forEach((bc, ri) => {
@@ -409,7 +409,7 @@ function drawShop(ctx: CanvasRenderingContext2D, w: World, info: HudInfo, time: 
   ctx.fillText('ÉCHOPPE DE NOUILLES', view.w / 2, 70);
   ctx.font = `13px ${FONT}`;
   ctx.fillStyle = '#ccc';
-  ctx.fillText(`${w.coins} 🪙 en commun  ·  ← → choisir · Attaque acheter · Garde/Saut terminer  ·  ${Math.ceil(w.phaseTimer / FPS)} s`, view.w / 2, 92);
+  ctx.fillText(w.frame - w.phaseFrame < 50 ? 'Patiente un instant…' : `${w.coins} 🪙 en commun  ·  ← → choisir · Attaque acheter · Garde (Y) pour terminer  ·  ${Math.ceil(w.phaseTimer / FPS)} s`, view.w / 2, 92);
   const rows = w.shopChoices;
   const rowH = Math.min(110, 400 / Math.max(1, rows.length));
   const cw = Math.min(170, (view.w - 100) / SHOP_ITEMS.length - 8);

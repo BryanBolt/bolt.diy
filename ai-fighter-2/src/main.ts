@@ -612,7 +612,22 @@ function bindNet(n: NetClient): void {
     n.send({ t: 'resync' });
     setTimeout(() => { if (resyncing && session) { resyncing = false; session.frozen = false; } showReco(null); }, 8000);
   });
-  n.on('drop', (m) => { if (m.t === 'drop') S.toast(`${names.get(m.slot) ?? 'Un joueur'} a perdu la connexion : une IA le remplace, il pourra revenir.`, 4500); });
+  n.on('drop', (m) => {
+    if (m.t !== 'drop') return;
+    if (m.afk) {
+      if (m.slot === mySlot) S.toast('Tu étais inactif : une IA joue à ta place. Appuie sur une touche pour reprendre.', 7000);
+      else S.toast(`${names.get(m.slot) ?? 'Un joueur'} est inactif : une IA joue à sa place jusqu'à son retour.`, 5000);
+    } else S.toast(`${names.get(m.slot) ?? 'Un joueur'} a perdu la connexion : une IA le remplace, il pourra revenir.`, 4500);
+  });
+  n.on('kicked', () => {
+    saveOnlineResume(null);
+    S.toast("L'hôte t'a expulsé du salon.", 6000);
+    gameOnline = false;
+    endSession();
+    net?.close(); net = null;
+    history.replaceState(null, '', location.pathname);
+    goMenu();
+  });
   n.on('rejoin', (m) => {
     if (m.t !== 'rejoin') return;
     if (m.join) { names.set(m.slot, m.join.name); S.toast(`${m.join.name} rejoint la partie ! La difficulté s'adapte.`, 4500); }
@@ -678,6 +693,7 @@ function renderOnlineLobby(): void {
     const slot = Number(d.slot);
     const mine = slot === mySlot && me;
     if (a === 'back') { saveOnlineResume(null); net?.send({ t: 'leave' }); net?.close(); net = null; history.replaceState(null, '', location.pathname); goMenu(); }
+    else if (a === 'kick') { net?.send({ t: 'kick', slot }); }
     else if (a === 'prev-char' && mine) net?.send({ t: 'lobby', charId: cycleId(me.charId, -1), ready: false });
     else if (a === 'next-char' && mine) net?.send({ t: 'lobby', charId: cycleId(me.charId, 1), ready: false });
     else if (a === 'color' && mine) net?.send({ t: 'lobby', color: Number(d.color) });
@@ -796,12 +812,14 @@ function quitToLobby(): void {
 function showPauseMenu(): void {
   if (!session) return;
   const me = lobby?.players.find((p) => p.slot === mySlot);
-  const el = S.show(S.pauseHtml(true, !!me?.isHost, gameOnline), 'compact');
+  const others = me?.isHost ? (lobby?.players ?? []).filter((p) => p.slot !== mySlot).map((p) => ({ slot: p.slot, name: p.name })) : [];
+  const el = S.show(S.pauseHtml(true, !!me?.isHost, gameOnline, others), 'compact');
   pauseShown = true;
   el.addEventListener('click', (e) => {
     const a = actionOf(e);
     if (a === 'resume') { session?.queue(session.localSlots[0], IN.PAUSE); }
     else if (a === 'invite') void invite();
+    else if (a === 'kick') { net?.send({ t: 'kick', slot: Number(dataOf(e).slot) }); S.toast('Joueur expulsé.'); showPauseMenu(); }
     else if (a === 'controls') { goHowTo(lastStartConfig?.config.players.find((p) => p.slot === session?.localSlots[0])?.charId ?? 'kai'); }
     else if (a === 'quit') { S.hide(); pauseShown = false; quitToLobby(); }
   });

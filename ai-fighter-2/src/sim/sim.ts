@@ -33,6 +33,7 @@ export function createWorld(config: SimConfig, seed: number): World {
     nextId: 1,
     phase: 'intro',
     phaseTimer: 0,
+    phaseFrame: 0,
     paused: false,
     pausedBy: -1,
     stageIndex: config.stageIndex,
@@ -202,6 +203,7 @@ function makeEnemy(w: World, kind: EnemyKind, level: number, charId?: string, na
 function setPhase(w: World, phase: Phase, timer: number): void {
   w.phase = phase;
   w.phaseTimer = timer;
+  w.phaseFrame = w.frame;
   w.events.push({ t: 'phase', phase });
 }
 
@@ -328,7 +330,7 @@ function startBonusPhase(w: World): void {
     commitRng(w, r);
     w.bonusChoices.push({ slot: f.slot, options, cursor: 0, chosen: f.controller === 'ai' ? 0 : -1 });
   }
-  setPhase(w, 'bonus', 12 * C.FPS);
+  setPhase(w, 'bonus', 40 * C.FPS);
 }
 
 function finishBonusPhase(w: World): void {
@@ -358,9 +360,12 @@ export function applyBonus(w: World, f: Fighter, b: BonusId): void {
 
 /** Arme tirée au hasard ; les armes à feu arrivent au fil de la campagne. */
 function randomWeapon(w: World): WeaponKind {
-  const pool: WeaponKind[] = ['bat', 'bat', 'nunchaku'];
-  if (w.stageIndex >= 1 || w.mode !== 'campaign') pool.push('pistol');
-  if (w.stageIndex >= 2 || w.mode !== 'campaign') pool.push('ak');
+  const camp = w.mode === 'campaign';
+  const st = w.stageIndex;
+  const pool: WeaponKind[] = ['bat', 'bat', 'nunchaku', 'sword', 'spear'];
+  if (st >= 1 || !camp) pool.push('pistol', 'katana', 'axe');
+  if (st >= 2 || !camp) pool.push('ak', 'shotgun', 'hammer');
+  if (st >= 3 || !camp) pool.push('laser');
   return pool[randInt(w, 0, pool.length - 1)];
 }
 
@@ -368,9 +373,9 @@ function makeWeaponItem(w: World, wk: WeaponKind, x: number, y = 0): Item {
   return { id: w.nextId++, kind: 'weapon', wk, x: q(x), y, z: randInt(w, 60, 230), vy: y > 0 ? 3 : 0, life: 1500 };
 }
 
-function giveWeapon(w: World, f: Fighter, wk: WeaponKind): void {
+function giveWeapon(w: World, f: Fighter, wk: WeaponKind, uses?: number): void {
   f.weaponKind = wk;
-  f.weapon = WEAPONS[wk].uses;
+  f.weapon = Math.max(1, Math.min(WEAPONS[wk].uses, uses ?? WEAPONS[wk].uses));
   f.gunCd = 0;
   w.events.push({ t: 'text', x: f.x, y: f.y + 130, z: f.z, text: WEAPONS[wk].name.toUpperCase() + ' !', color: '#ffd166' });
   w.events.push({ t: 'sound', id: 'weapon', x: f.x });
@@ -379,7 +384,7 @@ function giveWeapon(w: World, f: Fighter, wk: WeaponKind): void {
 function startShop(w: World): void {
   w.shopChoices = [];
   for (const f of players(w)) w.shopChoices.push({ slot: f.slot, cursor: 0, done: f.controller === 'ai', bought: [] });
-  setPhase(w, 'shop', 20 * C.FPS);
+  setPhase(w, 'shop', 75 * C.FPS);
   w.events.push({ t: 'sound', id: 'shop' });
 }
 
@@ -674,6 +679,8 @@ export function step(w: World, inputs: number[]): void {
   }
 }
 
+const MENU_LOCK = 50;
+
 function stepPhase(w: World, inputs: number[]): void {
   if (w.phaseTimer > 0) w.phaseTimer--;
   switch (w.phase) {
@@ -701,7 +708,7 @@ function stepPhase(w: World, inputs: number[]): void {
       if (w.phaseTimer === 0) {
         const last = w.mode !== 'survival' && w.stage && w.waveIndex >= w.stage.waves.length;
         if (last) {
-          setPhase(w, 'stageClear', 220);
+          setPhase(w, 'stageClear', 300);
           w.events.push({ t: 'sound', id: 'stageclear' });
         } else if (w.waveIndex % 1 === 0) startBonusPhase(w);
       }
@@ -713,10 +720,11 @@ function stepPhase(w: World, inputs: number[]): void {
         const f = w.fighters.find((x) => x.slot === bc.slot && x.team === 0);
         if (!f) { bc.chosen = 0; continue; }
         const inp = inputs[bc.slot] ?? 0;
-        const pressed = inp & ~f.prevInput;
+        // les appuis des 0,8 premières secondes sont ignorés (on martèle encore Attaque en fin de combat)
+        const pressed = w.frame - w.phaseFrame < MENU_LOCK ? 0 : inp & ~f.prevInput;
         if (pressed & IN.LEFT) { bc.cursor = (bc.cursor + 2) % 3; w.events.push({ t: 'sound', id: 'ui' }); }
         if (pressed & IN.RIGHT) { bc.cursor = (bc.cursor + 1) % 3; w.events.push({ t: 'sound', id: 'ui' }); }
-        if (pressed & (IN.LIGHT | IN.CONFIRM | IN.JUMP)) { bc.chosen = bc.cursor; w.events.push({ t: 'sound', id: 'confirm' }); }
+        if (pressed & (IN.LIGHT | IN.CONFIRM)) { bc.chosen = bc.cursor; w.events.push({ t: 'sound', id: 'confirm' }); }
         else if (pressed & IN.HEAVY) {
           // relance des 3 propositions (25 pièces)
           if (w.coins >= 25) {
@@ -755,12 +763,12 @@ function stepPhase(w: World, inputs: number[]): void {
         const f = w.fighters.find((x) => x.slot === sc.slot && x.team === 0);
         if (!f) { sc.done = true; continue; }
         const inp = inputs[sc.slot] ?? 0;
-        const pressed = inp & ~f.prevInput;
+        const pressed = w.frame - w.phaseFrame < MENU_LOCK ? 0 : inp & ~f.prevInput;
         const n = SHOP_ITEMS.length;
         if (pressed & IN.LEFT) { sc.cursor = (sc.cursor + n - 1) % n; w.events.push({ t: 'sound', id: 'ui' }); }
         if (pressed & IN.RIGHT) { sc.cursor = (sc.cursor + 1) % n; w.events.push({ t: 'sound', id: 'ui' }); }
         if (pressed & (IN.LIGHT | IN.CONFIRM)) buyItem(w, f, sc);
-        if (pressed & (IN.GUARD | IN.JUMP | IN.HEAVY)) { sc.done = true; w.events.push({ t: 'sound', id: 'confirm' }); }
+        if (pressed & IN.GUARD) { sc.done = true; w.events.push({ t: 'sound', id: 'confirm' }); }
         f.prevInput = inp;
         if (!sc.done) all = false;
       }
@@ -1212,7 +1220,7 @@ function tryAttack(w: World, f: Fighter, c: CharDef, inp: number, dirX: number, 
     f.bufferedInput &= ~IN.SPECIAL;
   }
   // arme tenue : lourd = lancer l'arme
-  if (!moveId && f.weapon > 0 && (buf & IN.HEAVY) && onGround) {
+  if (!moveId && f.weapon > 0 && f.weaponKind && WEAPONS[f.weaponKind].throwable && (buf & IN.HEAVY) && onGround && !(fwd || back || down)) {
     f.bufferedInput &= ~IN.HEAVY;
     f.heavyCharge = 0;
     throwWeapon(w, f);
@@ -1243,6 +1251,23 @@ function tryAttack(w: World, f: Fighter, c: CharDef, inp: number, dirX: number, 
 function startShoot(w: World, f: Fighter): void {
   const wk = f.weaponKind as WeaponKind;
   const ak = wk === 'ak';
+  if (wk === 'shotgun') {
+    setState(f, 'attack');
+    f.moveId = 'shoot';
+    f.moveHits = [-1];
+    f.weapon--;
+    f.gunCd = 30;
+    for (let i = 0; i < 5; i++) {
+      const sp = (rand(w) - 0.5) * 1.6;
+      w.projectiles.push({ id: w.nextId++, kind: 'slug', x: f.x + f.facing * 34, y: f.y + 62, z: f.z + (i - 2) * 3, vx: f.facing * (14 + rand(w) * 3), vy: sp, owner: f.id, team: f.team, damage: Math.max(1, Math.round(6 * f.stats.power)), life: 17, radius: 6, pierce: false, hits: [], gravity: 0, homing: 0 });
+    }
+    f.vx -= f.facing * 2.6;
+    w.events.push({ t: 'special', id: f.id, x: f.x + f.facing * 36, y: f.y + 62, z: f.z, kind: 'muzzle' });
+    w.events.push({ t: 'sound', id: 'ak', x: f.x });
+    w.events.push({ t: 'shake', power: 2 });
+    if (f.weapon <= 0) { f.weaponKind = ''; w.events.push({ t: 'text', x: f.x, y: f.y + 125, z: f.z, text: 'PLUS DE CARTOUCHES', color: '#ccc' }); }
+    return;
+  }
   setState(f, 'attack');
   f.moveId = 'shoot';
   f.moveHits = [-1];
@@ -1260,14 +1285,17 @@ function startShoot(w: World, f: Fighter): void {
 }
 
 function throwWeapon(w: World, f: Fighter): void {
-  const wk = f.weaponKind || 'bat';
+  const wk = (f.weaponKind || 'bat') as WeaponKind;
+  const uses = f.weapon;
   f.weapon = 0;
   f.weaponKind = '';
   setState(f, 'attack');
   f.moveId = 'heavy';
   f.stateFrame = 0;
   f.moveHits = [-1]; // pas de boîte de coup : le projectile fait le travail
-  w.projectiles.push({ id: w.nextId++, kind: 'bat', x: f.x + f.facing * 20, y: f.y + 60, z: f.z, vx: f.facing * 11, vy: 1.5, owner: f.id, team: f.team, damage: Math.round(20 * f.stats.power), life: 60, radius: 16, pierce: false, hits: [], gravity: 0.12, homing: 0, wk });
+  const wd = WEAPONS[wk];
+  const dmg = wd.gun ? 14 : 12 + wd.dmg * 5;
+  w.projectiles.push({ id: w.nextId++, kind: 'bat', x: f.x + f.facing * 20, y: f.y + 62, z: f.z, vx: f.facing * 12, vy: 3.2, owner: f.id, team: f.team, damage: Math.round(dmg * f.stats.power), life: 70, radius: 16, pierce: false, hits: [], gravity: 0.3, homing: 0, wk, uses });
   w.events.push({ t: 'sound', id: 'throw', x: f.x });
 }
 
@@ -1484,8 +1512,16 @@ function tryChain(w: World, f: Fighter, c: CharDef, m: MoveDef, inp: number, dir
 // Collisions / dégâts
 // ---------------------------------------------------------------------------
 
+/** Coups qui profitent de l'arme blanche tenue (allonge, dégâts, usure). */
+const MELEE_KINDS = new Set(['light', 'heavy', 'launcher', 'low', 'run', 'air', 'airHeavy']);
+function meleeOf(f: Fighter, m: MoveDef): (typeof WEAPONS)[WeaponKind] | null {
+  if (f.weapon <= 0 || !f.weaponKind || !MELEE_KINDS.has(m.kind) || m.id === 'shoot') return null;
+  const wd = WEAPONS[f.weaponKind];
+  return wd.gun ? null : wd;
+}
+
 function hitboxOf(f: Fighter, m: MoveDef): { x0: number; x1: number; y0: number; y1: number; z: number } {
-  const reach = f.stats.reach + (f.weapon > 0 && m.kind === 'light' ? (f.weaponKind === 'nunchaku' ? 44 : f.weaponKind === 'bat' ? 34 : 0) : 0);
+  const reach = f.stats.reach + (meleeOf(f, m)?.reach ?? 0);
   const cx = f.x + f.facing * (m.hit.x + reach * 0.5);
   const hw = (m.hit.w + reach) / 2;
   return { x0: cx - hw, x1: cx + hw, y0: f.y + m.hit.y0, y1: f.y + m.hit.y1, z: m.hit.z };
@@ -1523,7 +1559,12 @@ function facingToward(t: Fighter, x: number): boolean {
   return sign(x - t.x) === t.facing || Math.abs(x - t.x) < 6;
 }
 
-function resolveHit(w: World, a: Fighter, t: Fighter, m: MoveDef, proj?: Projectile): void {
+function resolveHit(w: World, a: Fighter, t: Fighter, m0: MoveDef, proj?: Projectile): void {
+  let m = m0;
+  if (!proj) {
+    const mw = meleeOf(a, m0);
+    if (mw && (mw.knock || mw.burn)) m = { ...m0, knockdown: m0.knockdown || !!mw.knock, burnTarget: m0.burnTarget ?? mw.burn, kbx: m0.kbx + (mw.knock ? 2.5 : 0) };
+  }
   const dir = proj ? sign(proj.vx) || a.facing : (t.x >= a.x ? 1 : -1);
   const srcX = proj ? proj.x - dir * 100 : a.x;
   // --- parade parfaite ---
@@ -1562,7 +1603,7 @@ function resolveHit(w: World, a: Fighter, t: Fighter, m: MoveDef, proj?: Project
   // contre-coup : la cible était en préparation d'attaque
   const counter = !proj && t.state === 'attack' && t.moveId !== null && t.stateFrame <= getChar(t.charId).moves[t.moveId].startup && !t.armor;
   if (counter) dmg = Math.round(dmg * 1.3);
-  if (!proj && a.weapon > 0 && m.kind === 'light' && (a.weaponKind === 'bat' || a.weaponKind === 'nunchaku')) { a.weapon--; if (a.weapon === 0) { a.weaponKind = ''; w.events.push({ t: 'text', x: a.x, y: a.y + 125, z: a.z, text: 'ARME CASSÉE', color: '#ccc' }); w.events.push({ t: 'sound', id: 'cratebreak', x: a.x }); } }
+  if (!proj && meleeOf(a, m)) { a.weapon--; if (a.weapon === 0) { a.weaponKind = ''; w.events.push({ t: 'text', x: a.x, y: a.y + 125, z: a.z, text: 'ARME CASSÉE', color: '#ccc' }); w.events.push({ t: 'sound', id: 'cratebreak', x: a.x }); } }
   if (guardOk) {
     const chip = Math.round(dmg * (m.kind === 'super' || m.kind === 'special' ? 0.25 : 0.12));
     const guardDmg = m.guardBreak ? 60 : dmg * 1.3;
@@ -1669,7 +1710,7 @@ function resolveHit(w: World, a: Fighter, t: Fighter, m: MoveDef, proj?: Project
 function computeDamage(w: World, a: Fighter, t: Fighter, m: MoveDef, proj?: Projectile): number {
   let base = proj ? proj.damage : m.damage * a.stats.power;
   if (!proj && a.chargeBonus) base *= 1 + a.chargeBonus / 56;
-  if (!proj && a.weapon > 0 && m.kind === 'light') base *= a.weaponKind === 'nunchaku' ? 1.3 : a.weaponKind === 'bat' ? 1.45 : 1;
+  if (!proj) { const mw = meleeOf(a, m); if (mw) base *= mw.dmg; }
   if (hasBonus(a, 'berserk') && a.hp < a.hpMax * 0.35) base *= 1.5;
   const scale = proj && proj.kind === 'slug' ? 1 : Math.max(0.35, 1 - a.comboHits * 0.07);
   base *= scale;
@@ -1726,7 +1767,7 @@ function knockOut(w: World, t: Fighter, a: Fighter | null, dir: number, m: MoveD
     if (dr < 0.14) w.items.push({ id: w.nextId++, kind: rand(w) < 0.5 ? 'heal' : 'ki', x: t.x, y: 40, z: t.z, vy: 4, life: 600 });
     else if (dr < 0.22) w.items.push({ ...makeWeaponItem(w, randomWeapon(w), t.x, 40), z: t.z });
     // une arme tenue par l'ennemi tombe à sa mort
-    else if (t.weapon > 0 && t.weaponKind) w.items.push({ id: w.nextId++, kind: 'weapon', wk: t.weaponKind, x: t.x, y: 40, z: t.z, vy: 4, life: 900 });
+    else if (t.weapon > 0 && t.weaponKind) w.items.push({ id: w.nextId++, kind: 'weapon', wk: t.weaponKind, x: t.x, y: 40, z: t.z, vy: 4, vx: dir * 3, uses: t.weapon, life: 900 });
   }
 }
 
@@ -1741,8 +1782,8 @@ function breakCrate(w: World, it: Item, dir: number): void {
   w.items = w.items.filter((x) => x !== it);
   const r = rand(w);
   const kind: Item['kind'] = r < 0.34 ? 'heal' : r < 0.6 ? 'ki' : r < 0.76 ? 'coin' : 'weapon';
-  w.items.push({ id: w.nextId++, kind, wk: kind === 'weapon' ? randomWeapon(w) : undefined, x: it.x + dir * 20, y: 30, z: it.z, vy: 5, life: 900 });
-  if (rand(w) < 0.4) w.items.push({ id: w.nextId++, kind: 'coin', x: it.x - dir * 24, y: 30, z: it.z + 10, vy: 6, life: 900 });
+  w.items.push({ id: w.nextId++, kind, wk: kind === 'weapon' ? randomWeapon(w) : undefined, x: it.x + dir * 20, y: 30, z: it.z, vy: 5, vx: dir * 2, life: 900 });
+  if (rand(w) < 0.4) w.items.push({ id: w.nextId++, kind: 'coin', x: it.x - dir * 24, y: 30, z: it.z + 10, vy: 6, vx: -dir * 2, life: 900 });
   w.events.push({ t: 'pickup', kind: 'crate', x: it.x, y: it.y + 20, z: it.z });
   w.events.push({ t: 'sound', id: 'cratebreak', x: it.x });
 }
@@ -1887,7 +1928,7 @@ function stepProjectiles(w: World): void {
       }
     }
   }
-  for (const p of w.projectiles) if (p.life <= 0 && p.kind === 'bat' && p.y <= 5 && (p.wk === 'bat' || p.wk === 'nunchaku')) w.items.push({ id: w.nextId++, kind: 'weapon', wk: p.wk, x: p.x, y: 0, z: p.z, vy: 0, life: 1200 });
+  for (const p of w.projectiles) if (p.life <= 0 && p.kind === 'bat' && p.wk) w.items.push({ id: w.nextId++, kind: 'weapon', wk: p.wk, x: p.x, y: Math.max(0, p.y), z: p.z, vy: Math.max(2, -p.vy * 0.5 + 2), vx: p.vx * 0.3, uses: p.uses, life: 1200 });
   w.projectiles = w.projectiles.filter((p) => p.life > 0);
 }
 
@@ -1907,18 +1948,32 @@ function stepItems(w: World): void {
   for (const it of w.items) {
     it.life--;
     if (it.kind === 'crate') continue;
-    if (it.y > 0 || it.vy > 0) {
+    // physique des objets au sol : chute, rebond amorti, glissade, limites de l'arène
+    const airborneIt = it.y > 0 || it.vy > 0;
+    if (airborneIt) {
       it.vy -= 0.5;
       it.y += it.vy;
-      if (it.y <= 0) { it.y = 0; it.vy = 0; }
+      if (it.y <= 0) {
+        it.y = 0;
+        if (it.vy < -2.2) it.vy = -it.vy * 0.38; // rebond
+        else it.vy = 0;
+      }
+    }
+    if (it.vx) {
+      it.x = q(it.x + it.vx);
+      it.vx *= it.y > 0 ? 0.99 : 0.82;
+      if (Math.abs(it.vx) < 0.08) it.vx = 0;
+      const lo = w.locked ? w.arenaL + 20 : 20, hi = (w.locked ? w.arenaR : (w.stage?.width ?? C.VIEW_W)) - 20;
+      if (it.x < lo) { it.x = lo; it.vx = -it.vx * 0.4; }
+      if (it.x > hi) { it.x = hi; it.vx = -it.vx * 0.4; }
     }
     for (const f of w.fighters) {
       if (f.team !== 0 || !alive(f) || f.state === 'down') continue;
       if (Math.abs(f.x - it.x) > 28 || Math.abs(f.z - it.z) > 26 || it.y > 40) continue;
       if (it.kind === 'heal' && f.hp >= f.hpMax) continue;
-      if (it.kind === 'weapon' && (f.weapon > 0 || f.state === 'attack')) continue;
+      if (it.kind === 'weapon' && (f.weapon > 0 || f.state === 'attack' || f.state === 'hit' || f.state === 'launch' || f.state === 'stagger' || f.state === 'frozen' || f.state === 'ko')) continue;
       it.life = 0;
-      if (it.kind === 'weapon') giveWeapon(w, f, it.wk ?? 'bat');
+      if (it.kind === 'weapon') giveWeapon(w, f, it.wk ?? 'bat', it.uses);
       if (it.kind === 'heal') { f.hp = Math.min(f.hpMax, f.hp + 35); w.events.push({ t: 'text', x: f.x, y: f.y + 120, z: f.z, text: '+35 PV', color: '#7cff9a' }); }
       else if (it.kind === 'ki') { f.ki = Math.min(C.KI_MAX, f.ki + 50); w.events.push({ t: 'text', x: f.x, y: f.y + 120, z: f.z, text: '+50 KI', color: '#7cf6ff' }); }
       else if (it.kind === 'coin') { const v = hasBonus(f, 'midas') ? 30 : 10; w.coins += v; w.score += v * 5; w.events.push({ t: 'text', x: f.x, y: f.y + 120, z: f.z, text: `+${v} 🪙`, color: '#ffe14d' }); }

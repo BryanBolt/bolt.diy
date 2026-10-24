@@ -1,5 +1,7 @@
 // Rendu des combattants : silhouettes pleines (aplats, membres épais, bouts arrondis), sans contour ni visage.
-import type { Fighter } from '../sim/types';
+import type { Fighter, WeaponKind } from '../sim/types';
+import { WEAPONS } from '../sim/types';
+import { drawWeapon } from './weapons';
 import { getChar, skeletonStyle, PALETTE } from '../sim/chars';
 import { lerp } from '../core/math';
 import type { Rig, P } from './ragdoll';
@@ -448,7 +450,7 @@ function drawBody(ctx: CanvasRenderingContext2D, f: Fighter, pose: Pose, o: Draw
   }
   limbs(lF, [hipX, hipY], footDir(lF), main);
   limbs(aF, [shX, shY], null, main);
-  if (f.weapon > 0 && f.weaponKind && !tint && !rim) drawHeldWeapon(ctx, f.weaponKind, aF[2], aF[3], handAng, fx, S, thick * 0.6, o.time);
+  if (f.weapon > 0 && f.weaponKind && !tint && !rim) drawHeldWeapon(ctx, f.weaponKind, aF[2], aF[3], handAng, fx, S, thick * 0.6, o.time, f.state === 'attack');
   ctx.beginPath();
   ctx.arc(headX, headY, headR + (rim ? 2.4 * S : 0), 0, Math.PI * 2);
   ctx.fillStyle = main;
@@ -562,50 +564,15 @@ function drawAccessoryFront(ctx: CanvasRenderingContext2D, acc: string, hx: numb
 }
 
 
-function drawHeldWeapon(ctx: CanvasRenderingContext2D, kind: string, hx: number, hy: number, ang: number, fx: number, S: number, thick: number, time: number): void {
+function drawHeldWeapon(ctx: CanvasRenderingContext2D, kind: WeaponKind, hx: number, hy: number, ang: number, fx: number, S: number, thick: number, time: number, attacking: boolean): void {
   ctx.save();
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  const dx = Math.sin(ang) * fx, dy = Math.cos(ang);
-  if (kind === 'bat') {
-    const ex = hx + dx * 46 * S, ey = hy + dy * 46 * S;
-    ctx.beginPath(); ctx.moveTo(hx - dx * 8 * S, hy - dy * 8 * S); ctx.lineTo(ex, ey);
-    ctx.lineWidth = thick + 3 * S; ctx.strokeStyle = '#141622'; ctx.stroke();
-    ctx.lineWidth = thick; ctx.strokeStyle = '#c98a4b'; ctx.stroke();
-    ctx.beginPath(); ctx.moveTo((hx + ex) / 2, (hy + ey) / 2); ctx.lineTo(ex, ey); ctx.lineWidth = thick + 1.5 * S; ctx.stroke();
-  } else if (kind === 'nunchaku') {
-    const mx = hx + dx * 20 * S, my = hy + dy * 20 * S;
-    const sw = Math.sin(time * 0.5) * 10 * S;
-    const ex = mx + dx * 20 * S - dy * sw, ey = my + dy * 20 * S + dx * sw;
-    for (const [w, c] of [[thick + 2.5 * S, '#141622'], [thick - 1 * S, '#8a5a2b']] as [number, string][]) {
-      ctx.lineWidth = w; ctx.strokeStyle = c;
-      ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(mx, my); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(mx, my); ctx.lineTo(ex, ey); ctx.stroke();
-    }
-    ctx.strokeStyle = '#cfd6e0'; ctx.lineWidth = 1.2 * S;
-    ctx.beginPath(); ctx.moveTo(mx, my); ctx.lineTo(mx + dx * 2 * S, my + dy * 2 * S); ctx.stroke();
-  } else {
-    // armes à feu : orientées vers l'avant
-    const long = kind === 'ak';
-    const len = (long ? 40 : 18) * S;
-    const gx = hx + (long ? -4 : 0) * S * fx, gy = hy;
-    ctx.fillStyle = '#141622';
-    ctx.strokeStyle = '#141622';
-    ctx.lineWidth = 2;
-    // canon + corps
-    ctx.fillRect(Math.min(gx, gx + fx * len), gy - 3.5 * S, len, 7 * S);
-    ctx.fillStyle = long ? '#3a3f4a' : '#2a2f3a';
-    ctx.fillRect(Math.min(gx, gx + fx * len) + 1, gy - 2.5 * S, len - 2, 5 * S);
-    if (long) {
-      // crosse en bois, chargeur courbe
-      ctx.fillStyle = '#8a5a2b';
-      ctx.fillRect(Math.min(gx, gx - fx * 12 * S), gy - 3 * S, 12 * S, 6 * S);
-      ctx.fillStyle = '#141622';
-      ctx.beginPath(); ctx.moveTo(gx + fx * 16 * S, gy + 3 * S); ctx.lineTo(gx + fx * 22 * S, gy + 14 * S); ctx.lineTo(gx + fx * 17 * S, gy + 15 * S); ctx.lineTo(gx + fx * 12 * S, gy + 3 * S); ctx.fill();
-    } else {
-      ctx.fillRect(gx - fx * 1 * S, gy, 5 * S * fx || 5 * S, 9 * S);
-    }
-    if (time % 3 < 1.2 && false) { /* réservé : lueur de bouche */ }
-  }
+  ctx.translate(hx, hy);
+  ctx.scale(fx, 1);
+  const gun = WEAPONS[kind].gun;
+  // armes à feu : horizontales ; armes blanches : le long de l'avant-bras en attaque, relevées en position de garde
+  const rest = -0.95;
+  const along = Math.PI / 2 - ang;
+  ctx.rotate(gun ? (attacking ? -0.04 : 0.05) : attacking ? along : rest + (along - rest) * 0.18);
+  drawWeapon(ctx, kind, S, time, thick);
   ctx.restore();
 }

@@ -2,6 +2,8 @@
 import type { World, Fighter, Projectile, Item } from '../sim/types';
 import { VIEW_W, VIEW_H, HURT_HW, HURT_H, REVIVE_FRAMES, REVIVE_COST } from '../sim/constants';
 import { getChar, PALETTE } from '../sim/chars';
+import { WEAPONS } from '../sim/types';
+import { drawWeapon, weaponLength } from './weapons';
 import { drawStickman, poseFor, colorsFor, lerpPose, computeRig, figureScale, type Pose } from './stickman';
 import { RagdollSystem, stiffnessFor, cloneRig, RIG_KEYS, type P, type Rig } from './ragdoll';
 import { drawStage, setStageExtent, themeAccent, drawForeground } from './stage';
@@ -381,6 +383,7 @@ export class Renderer {
     }
     const bs = f.boss ? 1.28 : 1;
     this.drawPower(f, sx, sy, s * bs, col);
+    this.drawSlash(f, sx, sy, s * bs);
     // ragdoll : les membres suivent la pose avec une raideur selon l'état (mous en vol et au sol)
     const stiff = stiffnessFor(f.state);
     const S = figureScale(f, s * bs);
@@ -558,6 +561,35 @@ export class Renderer {
     }
   }
 
+  /** Croissant de coup d'arme blanche : visible pendant les frames actives. */
+  private drawSlash(f: Fighter, sx: number, sy: number, s: number): void {
+    if (f.state !== 'attack' || f.weapon <= 0 || !f.weaponKind || !f.moveId) return;
+    const wd = WEAPONS[f.weaponKind];
+    if (wd.gun) return;
+    const m = getChar(f.charId).moves[f.moveId];
+    if (!m || m.projectile || !['light', 'heavy', 'launcher', 'low', 'run', 'air', 'airHeavy'].includes(m.kind)) return;
+    const fr = f.stateFrame;
+    if (fr < m.startup - 1 || fr > m.startup + m.active + 3) return;
+    const t = Math.min(1, (fr - (m.startup - 1)) / (m.active + 4));
+    const ctx = this.ctx;
+    const R = (wd.reach + 42) * s;
+    const up = m.kind === 'launcher' ? -1 : m.kind === 'low' ? 1.4 : 0;
+    ctx.save();
+    ctx.translate(sx, sy - 58 * s);
+    ctx.scale(f.facing, 1);
+    ctx.globalAlpha = (1 - t) * 0.9;
+    const a0 = -1.25 + up * 0.5 + t * 0.5, a1 = a0 + 1.5;
+    ctx.beginPath();
+    ctx.arc(0, 0, R, a0, a1);
+    ctx.arc(0, 0, R * 0.78, a1, a0, true);
+    ctx.closePath();
+    ctx.fillStyle = f.weaponKind === 'laser' ? '#9ff6ff' : '#ffffff';
+    ctx.shadowColor = f.weaponKind === 'laser' ? '#4fe3ff' : '#ffffff';
+    ctx.shadowBlur = 10;
+    ctx.fill();
+    ctx.restore();
+  }
+
   /** Effets de puissance : aura de charge, éclairs d'incantation, colonne d'énergie ascendante. */
   private drawPower(f: Fighter, sx: number, sy: number, s: number, col: { main: string; glow: string }): void {
     const ctx = this.ctx;
@@ -649,12 +681,12 @@ export class Renderer {
         break;
       }
       case 'bat': {
+        // arme lancée : tourne sur elle-même autour de son centre
+        const wk = p.wk ?? 'bat';
         ctx.translate(sx, sy);
-        ctx.rotate(this.time * 0.6 * Math.sign(p.vx || 1));
-        ctx.lineCap = 'round';
-        ctx.beginPath(); ctx.moveTo(-18 * s, 0); ctx.lineTo(18 * s, 0);
-        ctx.lineWidth = 9 * s; ctx.strokeStyle = '#141622'; ctx.stroke();
-        ctx.lineWidth = 6 * s; ctx.strokeStyle = p.wk === 'nunchaku' ? '#8a5a2b' : p.wk === 'ak' || p.wk === 'pistol' ? '#3a3f4a' : '#c98a4b'; ctx.stroke();
+        ctx.rotate(this.time * 0.55 * Math.sign(p.vx || 1));
+        ctx.translate(-weaponLength(wk) * 0.4 * s, 0);
+        drawWeapon(ctx, wk, s * 0.95, this.time, 4);
         break;
       }
       case 'bullet': {
@@ -766,23 +798,9 @@ export class Renderer {
         ctx.save();
         ctx.translate(0, -8 * s);
         ctx.lineCap = 'round';
-        if (wk === 'ak' || wk === 'pistol') {
-          const L = (wk === 'ak' ? 50 : 24) * s;
-          ctx.fillStyle = '#141622';
-          ctx.fillRect(-L / 2, -4 * s, L, 8 * s);
-          ctx.fillStyle = wk === 'ak' ? '#3a3f4a' : '#2a2f3a';
-          ctx.fillRect(-L / 2 + 1, -3 * s, L - 2, 6 * s);
-          if (wk === 'ak') {
-            ctx.fillStyle = '#8a5a2b'; ctx.fillRect(-L / 2 - 12 * s, -3 * s, 12 * s, 7 * s);
-            ctx.fillStyle = '#141622'; ctx.beginPath(); ctx.moveTo(L * 0.1, 4 * s); ctx.lineTo(L * 0.2, 16 * s); ctx.lineTo(L * 0.1 + 6 * s, 16 * s); ctx.lineTo(L * 0.1 + 6 * s, 4 * s); ctx.fill();
-          } else { ctx.fillStyle = '#141622'; ctx.fillRect(-L / 2, 2 * s, 7 * s, 11 * s); }
-        } else {
-          ctx.rotate(-0.9);
-          ctx.beginPath(); ctx.moveTo(-14 * s, 0); ctx.lineTo(22 * s, 0);
-          ctx.lineWidth = 9 * s; ctx.strokeStyle = '#141622'; ctx.stroke();
-          ctx.lineWidth = 6 * s; ctx.strokeStyle = wk === 'nunchaku' ? '#8a5a2b' : '#c98a4b'; ctx.stroke();
-          if (wk === 'nunchaku') { ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, 12 * s); ctx.lineWidth = 3 * s; ctx.strokeStyle = '#cfd6e0'; ctx.stroke(); }
-        }
+        ctx.rotate(-0.25);
+        ctx.translate(-weaponLength(wk) * 0.45 * s, 0);
+        drawWeapon(ctx, wk, s * 0.95, this.time, 4);
         ctx.restore();
         break;
       }

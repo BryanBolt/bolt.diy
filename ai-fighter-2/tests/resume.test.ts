@@ -40,7 +40,7 @@ function waitFor<T extends ServerMsg['t']>(net: NetClient, type: T, ms = 5000): 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 beforeAll(async () => {
-  server = spawn(process.execPath, ['--import', 'tsx', 'server/index.ts'], { env: { ...process.env, PORT: String(PORT) }, stdio: 'ignore' });
+  server = spawn(process.execPath, ['--import', 'tsx', 'server/index.ts'], { env: { ...process.env, PORT: String(PORT), AFK_MS: '2500' }, stdio: 'ignore' });
   for (let i = 0; i < 60; i++) {
     try { const r = await fetch(`http://localhost:${PORT}/health`); if (r.ok) return; } catch { /* pas encore prêt */ }
     await sleep(150);
@@ -217,4 +217,35 @@ describe('reprise de partie en ligne', () => {
     expect(B.desync).toBe(false);
     a.close(); b.close();
   }, 60000);
+
+  it('un joueur inactif est remplacé par une IA puis reprend la main ; l\'hôte peut expulser', async () => {
+    const url = `ws://localhost:${PORT}/ws`;
+    const a = new NetClient(); const b = new NetClient();
+    await a.connect(url); await b.connect(url);
+    const jA = waitFor(a, 'joined'); a.send({ t: 'create', name: 'A', charId: 'kai', color: 0 });
+    const ja = await jA;
+    const jB = waitFor(b, 'joined'); b.send({ t: 'join', code: ja.code, name: 'B', charId: 'tora', color: 1 });
+    await jB;
+    const stA = waitFor(a, 'start');
+    a.send({ t: 'start', seed: 5 });
+    await stA;
+    // A joue, B envoie des entrées vides : inactif
+    let f = 0;
+    const timer = setInterval(() => { a.send({ t: 'input', f, bits: [IN.RIGHT] }); b.send({ t: 'input', f, bits: [0] }); f++; }, 16);
+    const afk = await waitFor(a, 'drop', 9000);
+    expect(afk.slot).toBe(1);
+    expect(afk.afk).toBe(true);
+    // B appuie sur une touche : retour annoncé à tous
+    const back = waitFor(a, 'rejoin', 4000);
+    b.send({ t: 'input', f: f + 1, bits: [IN.LIGHT] });
+    const rj = await back;
+    expect(rj.slot).toBe(1);
+    expect(rj.from).toBeGreaterThan(f);
+    clearInterval(timer);
+    // expulsion par l'hôte (B n'est pas l'hôte : sans effet ; A expulse B)
+    const kickedB = waitFor(b, 'kicked', 4000);
+    a.send({ t: 'kick', slot: 1 });
+    await kickedB;
+    a.close(); b.close();
+  }, 40000);
 });

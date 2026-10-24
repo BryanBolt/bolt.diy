@@ -29,6 +29,9 @@ interface Client {
   lastFrame: number;
   alive: boolean;
   token: string;
+  ip: string;
+  lastActive: number; // dernière fois qu'une touche a été pressée (détection d'inactivité)
+  afk: boolean; // une IA joue à sa place pour cause d'inactivité
 }
 
 interface Room {
@@ -44,9 +47,11 @@ interface Room {
   events: CtlEvent[];
   reserved: Map<number, { token: string; name: string; charId: string; color: number }>;
   maxFrame: number;
+  banned: Set<string>; // adresses expulsées par l'hôte
 }
 
 const RESERVE_MS = 20 * 60_000;
+const AFK_MS = Number(process.env.AFK_MS ?? 60_000);
 
 const rooms = new Map<string, Room>();
 const clients = new Set<Client>();
@@ -81,7 +86,7 @@ function freeColor(room: Room, wanted: number): number {
 function newRoom(isPublic: boolean): Room {
   let code = makeRoomCode(Math.random);
   while (rooms.has(code)) code = makeRoomCode(Math.random);
-  const room: Room = { code, clients: [], options: { ...DEFAULT_OPTIONS, isPublic }, inGame: false, hashes: new Map(), emptySince: 0, start: null, log: new Map(), events: [], reserved: new Map(), maxFrame: 0 };
+  const room: Room = { code, clients: [], options: { ...DEFAULT_OPTIONS, isPublic }, inGame: false, hashes: new Map(), emptySince: 0, start: null, log: new Map(), events: [], reserved: new Map(), maxFrame: 0, banned: new Set() };
   rooms.set(code, room);
   return room;
 }
@@ -119,6 +124,8 @@ function joinRunning(c: Client, room: Room, slot: number, name: unknown, charId:
   c.color = freeColor(room, Number(color) | 0);
   c.ready = false;
   c.slot = slot;
+  c.lastActive = Date.now();
+  c.afk = false;
   const lastEvt = room.events.reduce((m, e) => Math.max(m, e.from), 0);
   const from = Math.max(room.maxFrame + REJOIN_MARGIN, lastEvt + 1);
   c.lastFrame = from - 1;
@@ -181,7 +188,7 @@ function handle(c: Client, msg: ClientMsg): void {
     case 'quick': {
       // partie rapide : le salon public le plus rempli, sinon on en ouvre un
       leaveRoom(c);
-      const open = openPublicRooms().filter((r) => freeSlot(r) >= 0).sort((a, b) => b.clients.length - a.clients.length)[0];
+      const open = openPublicRooms().filter((r) => freeSlot(r) >= 0 && !r.banned.has(c.ip)).sort((a, b) => b.clients.length - a.clients.length)[0];
       if (open) {
         if (open.inGame && open.start) joinRunning(c, open, freeSlot(open), msg.name, msg.charId, msg.color);
         else seat(c, open, freeSlot(open), msg.name, msg.charId, msg.color, false);
@@ -195,6 +202,7 @@ function handle(c: Client, msg: ClientMsg): void {
       const code = normalizeRoomCode(String(msg.code ?? ''));
       const room = rooms.get(code);
       if (!room) { send(c, { t: 'error', code: 'noroom', message: `Salon ${code || '?'} introuvable.` }); return; }
+      if (room.banned.has(c.ip)) { send(c, { t: 'error', code: 'banned', message: "L'hôte t'a expulsé de ce salon." }); return; }
       const slot = freeSlot(room);
       if (slot < 0) { send(c, { t: 'error', code: 'full', message: 'Salon complet (4 joueurs).' }); return; }
       leaveRoom(c);
@@ -205,6 +213,19 @@ function handle(c: Client, msg: ClientMsg): void {
     case 'leave':
       leaveRoom(c, true);
       return;
+    case 'kick': {
+      const room = c.room;
+      if (!room || host(room) !== c) return;
+      const target = room.clients.find((x) => x.slot === Number(msg.slot));
+      if (!target || target === c) return;
+      send(target, { t: 'kicked' });
+      if (target.ip && target.ip !== c.ip) room.banned.add(target.ip);
+      room.reserved.delete(target.slot);
+      leaveRoom(target, true);
+      setTimeout(() => target.ws.close(), 200);
+      console.log(`[${room.code}] ${target.name} expulsé par l'hôte`);
+      return;
+    }
     case 'rtc': {
       // chat vocal : le serveur ne fait que relayer la signalisation (SDP / ICE) à un joueur du même salon
       const room = c.room;
@@ -235,7 +256,7 @@ function handle(c: Client, msg: ClientMsg): void {
       leaveRoom(c, true);
       const r = room.reserved.get(slot)!;
       room.reserved.delete(slot);
-      c.name = r.name; c.charId = r.charId; c.color = r.color; c.token = token; c.slot = slot; c.ready = false;
+      c.name = r.name; c.charId = r.charId; c.color = r.color; c.token = token; c.slot = slot; c.ready = false; c.lastActive = Date.now(); c.afk = false;
       const lastEvt = room.events.reduce((m, e) => Math.max(m, e.from), 0);
       const from = Math.max(room.maxFrame + REJOIN_MARGIN, lastEvt + 1);
       c.lastFrame = from - 1;
@@ -276,7 +297,7 @@ function handle(c: Client, msg: ClientMsg): void {
       room.events = [];
       room.reserved.clear();
       room.maxFrame = 0;
-      for (const cl of room.clients) { cl.lastFrame = -1; cl.ready = false; }
+      for (const cl of room.clients) { cl.lastFrame = -1; cl.ready = false; cl.lastActive = Date.now(); cl.afk = false; }
       const maxRtt = Math.max(0, ...room.clients.map((x) => x.rtt));
       const delay = Math.min(8, Math.max(2, Math.ceil(maxRtt / 2 / 16.67) + 2));
       const state = lobbyState(room);
@@ -291,6 +312,17 @@ function handle(c: Client, msg: ClientMsg): void {
       if (!Array.isArray(msg.bits) || msg.bits.length > 8) return;
       const f = Number(msg.f) | 0;
       const bits = msg.bits.map((b) => Number(b) | 0);
+      if (bits.some((b) => b !== 0)) {
+        c.lastActive = Date.now();
+        if (c.afk) {
+          // le joueur inactif reprend la main : retour annoncé dans le futur, comme un joueur qui revient
+          c.afk = false;
+          const lastEvt = room.events.reduce((m, e) => Math.max(m, e.from), 0);
+          const from = Math.max(room.maxFrame + REJOIN_MARGIN, lastEvt + 1);
+          room.events.push({ slot: c.slot, from, ai: false });
+          broadcast(room, { t: 'rejoin', slot: c.slot, from });
+        }
+      }
       c.lastFrame = Math.max(c.lastFrame, f + bits.length - 1);
       room.maxFrame = Math.max(room.maxFrame, c.lastFrame);
       let arr = room.log.get(c.slot);
@@ -379,8 +411,9 @@ const http = createServer(async (req, res) => {
 });
 
 const wss = new WebSocketServer({ server: http, path: '/ws', maxPayload: 8 * 1024 });
-wss.on('connection', (ws) => {
-  const c: Client = { ws, room: null, slot: -1, name: '', charId: 'kai', color: 0, ready: false, rtt: 0, lastFrame: -1, alive: true, token: randomUUID() };
+wss.on('connection', (ws, req) => {
+  const fwd = String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim();
+  const c: Client = { ip: fwd || req.socket.remoteAddress || '', lastActive: Date.now(), afk: false, ws, room: null, slot: -1, name: '', charId: 'kai', color: 0, ready: false, rtt: 0, lastFrame: -1, alive: true, token: randomUUID() };
   clients.add(c);
   ws.on('message', (data) => {
     let msg: ClientMsg;
@@ -412,6 +445,17 @@ setInterval(() => {
     send(c, { t: 'ping', ts: Date.now() });
   }
   const now = Date.now();
+  for (const room of rooms.values()) {
+    if (!room.inGame || room.clients.length < 2) continue;
+    for (const c of room.clients) {
+      if (c.afk || c.lastFrame < 0 || now - c.lastActive < AFK_MS) continue;
+      c.afk = true;
+      const ev: CtlEvent = { slot: c.slot, from: c.lastFrame + 1, ai: true };
+      room.events.push(ev);
+      broadcast(room, { t: 'drop', slot: c.slot, from: ev.from, afk: true });
+      console.log(`[${room.code}] ${c.name} inactif depuis ${Math.round((now - c.lastActive) / 1000)} s : une IA joue à sa place`);
+    }
+  }
   for (const [code, room] of rooms) {
     const keep = room.inGame && room.reserved.size > 0 ? RESERVE_MS : 60_000;
     if (room.clients.length === 0 && room.emptySince && now - room.emptySince > keep) rooms.delete(code);
