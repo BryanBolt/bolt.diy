@@ -22,6 +22,7 @@ describe('campagne complète (IA aux commandes)', () => {
       for (const e of w.events as SimEvent[]) {
         if (e.t === 'hazard') seen.add(`hazard:${e.kind}`);
         if (e.t === 'rage') seen.add('rage');
+        if (e.t === 'zone') seen.add('zone:' + e.phase);
         if (e.t === 'phase') phases.add(e.phase);
         if (e.t === 'counter') seen.add('counter');
         if (e.t === 'wall') seen.add('wall');
@@ -33,6 +34,7 @@ describe('campagne complète (IA aux commandes)', () => {
     expect(phases.has('bonus')).toBe(true);
     expect(phases.has('shop')).toBe(true);
     expect(seen.has('rage')).toBe(true);
+    expect(seen.has('zone:warn') && seen.has('zone:boom')).toBe(true);
     expect([...seen].filter((s) => s.startsWith('hazard:')).length).toBeGreaterThanOrEqual(3);
     expect(seen.has('counter')).toBe(true);
     expect(w.stageIndex).toBe(STAGES.length - 1);

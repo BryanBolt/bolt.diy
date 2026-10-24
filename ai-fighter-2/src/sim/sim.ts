@@ -54,6 +54,9 @@ export function createWorld(config: SimConfig, seed: number): World {
     shopChoices: [],
     hazards: [],
     fixtures: [],
+    zones: [],
+    bossCd: 0,
+    bossWeak: 0,
     events: [],
     survivalWave: 0,
     winnerTeam: -1,
@@ -328,6 +331,9 @@ function nextWave(w: World): void {
   }
   // danger de stage
   w.hazards = [];
+  w.zones = [];
+  w.bossCd = isBoss ? 260 : 0;
+  w.bossWeak = 0;
   placeFixtures(w, stage);
   if (stage.hazard) w.hazards.push({ id: w.nextId++, kind: stage.hazard, state: 'idle', timer: randInt(w, 240, 420), x: 0, z: 140, vx: 0, dir: -1, hits: [] });
   // armes au sol (kalachnikov garantie avant un boss)
@@ -638,6 +644,56 @@ function hazardHit(w: World, f: Fighter, dmg: number, dir: number, kbx: number, 
   f.freeze = 6;
 }
 
+const ZONE_ELEM: Record<string, string> = { tora: 'none', zed: 'poison', vex: 'shock', frost: 'ice', blaze: 'fire', nova: 'shock', gorr: 'none' };
+
+/** Attaques de boss à zone annoncée (cercle au sol) puis fenêtre de point faible. Plus de zones et plus vite à chaque phase. */
+function stepBossZones(w: World): void {
+  if (w.bossWeak > 0) w.bossWeak--;
+  const boss = w.fighters.find((f) => f.ai?.kind === 'boss' && alive(f));
+  const keep: typeof w.zones = [];
+  for (const z of w.zones) {
+    if (--z.t > 0) { keep.push(z); continue; }
+    w.events.push({ t: 'zone', phase: 'boom', x: z.x, z: z.z, rx: z.rx, elem: z.elem });
+    w.events.push({ t: 'shake', power: 5 });
+    w.events.push({ t: 'sound', id: 'hitheavy', x: z.x });
+    for (const f of w.fighters) {
+      if (!alive(f) || f.id === z.owner || f.team === (boss?.team ?? 1) || f.invuln > 0 || f.y > 50) continue;
+      const dx = (f.x - z.x) / z.rx, dz = (f.z - z.z) / z.rz;
+      if (dx * dx + dz * dz > 1) continue;
+      hazardHit(w, f, z.dmg, f.x >= z.x ? 1 : -1, 6, 9);
+      if (z.elem === 'fire') { f.status.burn = Math.max(f.status.burn, 120); f.status.burnDps = Math.max(f.status.burnDps, 2); }
+      else if (z.elem === 'ice') f.status.slow = Math.max(f.status.slow, 150);
+      else if (z.elem === 'poison') f.status.poison = Math.max(f.status.poison, 150);
+      else if (z.elem === 'shock') f.freeze = Math.max(f.freeze, 24);
+    }
+    // l'effort laisse le boss à découvert
+    if (boss && !w.zones.some((o) => o !== z && o.t > 0)) {
+      const phase = boss.rage ? 3 : boss.phase2 ? 2 : 1;
+      w.bossWeak = phase === 1 ? 150 : phase === 2 ? 120 : 90;
+      w.events.push({ t: 'text', x: boss.x, y: boss.y + 170, z: boss.z, text: 'POINT FAIBLE !', color: '#7dffb0' });
+    }
+  }
+  w.zones = keep;
+  if (!boss || w.phase !== 'fight' || boss.state === 'ko') return;
+  if (--w.bossCd > 0) return;
+  const phase = boss.rage ? 3 : boss.phase2 ? 2 : 1;
+  w.bossCd = phase === 1 ? 330 : phase === 2 ? 270 : 210;
+  const targets = w.fighters.filter((f) => f.team !== boss.team && alive(f));
+  if (!targets.length) return;
+  const tgt = targets[randInt(w, 0, targets.length - 1)];
+  const elem = ZONE_ELEM[boss.charId] ?? 'none';
+  const total = phase === 3 ? 48 : 60;
+  const dmg = Math.round(16 * boss.stats.power);
+  const spots: { x: number; z: number }[] = [{ x: tgt.x, z: tgt.z }];
+  if (phase >= 2) spots.push({ x: tgt.x + 130 * (rand(w) < 0.5 ? -1 : 1), z: clamp(tgt.z + randInt(w, -50, 50), C.Z_MIN + 10, C.Z_MAX - 10) });
+  if (phase === 3) spots.push({ x: tgt.x - 150 * Math.sign(spots[1].x - tgt.x || 1), z: clamp(tgt.z + randInt(w, -50, 50), C.Z_MIN + 10, C.Z_MAX - 10) });
+  for (const sp of spots) {
+    w.zones.push({ id: w.nextId++, x: q(clamp(sp.x, w.arenaL + 40, w.arenaR - 40)), z: q(sp.z), rx: 78, rz: 42, t: total, total, dmg, elem, owner: boss.id });
+    w.events.push({ t: 'zone', phase: 'warn', x: sp.x, z: sp.z, rx: 78, elem });
+  }
+  w.events.push({ t: 'sound', id: 'rage', x: boss.x });
+}
+
 function stepBossRage(w: World): void {
   for (const f of w.fighters) {
     if (f.ai && f.ai.kind === 'boss' && !f.rage && alive(f) && f.hp <= f.hpMax * 0.75 && !f.phase2) {
@@ -807,7 +863,7 @@ export function step(w: World, inputs: number[]): void {
   separate(w);
   stepShamans(w);
   // --- dangers, boss ---
-  if (canAct && w.mode !== 'duel') { stepHazards(w); stepBossRage(w); stepFixtures(w); }
+  if (canAct && w.mode !== 'duel') { stepHazards(w); stepBossRage(w); stepFixtures(w); stepBossZones(w); }
   // --- projectiles / objets ---
   stepProjectiles(w);
   stepItems(w);
@@ -2187,6 +2243,7 @@ function computeDamage(w: World, a: Fighter, t: Fighter, m: MoveDef, proj?: Proj
   let base = proj ? proj.damage : m.damage * a.stats.power;
   if (!proj && a.chargeBonus) base *= 1 + a.chargeBonus / 56;
   if (!proj) { const mw = meleeOf(a, m); if (mw) base *= mw.dmg; }
+  if (w.bossWeak > 0 && t.ai?.kind === 'boss') base *= 1.8;
   if (hasBonus(a, 'berserk') && a.hp < a.hpMax * (hasSyn(a, 'bloodlust') ? 0.6 : 0.35)) base *= 1.5;
   if (hasSyn(a, 'thermal') && (t.status.burn > 0 || t.state === 'frozen')) base *= 1.3;
   if (hasSyn(t, 'fortress')) base *= 0.85;

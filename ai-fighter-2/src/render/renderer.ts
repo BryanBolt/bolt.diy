@@ -145,6 +145,7 @@ export class Renderer {
     }
 
     this.drawCurrent(w);
+    this.drawZones(w);
     // dangers en fond (train, drone)
     for (const h of w.hazards) if (h.kind === 'train' || h.kind === 'drone' || h.kind === 'wind') this.drawHazard(h, w);
     // ombres + anneaux
@@ -489,6 +490,7 @@ export class Renderer {
     }
     drawStickman(ctx, f, rig ? { ...pose, spin: 0 } : pose, { x: sx, y: sy, scale: s * bs, facing: f.facing, alpha, flash: this.fx.flash.get(f.id) ?? 0, time: this.time, rig, lite: this.lite });
     if (f.boss && f.state !== 'ko') this.drawBossMarks(f, sx, sy, s * bs);
+    if (f.ai?.kind === 'boss' && w.bossWeak > 0 && f.state !== 'ko') this.drawWeakPoint(sx, sy, s * bs, w.bossWeak);
     if (f.controller === 'player' && f.state !== 'ko' && f.state !== 'down') {
       // repère de joueur au-dessus de la tête : flèche + pastille, toujours lisible
       const my = sy - 128 * s + Math.sin(this.time * 0.15 + f.id) * 3;
@@ -557,6 +559,50 @@ export class Renderer {
       ctx.textAlign = 'left';
     }
     if (this.showHitboxes) this.drawDebugBoxes(f);
+  }
+
+  /** Zones d'attaque annoncées : un cercle qui se remplit, rouge (ou à la couleur de l'élément). */
+  private drawZones(w: World): void {
+    if (!w.zones.length) return;
+    const ctx = this.ctx;
+    const COL: Record<string, string> = { none: '255,70,50', fire: '255,120,30', ice: '110,210,255', shock: '255,225,60', poison: '130,230,80' };
+    for (const z of w.zones) {
+      const { sx, sy, s } = project(this.cam, z.x, 0, z.z);
+      const p = 1 - z.t / z.total;
+      const c = COL[z.elem] ?? COL.none;
+      const blink = z.t < 14 && Math.floor(this.time / 2) % 2 === 0;
+      ctx.save();
+      ctx.fillStyle = `rgba(${c},${0.10 + p * 0.22})`;
+      ctx.beginPath(); ctx.ellipse(sx, sy, z.rx * s, z.rz * s, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = `rgba(${c},${0.25 + p * 0.35})`;
+      ctx.beginPath(); ctx.ellipse(sx, sy, z.rx * s * p, z.rz * s * p, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = blink ? '#ffffff' : `rgba(${c},0.95)`;
+      ctx.lineWidth = 3;
+      ctx.setLineDash([10, 6]);
+      ctx.beginPath(); ctx.ellipse(sx, sy, z.rx * s, z.rz * s, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.font = `900 ${Math.round(22 * s)}px system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillStyle = `rgba(${c},0.95)`;
+      ctx.fillText('!', sx, sy + 7 * s);
+      ctx.restore();
+    }
+  }
+
+  /** Point faible du boss : cible lumineuse sur le torse pendant la fenêtre. */
+  private drawWeakPoint(sx: number, sy: number, s: number, left: number): void {
+    const ctx = this.ctx;
+    const t = this.time;
+    const cy = sy - 80 * s;
+    const r = (16 + Math.sin(t * 0.35) * 3) * s;
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, left / 20);
+    ctx.strokeStyle = '#7dffb0';
+    ctx.fillStyle = 'rgba(125,255,176,0.22)';
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(sx, cy, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(sx - r * 1.5, cy); ctx.lineTo(sx + r * 1.5, cy); ctx.moveTo(sx, cy - r * 1.5); ctx.lineTo(sx, cy + r * 1.5); ctx.stroke();
+    ctx.restore();
   }
 
   private drawBossMarks(f: Fighter, sx: number, sy: number, s: number): void {

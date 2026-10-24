@@ -163,6 +163,15 @@ export class Fx {
           if (e.state === 'active' && e.kind === 'train') this.shake = Math.max(this.shake, 4);
           break;
         }
+        case 'zone': {
+          if (e.phase === 'warn') break;
+          const col = e.elem === 'fire' ? '#ff8a3d' : e.elem === 'ice' ? '#bff3ff' : e.elem === 'shock' ? '#ffe14d' : e.elem === 'poison' ? '#9aff6a' : '#ff6a4a';
+          this.ring(e.x, 8, e.z, '#ffffff', e.rx * 1.2);
+          this.ring(e.x, 8, e.z, col, e.rx * 0.9);
+          this.burst(e.x, 20, e.z, 34, col, 'spark', 6, 9);
+          this.punch = Math.max(this.punch, 0.08);
+          break;
+        }
         case 'fixture': {
           if (e.kind === 'current') break;
           const col: Record<string, string> = { paper: '#fff4de', sign: '#ffe14d', stall: '#ffb870', rail: '#8fd8ff', window: '#bfeaff', pylon: '#ffe14d' };

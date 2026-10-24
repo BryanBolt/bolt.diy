@@ -333,6 +333,7 @@ export type SimEvent =
   | { t: 'pickup'; kind: Item['kind']; x: number; y: number; z: number; v?: string }
   | { t: 'boom'; x: number; y: number; z: number; elem: string; r: number }
   | { t: 'fixture'; kind: FixtureKind; x: number; z: number }
+  | { t: 'zone'; phase: 'warn' | 'boom'; x: number; z: number; rx: number; elem: string }
   | { t: 'special'; id: number; x: number; y: number; z: number; kind: string }
   | { t: 'bonus'; slot: number; bonus: BonusId }
   | { t: 'hazard'; kind: HazardKind; state: 'warn' | 'active' | 'end'; x: number; z: number }
@@ -382,6 +383,20 @@ export interface Fixture {
   z: number;
   used: boolean; // détruit (usage unique)
   cd: number; // recharge (frames) pour les éléments réutilisables
+}
+
+/** Zone d'attaque annoncée au sol par un boss : un cercle qui se remplit, puis explose. */
+export interface Zone {
+  id: number;
+  x: number;
+  z: number;
+  rx: number;
+  rz: number;
+  t: number; // frames avant l'explosion
+  total: number;
+  dmg: number;
+  elem: string; // none | fire | ice | shock | poison
+  owner: number;
 }
 
 export interface Hazard {
@@ -480,6 +495,9 @@ export interface World {
   shopChoices: ShopChoice[];
   hazards: Hazard[];
   fixtures: Fixture[];
+  zones: Zone[];
+  bossCd: number; // frames avant la prochaine attaque de zone
+  bossWeak: number; // fenêtre de point faible (dégâts ×1,8) restante
   events: SimEvent[];
   survivalWave: number;
   winnerTeam: number;
