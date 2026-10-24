@@ -253,6 +253,16 @@ export const COMMANDS: CommandInfo[] = [
   { id: 'c_ewgf', name: 'Poing éclair', input: '→ N ↓ ↘ + Attaque', assist: '—', note: 'Lanceur ultra rapide, ouvre les jongles', cost: '10 Ki' },
   { id: 'c_hop', name: 'Coup-sauté', input: '↘ + Lourd', assist: '—', note: 'Frappe haute (il faut garder debout) qui lance', cost: 'gratuit' },
   { id: 'c_side', name: 'Coup latéral', input: '→ + Attaque', assist: '—', note: 'Longue allonge, continue en enchaînement', cost: 'gratuit' },
+  { id: 'c_wave', name: 'Onde Tonnerre (Kamehameha)', input: '↓ ↙ ← + Attaque', assist: '—', note: 'Immense rayon perçant', cost: '25 Ki' },
+  { id: 'c_rocket', name: 'Poing fusée (Rocket Punch)', input: '← → + Lourd', assist: '—', note: 'Poing projectile perçant', cost: '14 Ki' },
+  { id: 'c_falcon', name: 'Poing du faucon (Falcon Punch)', input: '→ ↓ ↘ + Lourd', assist: '—', note: 'Départ lent, blindé, dégâts énormes', cost: '30 Ki' },
+  { id: 'c_meteor', name: 'Météores (Pegasus / Hokuto)', input: '↓ ↙ ← ↓ ↙ ← + Attaque', assist: '—', note: 'Pluie de 14 poings', cost: '40 Ki' },
+  { id: 'c_purple', name: 'Pourpre vide (Hollow Purple)', input: '↓ ↙ ← ↓ ↙ ← + Lourd', assist: '—', note: 'Sphère géante qui efface tout', cost: '60 Super' },
+  { id: 'c_omni', name: 'Omnislash', input: '↓ ↘ → ↓ ↘ → + Lourd', assist: '—', note: 'Bondit sur la cible et la hache en 10 coups', cost: '50 Super' },
+  { id: 'c_serious', name: 'Coup sérieux (Serious Punch)', input: 'tour complet + Lourd', assist: '—', note: 'Un seul coup. Presque tout est KO', cost: '40 Super' },
+  { id: 'c_step', name: 'Pas éclair (Shunpo / Hiraishin)', input: '↓ ↓ (double tap) + Lourd', assist: '—', note: 'Téléportation derrière la cible + frappe', cost: '8 Ki' },
+  { id: 'c_rasen', name: 'Sphère tournoyante (Rasengan)', input: '↓ ↑ + Attaque', assist: '—', note: 'Sphère de Ki au corps à corps, 6 touches', cost: '20 Ki' },
+  { id: 'c_rider', name: 'Rider Kick', input: 'En l\'air : → + Lourd', assist: '—', note: 'Coup de pied plongeant diagonal', cost: '8 Ki' },
   { id: 'c_flurry', name: 'Rafale du dragon', input: 'Attaque ×4', assist: '—', note: '6 coups de poing éclair en fin d\'enchaînement', cost: 'gratuit' },
   { id: 'c_airflying', name: 'Coup volant', input: 'En l\'air : → + Attaque', assist: '—', note: 'Longue glissade aérienne', cost: 'gratuit' },
 ];
@@ -274,6 +284,17 @@ function commandMoves(c: CharDef): Record<string, MoveDef> {
   m.c_ewgf = mv('launcher', { id: 'c_ewgf', name: 'Poing éclair', anim: 'uppercut', startup: 8, active: 3, recovery: 24, damage: 14, hit: { x: 30, w: 58, y0: 0, y1: 120, z: 32 }, launch: true, kbx: 2.5, kby: 11, hitstop: 10, lunge: 6, kiCost: 10 });
   m.c_hop = mv('launcher', { id: 'c_hop', name: 'Coup-sauté', anim: 'knee', startup: 12, active: 3, recovery: 20, damage: 12, hit: { x: 28, w: 58, y0: 40, y1: 115, z: 32 }, launch: true, kbx: 2, kby: 9, hitstop: 8, overhead: true, lunge: 2 });
   m.c_side = mv('light', { id: 'c_side', name: 'Coup latéral', anim: 'kick', startup: 8, active: 4, recovery: 14, damage: 9, hit: { x: 50, w: 86, y0: 30, y1: 90, z: 30 }, kbx: 6, hitstun: 20, lunge: 3, cancelFrom: 11, next: ['l2', 'l3', 'heavy', 'launcher', 'special', 'special2', 'super'] });
+  const Z = { x: 0, w: 0, y0: 0, y1: 0, z: 0 };
+  m.c_wave = mv('special', { id: 'c_wave', name: 'Onde Tonnerre', hit: Z, damage: 0, anim: 'special', startup: 22, active: 4, recovery: 30, kiCost: 25, projectile: { kind: 'orb', speed: 12, life: 70, damage: 22, radius: 40, y: 58, pierce: true } });
+  m.c_rocket = mv('special', { id: 'c_rocket', name: 'Poing fusée', hit: Z, damage: 0, anim: 'cross', startup: 12, active: 3, recovery: 26, kiCost: 14, projectile: { kind: 'bat', speed: 14, life: 45, damage: 15, radius: 18, y: 55, pierce: true } });
+  m.c_falcon = mv('heavy', { id: 'c_falcon', name: 'Poing du faucon', anim: 'heavy', startup: 26, active: 4, recovery: 34, damage: 36, hit: { x: 16, w: 60, y0: 10, y1: 120, z: 34 }, kbx: 14, kby: 6, knockdown: true, hitstop: 18, armor: true, lunge: 5, kiCost: 30 });
+  m.c_meteor = mv('heavy', { id: 'c_meteor', name: 'Météores', anim: 'jab', startup: 8, active: 42, recovery: 22, damage: 3, hit: { x: 20, w: 78, y0: 10, y1: 120, z: 34 }, kbx: 1.2, hitstun: 20, hitstop: 2, multi: { hits: 14, every: 3 }, lunge: 0.5, kiCost: 40 });
+  m.c_purple = mv('special', { id: 'c_purple', name: 'Pourpre vide', hit: Z, damage: 0, anim: 'super', startup: 34, active: 4, recovery: 40, superCost: 60, invuln: true, projectile: { kind: 'orb', speed: 6, life: 130, damage: 42, radius: 70, y: 60, pierce: true } });
+  m.c_omni = mv('heavy', { id: 'c_omni', name: 'Omnislash', anim: 'super', startup: 10, active: 34, recovery: 26, damage: 5, hit: { x: 10, w: 90, y0: 0, y1: 130, z: 40 }, kbx: 1, hitstun: 20, hitstop: 2, multi: { hits: 10, every: 3 }, teleport: 40, superCost: 50, invuln: true });
+  m.c_serious = mv('heavy', { id: 'c_serious', name: 'Coup sérieux', anim: 'heavy', startup: 24, active: 3, recovery: 50, damage: 55, hit: { x: 14, w: 70, y0: 0, y1: 130, z: 40 }, kbx: 20, kby: 8, knockdown: true, hitstop: 24, superCost: 40, armor: true, guardBreak: true });
+  m.c_step = mv('heavy', { id: 'c_step', name: 'Pas éclair', anim: 'backstab', startup: 4, active: 4, recovery: 14, damage: 12, hit: { x: 0, w: 70, y0: 0, y1: 120, z: 36 }, teleport: 60, kbx: 5, kby: 2, knockdown: true, hitstop: 6, invuln: true, kiCost: 8 });
+  m.c_rasen = mv('special', { id: 'c_rasen', name: 'Sphère tournoyante', anim: 'special', startup: 14, active: 14, recovery: 24, damage: 5, hit: { x: 24, w: 62, y0: 10, y1: 110, z: 34 }, kbx: 2, kby: 1, hitstun: 20, hitstop: 3, multi: { hits: 6, every: 2 }, lunge: 2, kiCost: 20 });
+  m.c_rider = mv('air', { id: 'c_rider', name: 'Rider Kick', anim: 'dive', startup: 6, active: 20, recovery: 14, damage: 18, hit: { x: 20, w: 76, y0: -40, y1: 80, z: 34 }, lunge: 7, lungeAir: -9, kbx: 8, kby: 3, hitstun: 26, knockdown: true, hitstop: 10, kiCost: 8 });
   m.shoot = mv('light', { id: 'shoot', name: 'Tir', anim: 'shoot', startup: 1, active: 1, recovery: 3, damage: 0, hit: { x: 0, w: 0, y0: 0, y1: 0, z: 0 } });
   m.c_flurry = mv('light', { id: 'c_flurry', name: 'Rafale du dragon', anim: 'jab', startup: 4, active: 14, recovery: 16, damage: 3, hit: { x: 30, w: 62, y0: 20, y1: 100, z: 30 }, kbx: 0.8, hitstun: 14, hitstop: 2, multi: { hits: 6, every: 2 }, lunge: 1 });
   m.c_airflying = mv('air', { id: 'c_airflying', name: 'Coup volant', anim: 'airkick', startup: 5, active: 12, recovery: 12, damage: 11, hit: { x: 30, w: 70, y0: -30, y1: 70, z: 30 }, lunge: 6, kbx: 5, hitstun: 22, knockdown: true });

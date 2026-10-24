@@ -176,3 +176,55 @@ describe('réanimation payante', () => {
     expect(w.coins).toBe(60);
   });
 });
+
+describe('techniques cultes', () => {
+  const ctx = (f: Fighter, buf: number, now: number, over: object = {}) => ({ buf, inp: 0, now, onGround: true, ki: 100, superMeter: 100, chainIndex: 0, running: false, ...over });
+  function fighter(frames: number[]) {
+    const f = { hist: [], facing: 1 } as unknown as Fighter;
+    let now = 0;
+    for (const bits of frames) { pushHistory(f, dirMaskOf(bits, 1), now); now++; }
+    return { f, now };
+  }
+  it('rayon (↓ ↙ ← + Attaque) et Falcon (→ ↓ ↘ + Lourd)', () => {
+    let s = fighter([...hold(Dn, 3), ...hold(Dn | Lf, 3), ...hold(Lf, 2)]);
+    expect(readCommand(s.f, ctx(s.f, A, s.now, { inp: Lf }))).toBe('c_wave');
+    s = fighter([...hold(R, 3), ...hold(Dn, 3), ...hold(Dn | R, 3)]);
+    expect(readCommand(s.f, ctx(s.f, K, s.now, { inp: Dn | R }))).toBe('c_falcon');
+  });
+  it('Pourpre vide demande 60 Super, Omnislash 50', () => {
+    const s = fighter([...hold(Dn, 2), ...hold(Lf, 2), ...hold(Dn, 2), ...hold(Lf, 2)]);
+    expect(readCommand(s.f, ctx(s.f, K, s.now, { inp: Lf }))).toBe('c_purple');
+    expect(readCommand(s.f, ctx(s.f, K, s.now, { inp: Lf, superMeter: 30 }))).not.toBe('c_purple');
+  });
+  it('Rider Kick en l\'air', () => {
+    const s = fighter([...hold(R, 2)]);
+    expect(readCommand(s.f, ctx(s.f, K, s.now, { inp: R, onGround: false }))).toBe('c_rider');
+  });
+  it('tous les héros possèdent les nouveaux coups et ils se lancent', () => {
+    for (const id of ['c_wave', 'c_rocket', 'c_falcon', 'c_meteor', 'c_purple', 'c_omni', 'c_serious', 'c_step', 'c_rasen', 'c_rider']) {
+      for (const ch of ROSTER) expect(ch.moves[id], `${ch.id}.${id}`).toBeDefined();
+      expect(COMMANDS.find((c) => c.id === id), id).toBeDefined();
+    }
+  });
+});
+
+describe('techniques cultes en simulation', () => {
+  it('chaque technique se déclenche et la simulation reste stable', () => {
+    const seqs: Record<string, number[]> = {
+      c_wave: [...hold(Dn, 3), ...hold(Dn | Lf, 3), ...hold(Lf, 2), Lf | A],
+      c_falcon: [...hold(R, 3), ...hold(Dn, 3), ...hold(Dn | R, 3), Dn | R | K],
+      c_rocket: [...hold(Lf, 3), ...hold(R, 2), R | K],
+      c_step: [...hold(Dn, 2), 0, ...hold(Dn, 2), Dn | K],
+      c_rasen: [...hold(Dn, 3), ...hold(IN.UP, 2), IN.UP | A],
+    };
+    for (const [id, inputs] of Object.entries(seqs)) {
+      const w = world();
+      const p = w.fighters.find((f) => f.slot === 0)!;
+      p.ki = 100; p.superMeter = 100;
+      let seen = false;
+      for (const i of [...inputs, ...hold(0, 90)]) { step(w, [i]); if (p.moveId === id) seen = true; }
+      expect(seen, id).toBe(true);
+      expect(Number.isFinite(p.x) && Number.isFinite(p.y)).toBe(true);
+    }
+  });
+});

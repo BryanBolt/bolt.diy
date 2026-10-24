@@ -65,6 +65,8 @@ export const motions = {
   qcf: (f: Fighter, now: number) => seq(f, now, [D.DOWN, D.FWD], 20, 8),
   qcb: (f: Fighter, now: number) => seq(f, now, [D.DOWN, D.BACK], 20, 8),
   dqcf: (f: Fighter, now: number) => seq(f, now, [D.DOWN, D.FWD, D.DOWN, D.FWD], 44, 8),
+  dqcb: (f: Fighter, now: number) => seq(f, now, [D.DOWN, D.BACK, D.DOWN, D.BACK], 44, 8),
+  dd: (f: Fighter, now: number) => seq(f, now, [D.DOWN, N, D.DOWN], 16, 6),
   dp: (f: Fighter, now: number) => seq(f, now, [D.FWD, D.DOWN, D.FWD | D.DOWN], 24, 8),
   ewgf: (f: Fighter, now: number) => seq(f, now, [D.FWD, N, D.DOWN, D.FWD | D.DOWN], 26, 6),
   sonic: (f: Fighter, now: number) => seq(f, now, [D.BACK, D.FWD], 14, 6),
@@ -100,8 +102,18 @@ export function readCommand(f: Fighter, c: CommandCtx): string | null {
   const m = dirMaskOf(c.inp, f.facing);
   const fwdNow = (m & D.FWD) !== 0 && !(m & D.DOWN);
   const dfNow = (m & D.FWD) !== 0 && (m & D.DOWN) !== 0;
-  if (!c.onGround) return L && fwdNow ? 'c_airflying' : null;
+  if (!c.onGround) return H && fwdNow && c.ki >= 8 ? 'c_rider' : L && fwdNow ? 'c_airflying' : null;
   if (L && H) return 'c_grab';
+  // techniques cultes
+  if (H && motions.dqcb(f, c.now) && c.superMeter >= 60) return 'c_purple';
+  if (H && motions.dqcf(f, c.now) && c.superMeter >= 50) return 'c_omni';
+  if (L && motions.dqcb(f, c.now) && c.ki >= 40) return 'c_meteor';
+  if (H && motions.circle(f, c.now) && c.superMeter >= 40) return 'c_serious';
+  if (H && motions.dp(f, c.now) && c.ki >= 30) return 'c_falcon';
+  if (H && motions.sonic(f, c.now) && c.ki >= 14) return 'c_rocket';
+  if (H && motions.dd(f, c.now) && c.ki >= 8) return 'c_step';
+  if (L && motions.qcb(f, c.now) && c.ki >= 25) return 'c_wave';
+  if (L && motions.flash(f, c.now) && c.ki >= 20) return 'c_rasen';
   if (L && motions.dqcf(f, c.now) && c.superMeter >= 50) return 'c_superfire';
   if (L && motions.circle(f, c.now) && c.superMeter >= 30) return 'c_piledriver';
   if (L && motions.ewgf(f, c.now) && c.ki >= 10) return 'c_ewgf';
