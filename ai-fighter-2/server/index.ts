@@ -14,6 +14,7 @@ import { PROTOCOL_VERSION, MAX_PLAYERS, REJOIN_MARGIN, makeRoomCode, normalizeRo
 import { randomUUID } from 'node:crypto';
 import { todayUtc, isDateString, type DailyEntry } from '../shared/daily';
 import { validReplay, type ReplayFile } from '../shared/replay';
+import { validHat, validAura } from '../shared/cosmetics';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -27,6 +28,8 @@ interface Client {
   charId: string;
   color: number;
   team: number; // -1 : automatique (slot % 2)
+  hat: string;
+  aura: string;
   ready: boolean;
   rtt: number;
   lastFrame: number;
@@ -79,7 +82,7 @@ function lobbyState(room: Room): LobbyState {
   const players: LobbyPlayer[] = room.clients
     .slice()
     .sort((a, b) => a.slot - b.slot)
-    .map((c, i) => ({ slot: c.slot, name: c.name, charId: c.charId, color: c.color, ready: c.ready, isHost: i === 0, connected: true, team: c.team >= 0 ? c.team : c.slot % 2 }));
+    .map((c, i) => ({ slot: c.slot, name: c.name, charId: c.charId, color: c.color, ready: c.ready, isHost: i === 0, connected: true, team: c.team >= 0 ? c.team : c.slot % 2, hat: c.hat, aura: c.aura }));
   return { code: room.code, players, options: room.options, inGame: room.inGame };
 }
 function host(room: Room): Client | undefined {
@@ -116,7 +119,9 @@ function publicList(): PublicRoom[] {
   }).sort((a, b) => b.players - a.players).slice(0, 30);
 }
 
-function seat(c: Client, room: Room, slot: number, name: unknown, charId: unknown, color: unknown, created: boolean): void {
+function seat(c: Client, room: Room, slot: number, name: unknown, charId: unknown, color: unknown, created: boolean, hat?: unknown, aura?: unknown): void {
+  c.hat = validHat(hat);
+  c.aura = validAura(aura);
   c.name = cleanName(name, slot === 0 ? 'Hôte' : `Joueur ${slot + 1}`);
   c.charId = String(charId ?? 'kai').slice(0, 16);
   c.color = freeColor(room, Number(color) | 0);
@@ -130,8 +135,10 @@ function seat(c: Client, room: Room, slot: number, name: unknown, charId: unknow
 }
 
 /** Un joueur rejoint une partie en cours : nouvel événement `join` à une frame future, reconstruction par rejeu du journal. */
-function joinRunning(c: Client, room: Room, slot: number, name: unknown, charId: unknown, color: unknown): void {
+function joinRunning(c: Client, room: Room, slot: number, name: unknown, charId: unknown, color: unknown, hat?: unknown, aura?: unknown): void {
   if (!room.start) return;
+  c.hat = validHat(hat);
+  c.aura = validAura(aura);
   c.name = cleanName(name, `Joueur ${slot + 1}`);
   c.charId = String(charId ?? 'kai').slice(0, 16);
   c.color = freeColor(room, Number(color) | 0);
@@ -142,7 +149,7 @@ function joinRunning(c: Client, room: Room, slot: number, name: unknown, charId:
   const lastEvt = room.events.reduce((m, e) => Math.max(m, e.from), 0);
   const from = Math.max(room.maxFrame + REJOIN_MARGIN, lastEvt + 1);
   c.lastFrame = from - 1;
-  const ev: CtlEvent = { slot, from, ai: false, join: { name: c.name, charId: c.charId, color: c.color } };
+  const ev: CtlEvent = { slot, from, ai: false, join: { name: c.name, charId: c.charId, color: c.color, hat: c.hat, aura: c.aura } };
   room.events.push(ev);
   room.emptySince = 0;
   c.room = room;
@@ -192,7 +199,7 @@ function handle(c: Client, msg: ClientMsg): void {
     case 'create': {
       leaveRoom(c);
       const room = newRoom(!!msg.public);
-      seat(c, room, 0, msg.name, msg.charId, msg.color, true);
+      seat(c, room, 0, msg.name, msg.charId, msg.color, true, msg.hat, msg.aura);
       return;
     }
     case 'list':
@@ -203,12 +210,12 @@ function handle(c: Client, msg: ClientMsg): void {
       leaveRoom(c);
       const open = openPublicRooms().filter((r) => freeSlot(r) >= 0 && !r.banned.has(c.ip)).sort((a, b) => b.clients.length - a.clients.length)[0];
       if (open) {
-        if (open.inGame && open.start) joinRunning(c, open, freeSlot(open), msg.name, msg.charId, msg.color);
-        else seat(c, open, freeSlot(open), msg.name, msg.charId, msg.color, false);
+        if (open.inGame && open.start) joinRunning(c, open, freeSlot(open), msg.name, msg.charId, msg.color, msg.hat, msg.aura);
+        else seat(c, open, freeSlot(open), msg.name, msg.charId, msg.color, false, msg.hat, msg.aura);
         return;
       }
       const room = newRoom(true);
-      seat(c, room, 0, msg.name, msg.charId, msg.color, true);
+      seat(c, room, 0, msg.name, msg.charId, msg.color, true, msg.hat, msg.aura);
       return;
     }
     case 'join': {
@@ -219,8 +226,8 @@ function handle(c: Client, msg: ClientMsg): void {
       const slot = freeSlot(room);
       if (slot < 0) { send(c, { t: 'error', code: 'full', message: 'Salon complet (4 joueurs).' }); return; }
       leaveRoom(c);
-      if (room.inGame && room.start) joinRunning(c, room, slot, msg.name, msg.charId, msg.color);
-      else seat(c, room, slot, msg.name, msg.charId, msg.color, false);
+      if (room.inGame && room.start) joinRunning(c, room, slot, msg.name, msg.charId, msg.color, msg.hat, msg.aura);
+      else seat(c, room, slot, msg.name, msg.charId, msg.color, false, msg.hat, msg.aura);
       return;
     }
     case 'leave':
@@ -290,6 +297,8 @@ function handle(c: Client, msg: ClientMsg): void {
       if (msg.charId !== undefined) c.charId = String(msg.charId).slice(0, 16);
       if (msg.color !== undefined) c.color = Number(msg.color) | 0;
       if (msg.ready !== undefined) c.ready = !!msg.ready;
+      if (msg.hat !== undefined) c.hat = validHat(msg.hat);
+      if (msg.aura !== undefined) c.aura = validAura(msg.aura);
       if (msg.team !== undefined) c.team = Number(msg.team) === 1 ? 1 : 0;
       if (msg.name !== undefined) c.name = cleanName(msg.name, c.name);
       broadcast(room, { t: 'lobby', state: lobbyState(room) });
@@ -614,7 +623,7 @@ const http = createServer(async (req, res) => {
 const wss = new WebSocketServer({ server: http, path: '/ws', maxPayload: 8 * 1024 });
 wss.on('connection', (ws, req) => {
   const fwd = String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim();
-  const c: Client = { ip: fwd || req.socket.remoteAddress || '', lastActive: Date.now(), afk: false, ws, room: null, slot: -1, name: '', charId: 'kai', color: 0, team: -1, ready: false, rtt: 0, lastFrame: -1, alive: true, token: randomUUID() };
+  const c: Client = { ip: fwd || req.socket.remoteAddress || '', lastActive: Date.now(), afk: false, ws, room: null, slot: -1, name: '', charId: 'kai', color: 0, team: -1, hat: '', aura: '', ready: false, rtt: 0, lastFrame: -1, alive: true, token: randomUUID() };
   clients.add(c);
   ws.on('message', (data) => {
     let msg: ClientMsg;

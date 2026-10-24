@@ -68,6 +68,8 @@ export function createWorld(config: SimConfig, seed: number): World {
     const f = makeFighter(w, p.charId, p.name, p.team, 0, p.color);
     f.slot = p.slot;
     f.controller = 'player';
+    f.hat = p.hat ?? '';
+    f.aura = p.aura ?? '';
     w.fighters.push(f);
   }
   for (const b of config.bots) {
@@ -162,6 +164,8 @@ export function makeFighter(w: World, charId: string, name: string, team: number
     lives: C.LIVES,
     stats,
     bonuses: [],
+    hat: '',
+    aura: '',
     status: { burn: 0, burnDps: 0, frozen: 0, poison: 0, slow: 0, wet: 0 },
     color,
     level,
@@ -2746,7 +2750,7 @@ function endTransform(w: World, f: Fighter): void {
 }
 
 /** Un joueur entre dans la partie en cours (déterministe, à la frame annoncée par le serveur). */
-export function joinPlayer(w: World, slot: number, name: string, charId: string, color: number): void {
+export function joinPlayer(w: World, slot: number, name: string, charId: string, color: number, hat = '', aura = ''): void {
   const existing = w.fighters.find((f) => f.slot === slot);
   if (existing) {
     // place laissée à l'IA : le nouvel arrivant reprend ce combattant
@@ -2757,6 +2761,8 @@ export function joinPlayer(w: World, slot: number, name: string, charId: string,
   }
   const team = w.mode === 'duel' ? (w.config.teams ? slot % 2 : slot) : 0;
   const f = makeFighter(w, charId, name, team, 0, color);
+  f.hat = hat;
+  f.aura = aura;
   f.slot = slot;
   f.controller = 'player';
   const mates = w.fighters.filter((x) => x.team === 0 && x.slot >= 0 && alive(x));

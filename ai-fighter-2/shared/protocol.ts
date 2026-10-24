@@ -19,6 +19,8 @@ export interface LobbyPlayer {
   isHost: boolean;
   connected: boolean;
   team?: number; // duel par équipes : 0 bleue · 1 rouge
+  hat?: string; // cosmétiques (voir shared/cosmetics.ts)
+  aura?: string;
 }
 
 export interface LobbyOptions {
@@ -56,16 +58,16 @@ export interface LobbyState {
 // --- Client -> serveur ---
 export type ClientMsg =
   | { t: 'hello'; v: number }
-  | { t: 'create'; name: string; charId: string; color: number; public?: boolean }
-  | { t: 'quick'; name: string; charId: string; color: number } // partie rapide : rejoint un salon public libre ou en ouvre un
+  | { t: 'create'; name: string; charId: string; color: number; public?: boolean; hat?: string; aura?: string }
+  | { t: 'quick'; name: string; charId: string; color: number; hat?: string; aura?: string } // partie rapide : rejoint un salon public libre ou en ouvre un
   | { t: 'list' } // demande la liste des salons publics
-  | { t: 'join'; code: string; name: string; charId: string; color: number }
+  | { t: 'join'; code: string; name: string; charId: string; color: number; hat?: string; aura?: string }
   | { t: 'rejoin'; code: string; token: string } // retour dans une partie en cours après une coupure
   | { t: 'leave' }
   | { t: 'kick'; slot: number } // l'hôte expulse un joueur
   | { t: 'rtc'; to: number; data: string } // signalisation du chat vocal (relayée telle quelle au joueur `to`)
   | { t: 'resync' } // demande à reconstruire la partie depuis le journal du serveur (après une désynchronisation)
-  | { t: 'lobby'; charId?: string; color?: number; ready?: boolean; name?: string; team?: number }
+  | { t: 'lobby'; charId?: string; color?: number; ready?: boolean; name?: string; team?: number; hat?: string; aura?: string }
   | { t: 'options'; options: Partial<LobbyOptions> }
   | { t: 'start'; seed: number }
   | { t: 'input'; f: number; bits: number[] } // bits[i] = entrée de la frame f+i (redondance anti-perte)
@@ -84,7 +86,7 @@ export interface CtlEvent {
   slot: number;
   from: number;
   ai: boolean;
-  join?: { name: string; charId: string; color: number };
+  join?: { name: string; charId: string; color: number; hat?: string; aura?: string };
 }
 
 // --- Serveur -> client ---
@@ -98,7 +100,7 @@ export type ServerMsg =
   | { t: 'input'; slot: number; f: number; bits: number[] }
   | { t: 'drop'; slot: number; from: number; afk?: boolean } // le joueur a quitté (ou est inactif : afk) : une IA le remplace à partir de la frame `from`
   | { t: 'kicked' } // tu as été expulsé du salon par l'hôte
-  | { t: 'rejoin'; slot: number; from: number; join?: { name: string; charId: string; color: number } } // le joueur est revenu (ou nouveau joueur : `join`) : il prend la main à la frame `from`
+  | { t: 'rejoin'; slot: number; from: number; join?: { name: string; charId: string; color: number; hat?: string; aura?: string } } // le joueur est revenu (ou nouveau joueur : `join`) : il prend la main à la frame `from`
   | { t: 'resume'; seed: number; options: LobbyOptions; players: LobbyPlayer[]; delay: number; slot: number; from: number; log: { slot: number; rle: number[] }[]; events: CtlEvent[] }
   | { t: 'desync'; f: number }
   | { t: 'rtc'; from: number; data: string }

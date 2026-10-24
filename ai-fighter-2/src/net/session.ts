@@ -205,7 +205,7 @@ export class Session {
       return false;
     }
     this.waitingSlots = [];
-    for (const e of this.ctl) if (e.from === f) { if (e.join) joinPlayer(this.world, e.slot, e.join.name, e.join.charId, e.join.color); else if (e.ai) setSlotAi(this.world, e.slot); else setSlotPlayer(this.world, e.slot); }
+    for (const e of this.ctl) if (e.from === f) { if (e.join) joinPlayer(this.world, e.slot, e.join.name, e.join.charId, e.join.color, e.join.hat, e.join.aura); else if (e.ai) setSlotAi(this.world, e.slot); else setSlotPlayer(this.world, e.slot); }
     const bits: number[] = [];
     for (const slot of this.allSlots) bits[slot] = this.inputFor(slot, f);
     step(this.world, bits);

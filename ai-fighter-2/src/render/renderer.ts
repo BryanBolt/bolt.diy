@@ -1,4 +1,5 @@
 // Rendu principal : canvas 960x540 virtuel mis à l'échelle, ordre de profondeur, ombres, projectiles, objets.
+import { drawAura } from './cosmetics';
 import type { World, Fighter, Projectile, Item } from '../sim/types';
 import { VIEW_W, VIEW_H, HURT_HW, HURT_H, REVIVE_FRAMES, REVIVE_COST } from '../sim/constants';
 import { getChar, PALETTE } from '../sim/chars';
@@ -479,6 +480,7 @@ export class Renderer {
       rig = cloneRig(sim);
       for (const k of ['hip', ...RIG_KEYS] as const) { (rig[k] as P).x -= sx; (rig[k] as P).y -= sy; }
     }
+    if (f.aura && f.state !== 'ko') drawAura(ctx, f.aura, sx, sy, s * bs, this.time, f.id * 1.7, Math.abs(f.vx));
     if (w.mode === 'duel' && w.config.teams && f.state !== 'ko') {
       // anneau d'équipe sous les pieds : bleu / rouge
       ctx.save();

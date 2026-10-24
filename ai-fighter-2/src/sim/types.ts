@@ -253,6 +253,8 @@ export interface Fighter {
   lives: number;
   stats: CharStats;
   bonuses: BonusId[];
+  hat: string; // cosmétiques (rendu seulement)
+  aura: string;
   status: StatusEffects;
   color: number;
   level: number;
@@ -464,7 +466,7 @@ export interface SimConfig {
   stageIndex: number;
   gravity?: number; // 0 normale · 1 lunaire · 2 apesanteur
   modifier?: string; // défi du jour : moon · glass · swarm · boosted
-  players: { slot: number; charId: string; name: string; color: number; team: number }[];
+  players: { slot: number; charId: string; name: string; color: number; team: number; hat?: string; aura?: string }[];
   bots: { charId: string; name: string; color: number; team: number; level: number }[];
 }
 

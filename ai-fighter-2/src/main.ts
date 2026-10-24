@@ -18,6 +18,7 @@ import { DEFAULT_OPTIONS, normalizeRoomCode, decodeRle } from '../shared/protoco
 import type { ServerMsg } from '../shared/protocol';
 import * as S from './ui/screens';
 import type { LobbyCard } from './ui/screens';
+import { HATS, AURAS, cycleCosmetic } from '../shared/cosmetics';
 import { createReplayBar, uploadReplay, downloadReplay, replayLink, SPEEDS, type ReplayBar } from './ui/replay';
 import type { ReplayFile } from '../shared/replay';
 import { dailyHtml, dailyTableHtml, fetchDaily, submitDaily } from './ui/daily';
@@ -263,7 +264,7 @@ function addLocalPlayer(device: InputDevice): void {
   if (slot < 0) return;
   const s = settings();
   const charId = localCards.length === 0 ? s.lastChar : ROSTER[localCards.length % 8].id;
-  localCards.push({ slot, name: localCards.length === 0 && s.name ? s.name : `Joueur ${slot + 1}`, charId, color: nextFreeColor(localCards, localCards.length === 0 ? s.lastColor : getChar(charId).color), ready: false, isHost: slot === Math.min(...localCards.map((c) => c.slot), slot), local: true, deviceLabel: device.label });
+  localCards.push({ slot, name: localCards.length === 0 && s.name ? s.name : `Joueur ${slot + 1}`, charId, color: nextFreeColor(localCards, localCards.length === 0 ? s.lastColor : getChar(charId).color), ready: false, isHost: slot === Math.min(...localCards.map((c) => c.slot), slot), local: true, deviceLabel: device.label, hat: localCards.length === 0 ? s.lastHat : '', aura: localCards.length === 0 ? s.lastAura : '' });
   localCards.sort((a, b) => a.slot - b.slot);
   localCards.forEach((c, i) => (c.isHost = i === 0));
   input.assign(slot, device);
@@ -293,6 +294,11 @@ function renderLocalLobby(): void {
     else if (a === 'prev-char' && card) { cycleChar(card, -1); renderLocalLobby(); }
     else if (a === 'next-char' && card) { cycleChar(card, 1); renderLocalLobby(); }
     else if (a === 'color' && card) { card.color = Number(d.color); renderLocalLobby(); }
+    else if ((a === 'hat' || a === 'aura') && card) {
+      card[a] = cycleCosmetic(a === 'hat' ? HATS : AURAS, card[a] ?? '', Number(d.dir), loadProfile());
+      if (card === localCards[0]) saveSettings(a === 'hat' ? { lastHat: card.hat } : { lastAura: card.aura });
+      renderLocalLobby();
+    }
     else if (a === 'team' && card) { card.team = Number(d.team) === 1 ? 1 : 0; renderLocalLobby(); }
     else if (a === 'ready' && card) { if (S.isUnlocked(card.charId, loadProfile())) { card.ready = !card.ready; synth.play('confirm'); renderLocalLobby(); } }
     else if (a === 'leave' && card) { e.preventDefault(); input.unassign(slot); localCards = localCards.filter((c) => c !== card); localCards.forEach((c, i) => (c.isHost = i === 0)); renderLocalLobby(); }
@@ -348,7 +354,7 @@ function tickLocalLobby(): void {
   }
   if (changed) renderLocalLobby();
   // portraits animés
-  for (const cv of S.ui.querySelectorAll<HTMLCanvasElement>('canvas[data-portrait]')) S.drawPortrait(cv, cv.dataset.char ?? 'kai', Number(cv.dataset.color), renderer.time, cv.dataset.locked === '1');
+  for (const cv of S.ui.querySelectorAll<HTMLCanvasElement>('canvas[data-portrait]')) S.drawPortrait(cv, cv.dataset.char ?? 'kai', Number(cv.dataset.color), renderer.time, cv.dataset.locked === '1', cv.dataset.hat ?? '', cv.dataset.aura ?? '');
   renderer.time += 1;
 }
 
@@ -361,7 +367,7 @@ function botTeam(count: number[]): number {
 function buildConfig(cards: LobbyCard[], o: LobbyOptions): SimConfig {
   const modifier = o.daily ? dailyOf(todayUtc()).mod.id : undefined;
   const duel = o.mode === 'duel';
-  const players = cards.map((c, i) => ({ slot: c.slot, charId: c.charId, name: c.name, color: c.color, team: duel ? (o.teams ? (c.team ?? c.slot % 2) : i) : 0 }));
+  const players = cards.map((c, i) => ({ slot: c.slot, charId: c.charId, name: c.name, color: c.color, hat: c.hat ?? '', aura: c.aura ?? '', team: duel ? (o.teams ? (c.team ?? c.slot % 2) : i) : 0 }));
   const bots: SimConfig['bots'] = [];
   if (duel) {
     const used = new Set(players.map((p) => p.charId));
@@ -423,7 +429,7 @@ async function soloOpen(): Promise<void> {
   try { await ensureNet(); } catch { S.toast('Impossible de joindre le serveur. Réessaie dans quelques secondes.', 6000); return; }
   const s = settings();
   soloAutoStart = true;
-  net!.send({ t: 'create', name: myName(), charId: s.lastChar, color: s.lastColor, public: false });
+  net!.send({ t: 'create', name: myName(), charId: s.lastChar, color: s.lastColor, hat: s.lastHat, aura: s.lastAura, public: false });
 }
 
 /** Partage le lien de la partie en cours (menu de partage du téléphone, sinon copie dans le presse-papiers). */
@@ -484,7 +490,7 @@ function goOnline(prefill = ''): void {
     if ((a === 'join' || a === 'join-room') && code.length < 5) { status.textContent = 'Entre le code à 5 caractères du salon.'; return; }
     if (!(net && net.connectedFlag) && !(await connect())) return;
     const s2 = settings();
-    const who = { name: myName(), charId: s2.lastChar, color: s2.lastColor };
+    const who = { name: myName(), charId: s2.lastChar, color: s2.lastColor, hat: s2.lastHat, aura: s2.lastAura };
     if (a === 'create') net!.send({ t: 'create', ...who, public: pubEl.checked });
     else if (a === 'quick') net!.send({ t: 'quick', ...who });
     else net!.send({ t: 'join', code, ...who });
@@ -739,6 +745,7 @@ function renderOnlineLobby(): void {
     else if (a === 'next-char' && mine) net?.send({ t: 'lobby', charId: cycleId(me.charId, 1), ready: false });
     else if (a === 'color' && mine) net?.send({ t: 'lobby', color: Number(d.color) });
     else if (a === 'team' && mine) net?.send({ t: 'lobby', team: Number(d.team) === 1 ? 1 : 0 });
+    else if ((a === 'hat' || a === 'aura') && mine) { const v = cycleCosmetic(a === 'hat' ? HATS : AURAS, me[a] ?? '', Number(d.dir), loadProfile()); saveSettings(a === 'hat' ? { lastHat: v } : { lastAura: v }); net?.send({ t: 'lobby', [a]: v }); }
     else if (a === 'ready' && mine) { if (S.isUnlocked(me.charId, loadProfile())) { saveSettings({ lastChar: me.charId, lastColor: me.color }); net?.send({ t: 'lobby', ready: !me.ready }); } }
     else if (a === 'opt' && me?.isHost) { const o = { ...lobby!.options }; changeOption(o, d.key ?? '', Number(d.dir)); net?.send({ t: 'options', options: o }); }
     else if (a === 'start' && me?.isHost) net?.send({ t: 'start', seed: (Math.random() * 0xffffffff) >>> 0 });
@@ -787,7 +794,7 @@ function tickOnlineLobby(): void {
       else if (S.isUnlocked(me.charId, loadProfile())) net?.send({ t: 'lobby', ready: !me.ready });
     }
   }
-  for (const cv of S.ui.querySelectorAll<HTMLCanvasElement>('canvas[data-portrait]')) S.drawPortrait(cv, cv.dataset.char ?? 'kai', Number(cv.dataset.color), renderer.time, cv.dataset.locked === '1');
+  for (const cv of S.ui.querySelectorAll<HTMLCanvasElement>('canvas[data-portrait]')) S.drawPortrait(cv, cv.dataset.char ?? 'kai', Number(cv.dataset.color), renderer.time, cv.dataset.locked === '1', cv.dataset.hat ?? '', cv.dataset.aura ?? '');
   for (const card of S.ui.querySelectorAll<HTMLElement>('.pcard[data-slot]')) card.classList.toggle('speaking', voice.speaking.has(Number(card.dataset.slot)));
   renderer.time += 1;
 }

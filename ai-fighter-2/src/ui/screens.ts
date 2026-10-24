@@ -5,6 +5,8 @@ import { poseFor, drawStickman } from '../render/stickman';
 import type { Fighter } from '../sim/types';
 import { WEAPONS } from '../sim/types';
 import type { LobbyOptions, GameMode, PublicRoom } from '../../shared/protocol';
+import { HATS, AURAS, unlocked as cosmUnlocked } from '../../shared/cosmetics';
+import { drawAura } from '../render/cosmetics';
 import type { Profile, Settings } from '../core/storage';
 import { KEYMAP_P1, KEYMAP_P2, keyLabel, PAD_BUTTON_NAMES, PADMAP_DEFAULT, type KeyMap, type PadMap } from '../input/devices';
 
@@ -53,10 +55,10 @@ export function unlockHint(charId: string): string {
 }
 
 // ---- Portraits (stickman statique) ----
-const portraitFighter = (charId: string, color: number): Fighter =>
-  ({ id: 0, charId, name: '', team: 0, slot: 0, controller: 'player', ai: null, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, facing: 1, hp: 1, hpMax: 1, ki: 0, superMeter: 0, guardMeter: 0, state: 'idle', stateFrame: 0, moveId: null, moveHits: [], multiLeft: 0, chainIndex: 0, freeze: 0, invuln: 0, armor: false, comboHits: 0, comboTimer: 0, comboDamage: 0, guardFrames: 0, lowGuard: false, prevInput: 0, bufferedInput: 0, bufferTimer: 0, tapTimer: 0, tapDir: 0, runFrames: 0, airJumps: 0, heavyCharge: 0, chargeBonus: 0, hitFrames: 0, lastHitBy: 0, koTimer: 0, revive: 0, lives: 0, stats: getChar(charId).stats, bonuses: [], status: { burn: 0, burnDps: 0, frozen: 0, poison: 0, slow: 0, wet: 0 }, color, level: 0, kills: 0, phoenixUsed: false, nextMoveFrame: 0, wantsLeave: false, weapon: 0, weaponKind: '', rage: false, boss: false, hist: [], gunCd: 0, lastCmd: '', lastCmdFrame: -999, backHold: 0, cmb: '', cmbFrame: -999, phase2: false, form: 0, kiCharge: 0, carry: '', holding: -1, heldBy: -1, holdFrames: 0, holdMode: 0 }) as Fighter;
+const portraitFighter = (charId: string, color: number, hat = ''): Fighter =>
+  ({ id: 0, charId, name: '', team: 0, slot: 0, controller: 'player', ai: null, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, facing: 1, hp: 1, hpMax: 1, ki: 0, superMeter: 0, guardMeter: 0, state: 'idle', stateFrame: 0, moveId: null, moveHits: [], multiLeft: 0, chainIndex: 0, freeze: 0, invuln: 0, armor: false, comboHits: 0, comboTimer: 0, comboDamage: 0, guardFrames: 0, lowGuard: false, prevInput: 0, bufferedInput: 0, bufferTimer: 0, tapTimer: 0, tapDir: 0, runFrames: 0, airJumps: 0, heavyCharge: 0, chargeBonus: 0, hitFrames: 0, lastHitBy: 0, koTimer: 0, revive: 0, lives: 0, stats: getChar(charId).stats, bonuses: [], hat, aura: '', status: { burn: 0, burnDps: 0, frozen: 0, poison: 0, slow: 0, wet: 0 }, color, level: 0, kills: 0, phoenixUsed: false, nextMoveFrame: 0, wantsLeave: false, weapon: 0, weaponKind: '', rage: false, boss: false, hist: [], gunCd: 0, lastCmd: '', lastCmdFrame: -999, backHold: 0, cmb: '', cmbFrame: -999, phase2: false, form: 0, kiCharge: 0, carry: '', holding: -1, heldBy: -1, holdFrames: 0, holdMode: 0 }) as Fighter;
 
-export function drawPortrait(canvas: HTMLCanvasElement, charId: string, color: number, time: number, locked = false): void {
+export function drawPortrait(canvas: HTMLCanvasElement, charId: string, color: number, time: number, locked = false, hat = '', aura = ''): void {
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   const w = canvas.clientWidth || 160;
   const h = canvas.clientHeight || 110;
@@ -64,10 +66,11 @@ export function drawPortrait(canvas: HTMLCanvasElement, charId: string, color: n
   const ctx = canvas.getContext('2d')!;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
-  const f = portraitFighter(charId, color);
+  const f = portraitFighter(charId, color, hat);
   const pose = poseFor(f, time);
   const scale = h / 125;
   ctx.globalAlpha = locked ? 0.35 : 1;
+  if (aura) drawAura(ctx, aura, w / 2, h - 6, scale, time, 0, 0);
   drawStickman(ctx, f, pose, { x: w / 2, y: h - 6, scale, facing: 1, time });
   if (locked) {
     ctx.globalAlpha = 1;
@@ -85,6 +88,8 @@ export interface LobbyCard {
   charId: string;
   color: number;
   team?: number;
+  hat?: string;
+  aura?: string;
   ready: boolean;
   isHost: boolean;
   local: boolean;
@@ -103,6 +108,12 @@ export interface LobbyView {
   chat?: { name: string; text: string }[];
 }
 
+function cosmRow(kind: 'hat' | 'aura', label: string, list: typeof HATS, cur: string, slot: number, profile: Profile): string {
+  const c = list.find((x) => x.id === cur) ?? list[0];
+  const n = list.filter((x) => cosmUnlocked(x, profile)).length;
+  return `<div class="cosm"><button class="btn sm" data-action="${kind}" data-dir="-1" data-slot="${slot}">◀</button><span title="${esc(label)} · ${n}/${list.length} débloqués">${c.icon} ${esc(c.name)}</span><button class="btn sm" data-action="${kind}" data-dir="1" data-slot="${slot}">▶</button></div>`;
+}
+
 export function lobbyHtml(v: LobbyView): string {
   const slots = [0, 1, 2, 3];
   const cards = slots.map((s) => {
@@ -117,12 +128,13 @@ export function lobbyHtml(v: LobbyView): string {
     return `<div class="pcard ${c.ready ? 'ready' : ''}" data-slot="${s}" style="--pc:${pal.main}">
       <div class="tag" style="color:${pal.main}">P${s + 1} · ${esc(c.name)}</div>
       ${c.isHost ? '<div class="host">★ hôte</div>' : v.online && v.isHost && !c.local ? `<button class="btn sm danger" style="position:absolute;top:4px;right:6px;min-height:26px;padding:2px 8px" data-action="kick" data-slot="${s}" title="Expulser ce joueur">✖ Expulser</button>` : ''}
-      <div class="portrait"><canvas data-portrait data-char="${ch.id}" data-color="${c.color}" data-locked="${locked ? 1 : 0}"></canvas></div>
+      <div class="portrait"><canvas data-portrait data-char="${ch.id}" data-color="${c.color}" data-hat="${esc(c.hat ?? '')}" data-aura="${esc(c.aura ?? '')}" data-locked="${locked ? 1 : 0}"></canvas></div>
       <div class="cname">${esc(ch.name)}</div>
       <div class="ctitle">${esc(ch.title)}</div>
       ${locked ? `<div class="lock">🔒 ${esc(unlockHint(ch.id))}</div>` : ''}
       ${canEdit ? `<div class="nav"><button class="btn sm" data-action="prev-char" data-slot="${s}">◀</button><button class="btn sm ${c.ready ? '' : 'primary'}" data-action="ready" data-slot="${s}" ${locked ? 'disabled' : ''}>${c.ready ? 'Prêt ✔' : 'Prêt ?'}</button><button class="btn sm" data-action="next-char" data-slot="${s}">▶</button></div>
       ${v.options.mode === 'duel' && v.options.teams ? `<div class="teamsel">${[0, 1].map((t) => `<button class="btn sm ${(c.team ?? s % 2) === t ? 'primary' : ''}" ${canEdit ? `data-action="team" data-slot="${s}" data-team="${t}"` : 'disabled'} style="${(c.team ?? s % 2) === t ? `background:${t ? '#c0392b' : '#2471c8'}` : ''}">${t ? '🔴 Rouge' : '🔵 Bleue'}</button>`).join('')}</div>` : ''}
+      ${canEdit ? cosmRow('hat', '🎩 Chapeau', HATS, c.hat ?? '', s, v.profile) + cosmRow('aura', '✨ Aura', AURAS, c.aura ?? '', s, v.profile) : `<div class="small muted" style="text-align:center">${esc((HATS.find((h) => h.id === (c.hat ?? '')) ?? HATS[0]).icon)} ${esc((AURAS.find((h) => h.id === (c.aura ?? '')) ?? AURAS[0]).icon)}</div>`}
       <div class="colors">${PALETTE.slice(0, 12).map((p, i) => `<span class="dot ${i === c.color ? 'sel' : ''}" style="background:${p.main}" data-action="color" data-slot="${s}" data-color="${i}" title="${p.name}"></span>`).join('')}</div>
       <div class="dev">${esc(c.deviceLabel ?? '')}${c.local && !v.online ? ' · <a href="#" data-action="leave" data-slot="' + s + '" style="color:var(--danger)">quitter</a>' : ''}</div>`
       : `<div class="dev">${c.ready ? '✔ prêt' : 'choisit son combattant…'}</div>`}

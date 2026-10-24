@@ -1,4 +1,5 @@
 // Rendu des combattants : silhouettes pleines (aplats, membres épais, bouts arrondis), sans contour ni visage.
+import { drawHat } from './cosmetics';
 import type { Fighter, WeaponKind } from '../sim/types';
 import { WEAPONS } from '../sim/types';
 import { drawWeapon } from './weapons';
@@ -492,6 +493,7 @@ function drawBody(ctx: CanvasRenderingContext2D, f: Fighter, pose: Pose, o: Draw
   ctx.fill();
   if (tint || rim) { ctx.restore(); return; }
   drawAccessoryFront(ctx, f.form > 0 && (sk.accessory === 'none' || sk.accessory === 'headband') ? 'flamehair' : sk.accessory, headX, headY, headR, fx, S, col, o.time, f);
+  if (f.hat && !rim && !o.ghost) drawHat(ctx, f.hat, headX, headY, headR, fx, S, o.time);
   ctx.restore();
 }
 

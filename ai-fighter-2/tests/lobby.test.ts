@@ -29,6 +29,17 @@ beforeAll(async () => {
 afterAll(() => { server?.kill(); });
 
 describe('salons publics', () => {
+  it('cosmétiques : relayés dans le salon, valeurs inconnues rejetées', async () => {
+    const a = await client();
+    const j = waitFor(a, 'joined');
+    a.send({ t: 'create', name: 'Dandy', charId: 'kai', color: 0, hat: 'crown', aura: 'fire' });
+    await j;
+    const got = new Promise<string>((res) => { a.on('lobby', (m) => { const p = (m as Extract<ServerMsg, { t: 'lobby' }>).state.players[0]; if (p.hat === '' && p.aura === 'frost') res('ok'); }); setTimeout(() => res('timeout'), 3000); });
+    a.send({ t: 'lobby', hat: '<img>', aura: 'frost' });
+    expect(await got).toBe('ok');
+    a.close();
+  });
+
   it('choix d\'équipe : relayé dans le salon, équipe par défaut = slot % 2', async () => {
     const a = await client();
     const j = waitFor(a, 'joined');
