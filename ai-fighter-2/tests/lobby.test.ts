@@ -83,7 +83,7 @@ describe('salons publics', () => {
     a.close(); viewer.close();
   });
 
-  it('un salon plein ou en partie n\'est plus proposé, la partie rapide en ouvre un nouveau', async () => {
+  it('un salon plein n\'est plus proposé ; une partie en cours reste rejoignable (à la volée)', async () => {
     const clients: NetClient[] = [];
     const first = await client(); clients.push(first);
     const jf = waitFor(first, 'joined');
@@ -103,12 +103,13 @@ describe('salons publics', () => {
     const E = await je;
     expect(E.code).not.toBe(F.code);
     expect(E.created).toBe(true);
-    // une partie lancée n'est plus listée
+    // une partie lancée reste listée, marquée « en cours », tant qu'il reste une place
     const st = waitFor(extra, 'lobby');
     extra.send({ t: 'start', seed: 5 });
     await sleep(200);
     void st;
-    expect((await rooms(viewer)).some((r) => r.code === E.code)).toBe(false);
+    const listed = (await rooms(viewer)).find((r) => r.code === E.code);
+    expect(listed?.inGame).toBe(true);
     for (const c of [...clients, viewer, extra]) c.close();
   });
 });

@@ -68,7 +68,7 @@ function host(room: Room): Client | undefined {
   return room.clients.slice().sort((a, b) => a.slot - b.slot)[0];
 }
 function freeSlot(room: Room): number {
-  for (let s = 0; s < MAX_PLAYERS; s++) if (!room.clients.some((c) => c.slot === s)) return s;
+  for (let s = 0; s < MAX_PLAYERS; s++) if (!room.clients.some((c) => c.slot === s) && !room.reserved.has(s)) return s;
   return -1;
 }
 function freeColor(room: Room, wanted: number): number {
@@ -88,13 +88,13 @@ function newRoom(isPublic: boolean): Room {
 
 /** Salons publics rejoignables : en salon d'attente, au moins un joueur, une place libre. */
 function openPublicRooms(): Room[] {
-  return [...rooms.values()].filter((r) => r.options.isPublic && !r.inGame && r.clients.length > 0 && r.clients.length < MAX_PLAYERS);
+  return [...rooms.values()].filter((r) => r.options.isPublic && r.clients.length > 0 && r.clients.length < MAX_PLAYERS && r.options.mode !== 'training');
 }
 
 function publicList(): PublicRoom[] {
   return openPublicRooms().map((r) => {
     const players = lobbyState(r).players;
-    return { code: r.code, host: players[0]?.name ?? '?', mode: r.options.mode, difficulty: r.options.difficulty, players: r.clients.length, max: MAX_PLAYERS, teams: r.options.teams, names: players.map((p) => p.name) };
+    return { code: r.code, host: players[0]?.name ?? '?', mode: r.options.mode, difficulty: r.options.difficulty, players: r.clients.length, max: MAX_PLAYERS, teams: r.options.teams, names: players.map((p) => p.name), inGame: r.inGame };
   }).sort((a, b) => b.players - a.players).slice(0, 30);
 }
 
@@ -109,6 +109,29 @@ function seat(c: Client, room: Room, slot: number, name: unknown, charId: unknow
   room.emptySince = 0;
   send(c, { t: 'joined', slot, code: room.code, token: c.token, created });
   broadcast(room, { t: 'lobby', state: lobbyState(room) });
+}
+
+/** Un joueur rejoint une partie en cours : nouvel événement `join` à une frame future, reconstruction par rejeu du journal. */
+function joinRunning(c: Client, room: Room, slot: number, name: unknown, charId: unknown, color: unknown): void {
+  if (!room.start) return;
+  c.name = cleanName(name, `Joueur ${slot + 1}`);
+  c.charId = String(charId ?? 'kai').slice(0, 16);
+  c.color = freeColor(room, Number(color) | 0);
+  c.ready = false;
+  c.slot = slot;
+  const lastEvt = room.events.reduce((m, e) => Math.max(m, e.from), 0);
+  const from = Math.max(room.maxFrame + REJOIN_MARGIN, lastEvt + 1);
+  c.lastFrame = from - 1;
+  const ev: CtlEvent = { slot, from, ai: false, join: { name: c.name, charId: c.charId, color: c.color } };
+  room.events.push(ev);
+  room.emptySince = 0;
+  c.room = room;
+  room.clients.push(c);
+  send(c, { t: 'joined', slot, code: room.code, token: c.token });
+  send(c, { t: 'resume', seed: room.start.seed, options: room.start.options, players: room.start.players, delay: room.start.delay, slot, from, log: [...room.log].map(([s, arr]) => ({ slot: s, rle: encodeRle(arr) })), events: room.events });
+  broadcast(room, { t: 'rejoin', slot, from, join: ev.join }, c);
+  broadcast(room, { t: 'lobby', state: lobbyState(room) });
+  console.log(`[${room.code}] ${c.name} rejoint la partie en cours (slot ${slot}) à la frame ${from}`);
 }
 
 function cleanName(s: unknown, fallback: string): string {
@@ -158,8 +181,12 @@ function handle(c: Client, msg: ClientMsg): void {
     case 'quick': {
       // partie rapide : le salon public le plus rempli, sinon on en ouvre un
       leaveRoom(c);
-      const open = openPublicRooms().sort((a, b) => b.clients.length - a.clients.length)[0];
-      if (open) { seat(c, open, freeSlot(open), msg.name, msg.charId, msg.color, false); return; }
+      const open = openPublicRooms().filter((r) => freeSlot(r) >= 0).sort((a, b) => b.clients.length - a.clients.length)[0];
+      if (open) {
+        if (open.inGame && open.start) joinRunning(c, open, freeSlot(open), msg.name, msg.charId, msg.color);
+        else seat(c, open, freeSlot(open), msg.name, msg.charId, msg.color, false);
+        return;
+      }
       const room = newRoom(true);
       seat(c, room, 0, msg.name, msg.charId, msg.color, true);
       return;
@@ -168,11 +195,11 @@ function handle(c: Client, msg: ClientMsg): void {
       const code = normalizeRoomCode(String(msg.code ?? ''));
       const room = rooms.get(code);
       if (!room) { send(c, { t: 'error', code: 'noroom', message: `Salon ${code || '?'} introuvable.` }); return; }
-      if (room.inGame) { send(c, { t: 'error', code: 'ingame', message: 'La partie a déjà commencé dans ce salon.' }); return; }
       const slot = freeSlot(room);
       if (slot < 0) { send(c, { t: 'error', code: 'full', message: 'Salon complet (4 joueurs).' }); return; }
       leaveRoom(c);
-      seat(c, room, slot, msg.name, msg.charId, msg.color, false);
+      if (room.inGame && room.start) joinRunning(c, room, slot, msg.name, msg.charId, msg.color);
+      else seat(c, room, slot, msg.name, msg.charId, msg.color, false);
       return;
     }
     case 'leave':

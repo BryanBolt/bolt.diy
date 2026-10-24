@@ -267,6 +267,7 @@ export function menuHtml(profile: Profile, hasTouch: boolean, version: string, n
     </div>
     ${resume.online || resume.local ? `<div class="resume">${resume.online ? `<button class="btn primary big" data-action="resume-online">↩ Reprendre la partie en ligne <span class="sub">salon ${esc(resume.online)} · tes coéquipiers t'attendent, une IA joue à ta place</span></button>` : ''}${resume.local ? `<button class="btn primary big" data-action="resume-local">↩ Reprendre la partie locale <span class="sub">${esc(resume.local)} · reprise là où tu t'étais arrêté</span></button>` : ''}</div>` : ''}
     <div class="grid menu" style="margin-top:18px">
+      <button class="btn menu-item big ${noNet ? '' : 'primary'}" data-action="solo-open"><span class="ico">🔗</span>Partie solo ouverte<span class="sub">${noNet ? 'Nécessite la version avec serveur' : 'Joue seul tout de suite : tes amis te rejoignent en cours de route avec un lien'}</span></button>
       <button class="btn menu-item big" data-action="local"><span class="ico">🎮</span>Jouer en local<span class="sub">Solo ou jusqu'à 4 sur cet écran : claviers, manettes${hasTouch ? ', tactile' : ''}</span></button>
       <button class="btn menu-item big ${noNet ? '' : 'primary'}" data-action="online"><span class="ico">📡</span>Jouer en ligne<span class="sub">${noNet ? 'Indisponible sur cette page hébergée : il faut la version avec serveur' : 'Chacun sur son téléphone / PC, avec un code de salon'}</span></button>
       <button class="btn menu-item" data-action="howto"><span class="ico">📖</span>Comment jouer<span class="sub">Commandes, système de combat, liste des coups</span></button>
@@ -280,7 +281,7 @@ export function roomsHtml(rooms: PublicRoom[] | null, error = ''): string {
   if (rooms === null) return '<div class="small muted" style="padding:10px">Recherche des salons…</div>';
   if (!rooms.length) return '<div class="small muted" style="padding:10px">Aucun salon public pour l\'instant. Lance une <b>partie rapide</b> : ton salon apparaîtra ici et les autres pourront te rejoindre.</div>';
   return rooms.map((r) => `<div class="roomrow">
-      <div class="rinfo"><b>${esc(r.host)}</b> <span class="small muted">· ${esc(MODE_LABEL[r.mode])}${r.mode === 'campaign' || r.mode === 'survival' ? ' · ' + esc(DIFF_LABEL[r.difficulty] ?? '') : ''}${r.teams ? ' · équipes' : ''}</span>
+      <div class="rinfo"><b>${esc(r.host)}</b> <span class="small muted">${r.inGame ? '· ⚔ en cours ' : ''}· ${esc(MODE_LABEL[r.mode])}${r.mode === 'campaign' || r.mode === 'survival' ? ' · ' + esc(DIFF_LABEL[r.difficulty] ?? '') : ''}${r.teams ? ' · équipes' : ''}</span>
         <div class="small muted">${r.names.map(esc).join(', ')}</div></div>
       <div class="rcount">${r.players}/${r.max}</div>
       <button class="btn sm primary" data-action="join-room" data-code="${esc(r.code)}">Rejoindre</button>
@@ -317,6 +318,7 @@ export function pauseHtml(canQuit: boolean, isHost: boolean, online: boolean): s
   return `<h2>Pause</h2>
   <div class="col">
     <button class="btn primary" data-action="resume">▶ Reprendre</button>
+    ${online ? '<button class="btn" data-action="invite">🔗 Inviter des amis (partager le lien)</button>' : ''}
     <button class="btn" data-action="controls">📖 Commandes</button>
     ${canQuit ? `<button class="btn danger" data-action="quit">${online ? (isHost ? '✖ Terminer la partie pour tout le monde' : '✖ Quitter la partie') : '✖ Quitter la partie'}</button>` : ''}
   </div>`;

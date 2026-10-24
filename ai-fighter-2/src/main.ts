@@ -115,6 +115,7 @@ function goMenu(): void {
     if (a === 'resume-online') resumeOnline();
     else if (a === 'resume-local') resumeLocal();
     else if (a === 'local') goLocalLobby();
+    else if (a === 'solo-open') { if (noNet) S.toast('Il faut la version avec serveur pour inviter des amis.', 5000); else void soloOpen(); }
     else if (a === 'online') { if (noNet) S.toast('Le jeu en ligne demande la version avec serveur (voir le README du dépôt). Ici : solo et multijoueur local sur cet appareil.', 7000); else goOnline(); }
     else if (a === 'howto') goHowTo(settings().lastChar);
     else if (a === 'options') goOptions();
@@ -371,6 +372,30 @@ function startLocalGame(): void {
 // ---------------------------------------------------------------------------
 
 let roomsTimer = 0;
+let roomCode = ''; // code du salon courant (lien d'invitation)
+let soloAutoStart = false; // « partie solo ouverte » : démarre dès que le salon est créé
+
+/** Joue seul tout de suite ; des amis peuvent rejoindre en cours de route avec le lien. */
+async function soloOpen(): Promise<void> {
+  gameOnline = true;
+  S.toast('Ouverture de ta partie…', 3000);
+  try { await ensureNet(); } catch { S.toast('Impossible de joindre le serveur. Réessaie dans quelques secondes.', 6000); return; }
+  const s = settings();
+  soloAutoStart = true;
+  net!.send({ t: 'create', name: myName(), charId: s.lastChar, color: s.lastColor, public: false });
+}
+
+/** Partage le lien de la partie en cours (menu de partage du téléphone, sinon copie dans le presse-papiers). */
+async function invite(): Promise<void> {
+  const code = roomCode || loadOnlineResume()?.code;
+  if (!code) { S.toast("Invitations disponibles dans une partie en ligne (menu → « Partie solo ouverte »).", 5000); return; }
+  const url = `${location.origin}${location.pathname}?salon=${code}`;
+  try {
+    if (navigator.share) { await navigator.share({ title: 'AI Fighter 2', text: 'Rejoins ma partie AI Fighter 2 !', url }); return; }
+  } catch (e) { if ((e as Error).name === 'AbortError') return; }
+  try { await navigator.clipboard.writeText(url); S.toast(`Lien copié : ${url}`, 5000); }
+  catch { window.prompt('Copie ce lien et envoie-le à tes amis :', url); }
+}
 
 function goOnline(prefill = ''): void {
   state = 'online';
@@ -510,6 +535,7 @@ function handleResume(m: Extract<ServerMsg, { t: 'resume' }>): void {
   const cards: LobbyCard[] = m.players.map((p) => ({ ...p, local: p.slot === mySlot }));
   const config = buildConfig(cards, m.options);
   for (const p of m.players) names.set(p.slot, p.name);
+  for (const e of m.events) if (e.join) names.set(e.slot, e.join.name);
   lobby = { code: '', players: m.players, options: m.options, inGame: true };
   voice.setRoster(mySlot, m.players.map((p) => p.slot));
   const log: Record<number, number[]> = {};
@@ -587,14 +613,28 @@ function bindNet(n: NetClient): void {
     setTimeout(() => { if (resyncing && session) { resyncing = false; session.frozen = false; } showReco(null); }, 8000);
   });
   n.on('drop', (m) => { if (m.t === 'drop') S.toast(`${names.get(m.slot) ?? 'Un joueur'} a perdu la connexion : une IA le remplace, il pourra revenir.`, 4500); });
-  n.on('rejoin', (m) => { if (m.t === 'rejoin') S.toast(`${names.get(m.slot) ?? 'Un joueur'} revient dans la partie !`, 4000); });
+  n.on('rejoin', (m) => {
+    if (m.t !== 'rejoin') return;
+    if (m.join) { names.set(m.slot, m.join.name); S.toast(`${m.join.name} rejoint la partie ! La difficulté s'adapte.`, 4500); }
+    else S.toast(`${names.get(m.slot) ?? 'Un joueur'} revient dans la partie !`, 4000);
+  });
   n.on('joined', (m) => {
     if (m.t !== 'joined') return;
     mySlot = m.slot;
+    roomCode = m.code;
     chat = [];
     history.replaceState(null, '', `?salon=${m.code}`);
     saveOnlineResume({ code: m.code, token: m.token, slot: m.slot, url: settings().serverUrl, ts: Date.now() });
     window.clearInterval(roomsTimer);
+    if (m.created && soloAutoStart) {
+      soloAutoStart = false;
+      if (!input.deviceFor(mySlot) || !input.deviceFor(mySlot)!.connected()) {
+        const pad = [...input.pads.values()][0];
+        input.assign(mySlot, pad ?? (hasTouch && !matchMedia('(pointer:fine)').matches ? input.touch : input.keyboard1));
+      }
+      n.send({ t: 'start', seed: (Math.random() * 0xffffffff) >>> 0 });
+      return;
+    }
     if (m.created) S.toast('Salon ouvert : les autres joueurs pourront te rejoindre depuis la liste.', 4500);
   });
   n.on('lobby', (m) => { if (m.t === 'lobby') { lobby = m.state; voice.setRoster(mySlot, m.state.players.map((p) => p.slot)); if (state === 'online' || state === 'online-lobby') { state = 'online-lobby'; renderOnlineLobby(); } } });
@@ -605,6 +645,10 @@ function bindNet(n: NetClient): void {
     const config = buildConfig(cards, m.options);
     for (const p of m.players) names.set(p.slot, p.name);
     voice.setRoster(mySlot, m.players.map((p) => p.slot));
+    if (!input.deviceFor(mySlot) || !input.deviceFor(mySlot)!.connected()) {
+      const pad = [...input.pads.values()][0];
+      input.assign(mySlot, pad ?? (hasTouch && !matchMedia('(pointer:fine)').matches ? input.touch : input.keyboard1));
+    }
     startGame(config, m.seed, [mySlot], m.players.map((p) => p.slot), m.delay, n);
   });
   n.on('end', () => {
@@ -757,6 +801,7 @@ function showPauseMenu(): void {
   el.addEventListener('click', (e) => {
     const a = actionOf(e);
     if (a === 'resume') { session?.queue(session.localSlots[0], IN.PAUSE); }
+    else if (a === 'invite') void invite();
     else if (a === 'controls') { goHowTo(lastStartConfig?.config.players.find((p) => p.slot === session?.localSlots[0])?.charId ?? 'kai'); }
     else if (a === 'quit') { S.hide(); pauseShown = false; quitToLobby(); }
   });
@@ -941,9 +986,10 @@ document.addEventListener('visibilitychange', () => {
 voice.setMode(settings().voiceMode);
 const voiceBox = document.createElement('div');
 voiceBox.id = 'voicebox';
-voiceBox.innerHTML = '<button id="voice" type="button" aria-label="Chat vocal"></button><div class="vrow"><button id="voicemode" type="button"></button><button id="voiceleave" type="button" title="Quitter le chat vocal" aria-label="Quitter le chat vocal">✕</button></div>';
+voiceBox.innerHTML = '<button id="invite" type="button" aria-label="Inviter des amis">🔗 Inviter</button><button id="voice" type="button" aria-label="Chat vocal"></button><div class="vrow"><button id="voicemode" type="button"></button><button id="voiceleave" type="button" title="Quitter le chat vocal" aria-label="Quitter le chat vocal">✕</button></div>';
 document.body.appendChild(voiceBox);
 const voiceBtn = voiceBox.querySelector('#voice') as HTMLButtonElement;
+voiceBox.querySelector('#invite')!.addEventListener('click', () => { synth.unlock(); void invite(); });
 const voiceModeBtn = voiceBox.querySelector('#voicemode') as HTMLButtonElement;
 const voiceLeaveBtn = voiceBox.querySelector('#voiceleave') as HTMLButtonElement;
 let voiceHeld = false; // bouton à l'écran maintenu

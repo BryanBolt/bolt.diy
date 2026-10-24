@@ -143,4 +143,51 @@ describe('reprise de partie en ligne', () => {
     expect(e.code).toBe('gone');
     c.close();
   }, 15000);
+
+  it('un joueur rejoint une partie solo en cours : nouveau combattant, partie identique pour tous', async () => {
+    const url = `ws://localhost:${PORT}/ws`;
+    const solo: SimConfig = { mode: 'campaign', difficulty: 1, rounds: 3, teams: false, stageIndex: 0, players: [{ slot: 0, charId: 'kai', name: 'A', color: 0, team: 0 }], bots: [] };
+    const a = new NetClient();
+    await a.connect(url);
+    const joinedA = waitFor(a, 'joined');
+    a.send({ t: 'create', name: 'A', charId: 'kai', color: 0 });
+    const ja = await joinedA;
+    const startA = waitFor(a, 'start');
+    a.send({ t: 'start', seed: 777 });
+    const sa = await startA;
+    const inA = new FakeInput();
+    const A = new Session({ config: solo, seed: sa.seed, localSlots: [0], allSlots: [0], delay: sa.delay, input: inA as unknown as InputManager, net: a });
+    let now = 0;
+    const inB = new FakeInput();
+    const pump = async (ticks: number, sessions: Session[], inputs: FakeInput[]) => {
+      for (let i = 0; i < ticks; i++) { now += 16.7; inputs.forEach((x) => x.tick++); for (const s of sessions) s.update(now); await sleep(2); }
+    };
+    await pump(240, [A], [inA]);
+    expect(A.simFrame).toBeGreaterThan(150);
+
+    // B rejoint via le code du salon alors que la partie tourne
+    const b = new NetClient();
+    await b.connect(url);
+    const rejoinA = waitFor(a, 'rejoin');
+    const resumeB = waitFor(b, 'resume');
+    b.send({ t: 'join', code: ja.code, name: 'B', charId: 'tora', color: 1 });
+    const rs = await resumeB;
+    const rj = await rejoinA;
+    expect(rs.slot).toBe(1);
+    expect(rj.join?.name).toBe('B');
+    expect(rs.from).toBeGreaterThan(A.simFrame);
+    const log: Record<number, number[]> = {};
+    for (const e of rs.log) log[e.slot] = decodeRle(e.rle);
+    const B = new Session({ config: solo, seed: rs.seed, localSlots: [1], allSlots: [0], delay: rs.delay, input: inB as unknown as InputManager, net: b, replay: { log, events: rs.events, resumeFrom: rs.from } });
+    await pump(900, [A, B], [inA, inB]);
+    expect(B.catching).toBe(false);
+    expect(A.world.fighters.filter((f) => f.slot >= 0).length).toBe(2);
+    expect(B.world.fighters.filter((f) => f.slot >= 0).length).toBe(2);
+    expect(A.desync).toBe(false);
+    expect(B.desync).toBe(false);
+    for (let i = 0; i < 600 && A.simFrame !== B.simFrame; i++) { now += 16.7; inA.tick++; inB.tick++; (A.simFrame < B.simFrame ? A : B).update(now); await sleep(1); }
+    expect(A.simFrame).toBe(B.simFrame);
+    expect(hashWorld(A.world)).toBe(hashWorld(B.world));
+    a.close(); b.close();
+  }, 60000);
 });

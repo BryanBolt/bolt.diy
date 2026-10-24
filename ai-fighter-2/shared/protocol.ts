@@ -3,7 +3,7 @@
 // entrées de chaque joueur. Toute la simulation tourne côté client en
 // lockstep déterministe.
 
-export const PROTOCOL_VERSION = 4;
+export const PROTOCOL_VERSION = 5;
 /** Délai (en frames) entre le retour d'un joueur et sa reprise des commandes : laisse le temps à tous les clients de l'apprendre. */
 export const REJOIN_MARGIN = 120;
 export const MAX_PLAYERS = 4;
@@ -40,6 +40,7 @@ export interface PublicRoom {
   max: number;
   teams: boolean;
   names: string[];
+  inGame: boolean; // partie en cours : on la rejoint à la volée
 }
 
 export interface LobbyState {
@@ -70,11 +71,13 @@ export type ClientMsg =
   | { t: 'ping'; ts: number }
   | { t: 'pong'; ts: number }; // réponse au ping du serveur (mesure de latence)
 
-/** Changement de contrôle d'un slot : ai = true → une IA joue à sa place à partir de `from`. */
+/** Changement de contrôle d'un slot : ai = true → une IA joue à sa place à partir de `from`.
+ *  join : un nouveau joueur entre dans la partie en cours à la frame `from` (nouveau combattant, ou reprise d'un combattant laissé à l'IA). */
 export interface CtlEvent {
   slot: number;
   from: number;
   ai: boolean;
+  join?: { name: string; charId: string; color: number };
 }
 
 // --- Serveur -> client ---
@@ -87,7 +90,7 @@ export type ServerMsg =
   | { t: 'start'; seed: number; options: LobbyOptions; players: LobbyPlayer[]; delay: number }
   | { t: 'input'; slot: number; f: number; bits: number[] }
   | { t: 'drop'; slot: number; from: number } // le joueur a quitté : une IA le remplace à partir de la frame `from`
-  | { t: 'rejoin'; slot: number; from: number } // le joueur est revenu : il reprend la main à la frame `from`
+  | { t: 'rejoin'; slot: number; from: number; join?: { name: string; charId: string; color: number } } // le joueur est revenu (ou nouveau joueur : `join`) : il prend la main à la frame `from`
   | { t: 'resume'; seed: number; options: LobbyOptions; players: LobbyPlayer[]; delay: number; slot: number; from: number; log: { slot: number; rle: number[] }[]; events: CtlEvent[] }
   | { t: 'desync'; f: number }
   | { t: 'rtc'; from: number; data: string }

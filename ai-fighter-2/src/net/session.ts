@@ -6,7 +6,7 @@
 // - reprise : la partie peut être reconstruite en rejouant le journal des entrées
 //   (déterminisme) ; un joueur absent est remplacé par une IA, puis reprend la main.
 
-import { createWorld, step, setSlotAi, setSlotPlayer } from '../sim/sim';
+import { createWorld, step, setSlotAi, setSlotPlayer, joinPlayer } from '../sim/sim';
 import { hashWorld } from '../sim/hash';
 import type { World, SimConfig, SimEvent } from '../sim/types';
 import type { InputManager } from '../input/manager';
@@ -46,7 +46,7 @@ export class Session {
   simFrame = 0; // nombre de step() exécutés
   sendFrame: number;
   readonly localSlots: number[];
-  readonly allSlots: number[];
+  allSlots: number[];
   readonly delay: number;
   private inputs = new Map<number, number[]>(); // slot -> bits par frame
   private ctl: CtlEvent[] = [];
@@ -82,7 +82,9 @@ export class Session {
   constructor(o: SessionOptions) {
     this.world = createWorld(o.config, o.seed);
     this.localSlots = o.localSlots;
-    this.allSlots = o.allSlots;
+    this.allSlots = o.allSlots.slice();
+    if (o.replay) for (const e of o.replay.events) if (e.join) this.addSlot(e.slot);
+    o = { ...o, allSlots: this.allSlots };
     this.delay = o.delay;
     this.input = o.input;
     this.net = o.net;
@@ -124,7 +126,8 @@ export class Session {
           if (m.t !== 'rejoin') return;
           // la reprise doit être annoncée avant que cette frame soit jouée, sinon les clients divergeraient
           if (m.from <= this.simFrame) this.desync = true;
-          this.ctl.push({ slot: m.slot, from: m.from, ai: false });
+          if (m.join) this.addSlot(m.slot);
+          this.ctl.push({ slot: m.slot, from: m.from, ai: false, join: m.join });
         }),
       );
       this.unsub.push(
@@ -140,6 +143,19 @@ export class Session {
     this.unsub = [];
   }
 
+  /** Nouveau slot (joueur arrivé en cours de partie). */
+  private addSlot(slot: number): void {
+    if (!this.allSlots.includes(slot)) this.allSlots.push(slot);
+    if (!this.inputs.has(slot)) this.inputs.set(slot, []);
+  }
+
+  /** Frame d'arrivée d'un joueur entré en cours de partie (-1 : présent dès le départ). */
+  private joinFrame(slot: number): number {
+    let best = -1;
+    for (const e of this.ctl) if (e.slot === slot && e.join && (best < 0 || e.from < best)) best = e.from;
+    return best;
+  }
+
   /** Vrai si, à la frame f, ce slot est piloté par une IA (joueur parti). */
   private aiAt(slot: number, f: number): boolean {
     let ai = false;
@@ -149,12 +165,16 @@ export class Session {
   }
 
   private inputReady(slot: number, f: number): boolean {
+    const jf = this.joinFrame(slot);
+    if (jf >= 0 && f < jf) return true; // pas encore dans la partie
     if (this.aiAt(slot, f)) return true;
     const arr = this.inputs.get(slot);
     return !!arr && arr[f] !== undefined;
   }
 
   private inputFor(slot: number, f: number): number {
+    const jf = this.joinFrame(slot);
+    if (jf >= 0 && f < jf) return 0;
     if (this.aiAt(slot, f)) return 0;
     return this.inputs.get(slot)?.[f] ?? 0;
   }
@@ -169,7 +189,7 @@ export class Session {
       return false;
     }
     this.waitingSlots = [];
-    for (const e of this.ctl) if (e.from === f) { if (e.ai) setSlotAi(this.world, e.slot); else setSlotPlayer(this.world, e.slot); }
+    for (const e of this.ctl) if (e.from === f) { if (e.join) joinPlayer(this.world, e.slot, e.join.name, e.join.charId, e.join.color); else if (e.ai) setSlotAi(this.world, e.slot); else setSlotPlayer(this.world, e.slot); }
     const bits: number[] = [];
     for (const slot of this.allSlots) bits[slot] = this.inputFor(slot, f);
     step(this.world, bits);

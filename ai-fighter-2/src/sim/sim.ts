@@ -180,8 +180,8 @@ function makeEnemy(w: World, kind: EnemyKind, level: number, charId?: string, na
   const f = makeFighter(w, cid, nm, 1, level, kind === 'boss' ? getChar(cid).color : 11);
   const diff = C.DIFF_HP[w.difficulty];
   const base = kind === 'boss' ? 1.75 : kind === 'brute' ? 1.25 : kind === 'ninja' ? 0.7 : kind === 'gunner' ? 0.75 : kind === 'shield' ? 1.1 : kind === 'bomber' ? 0.7 : 0.85;
-  const players = Math.max(1, w.fighters.filter((x) => x.controller === 'player' || x.slot >= 0).length);
-  const crowd = kind === 'boss' ? 1 + (players - 1) * 0.45 : 1 + (players - 1) * 0.12;
+  const players = humanCount(w);
+  const crowd = kind === 'boss' ? 1 + (players - 1) * 0.6 : 1 + (players - 1) * 0.3;
   f.hpMax = Math.round(f.hpMax * base * (0.5 + level * 0.1) * diff * crowd);
   f.hp = f.hpMax;
   // en solo, les ennemis frappent un peu moins fort (pas d'allié pour réanimer)
@@ -268,8 +268,8 @@ function nextWave(w: World): void {
     : w.mode === 'survival'
       ? survivalWave(w, w.waveIndex)
       : stage.waves[w.waveIndex].enemies;
-  const nPlayers = Math.max(1, players(w).length);
-  const extra = isBoss ? 0 : Math.round((nPlayers - 1) * 0.5 * spec.length);
+  const nPlayers = humanCount(w);
+  const extra = isBoss ? 0 : Math.round((nPlayers - 1) * 0.6 * spec.length);
   const all: { kind: EnemyKind; charId?: string; level: number }[] = [...spec];
   for (let i = 0; i < extra; i++) all.push(spec[i % spec.length]);
   all.forEach((e, i) => {
@@ -1947,6 +1947,39 @@ export function setSlotAi(w: World, slot: number): void {
   for (const bc of w.bonusChoices) if (bc.slot === slot && bc.chosen < 0) bc.chosen = 0;
   for (const sc of w.shopChoices) if (sc.slot === slot) sc.done = true;
   if (w.paused && w.pausedBy === slot) { w.paused = false; w.pausedBy = -1; }
+}
+
+/** Nombre de joueurs humains actifs : sert à adapter la difficulté (points de vie, effectifs). */
+function humanCount(w: World): number {
+  return Math.max(1, w.fighters.filter((f) => f.team === 0 && f.slot >= 0 && f.controller === 'player').length);
+}
+
+/** Un joueur entre dans la partie en cours (déterministe, à la frame annoncée par le serveur). */
+export function joinPlayer(w: World, slot: number, name: string, charId: string, color: number): void {
+  const existing = w.fighters.find((f) => f.slot === slot);
+  if (existing) {
+    // place laissée à l'IA : le nouvel arrivant reprend ce combattant
+    existing.name = name;
+    if (existing.controller === 'ai') setSlotPlayer(w, slot);
+    existing.name = name;
+    return;
+  }
+  const team = w.mode === 'duel' ? (w.config.teams ? slot % 2 : slot) : 0;
+  const f = makeFighter(w, charId, name, team, 0, color);
+  f.slot = slot;
+  f.controller = 'player';
+  const mates = w.fighters.filter((x) => x.team === 0 && x.slot >= 0 && alive(x));
+  const cx = mates.length ? mates.reduce((a, x) => a + x.x, 0) / mates.length : w.camX + C.VIEW_W / 2;
+  const left = w.locked ? w.arenaL + 40 : 40;
+  const right = (w.locked ? w.arenaR : (w.stage?.width ?? C.VIEW_W)) - 40;
+  f.x = q(clamp(cx + (slot % 2 === 0 ? -60 : 60), left, right));
+  f.z = [150, 190, 112, 170][slot % 4];
+  f.facing = 1;
+  f.invuln = 90;
+  w.fighters.push(f);
+  w.events.push({ t: 'text', x: f.x, y: 140, z: f.z, text: `${name} rejoint la partie !`, color: '#7cff9a' });
+  w.events.push({ t: 'sound', id: 'wave' });
+  w.events.push({ t: 'text', x: f.x, y: 175, z: f.z, text: `Difficulté adaptée : ${humanCount(w)} joueur${humanCount(w) > 1 ? 's' : ''}`, color: '#ffd166' });
 }
 
 /** Un joueur revient : il reprend son combattant (déterministe, à la frame annoncée par le serveur). */

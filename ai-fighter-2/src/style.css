@@ -305,3 +305,4 @@ kbd { border-radius: 2px; background: rgba(123, 228, 255, 0.12); border-color: v
 #touch.lefty .t-stick { left: 83%; }
 #touch.lefty .t-pause { right: auto; left: calc(14px + env(safe-area-inset-left)); }
 @media (max-height: 420px) { #touch .t-combos { bottom: auto; top: calc(10px + env(safe-area-inset-top)); right: calc(70px + env(safe-area-inset-right)); } #touch.lefty .t-combos { right: auto; left: calc(70px + env(safe-area-inset-left)); } }
+#invite { min-height: 40px; padding: 0 14px; border-color: #ffd98a !important; background: rgba(255, 217, 138, 0.2) !important; }
