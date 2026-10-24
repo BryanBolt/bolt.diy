@@ -348,6 +348,7 @@ export type Phase =
   | 'fight'
   | 'waveClear'
   | 'bonus'
+  | 'mini'
   | 'shop'
   | 'stageClear'
   | 'roundEnd'
@@ -410,6 +411,11 @@ export interface Hazard {
   dir: number;
   hits: number[];
 }
+
+/** Mini-jeu entre deux stages : casser des planches (matraquer) ou barre de timing. Les gains vont à la cagnotte commune. */
+export type MiniKind = 'smash' | 'timing';
+export interface MiniPlayer { slot: number; n: number; round: number; results: number[]; done: boolean; flash: number }
+export interface MiniState { kind: MiniKind; start: number; players: MiniPlayer[] }
 
 export interface ShopChoice {
   slot: number;
@@ -496,6 +502,7 @@ export interface World {
   hazards: Hazard[];
   fixtures: Fixture[];
   zones: Zone[];
+  mini: MiniState | null;
   bossCd: number; // frames avant la prochaine attaque de zone
   bossWeak: number; // fenêtre de point faible (dégâts ×1,8) restante
   events: SimEvent[];

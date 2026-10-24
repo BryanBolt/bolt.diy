@@ -14,7 +14,7 @@ import { IN } from './types';
 import { SHOP_ITEMS, WEAPONS } from './types';
 import { readCommand, dirMaskOf, pushHistory } from './commands';
 import { FORMS, FORM_FRAMES } from './forms';
-import type { World, Fighter, SimConfig, MoveDef, Projectile, Item, BonusId, EnemyKind, StageDef, AiState, CharDef, SimEvent, Phase, FState, Hazard, ProjectileDef, WeaponKind } from './types';
+import type { World, Fighter, SimConfig, MoveDef, Projectile, Item, BonusId, EnemyKind, StageDef, AiState, CharDef, SimEvent, Phase, FState, Hazard, ProjectileDef, WeaponKind, MiniKind, MiniPlayer } from './types';
 
 // ---------------------------------------------------------------------------
 // Création
@@ -55,6 +55,7 @@ export function createWorld(config: SimConfig, seed: number): World {
     hazards: [],
     fixtures: [],
     zones: [],
+    mini: null,
     bossCd: 0,
     bossWeak: 0,
     events: [],
@@ -421,6 +422,79 @@ function giveWeapon(w: World, f: Fighter, wk: WeaponKind, uses?: number): void {
   f.gunCd = 0;
   w.events.push({ t: 'text', x: f.x, y: f.y + 130, z: f.z, text: WEAPONS[wk].name.toUpperCase() + ' !', color: '#ffd166' });
   w.events.push({ t: 'sound', id: 'weapon', x: f.x });
+}
+
+export const MINI_COUNTDOWN = 120;
+export const MINI_SMASH_FRAMES = 360;
+const TIMING_SPEED = [0.016, 0.022, 0.03];
+
+/** Position (0..1) du curseur de la barre de timing pour ce joueur, déduite uniquement de la frame : identique chez tous. */
+export function miniCursor(w: World, mp: MiniPlayer): number {
+  const t = Math.max(0, w.frame - (w.mini?.start ?? w.frame) - MINI_COUNTDOWN);
+  const x = (t * TIMING_SPEED[Math.min(2, mp.round)]) % 2;
+  return x < 1 ? x : 2 - x;
+}
+
+function startMini(w: World): void {
+  const kind: MiniKind = w.stageIndex % 2 === 0 ? 'smash' : 'timing';
+  w.mini = { kind, start: w.frame, players: [] };
+  for (const f of players(w)) {
+    const ai = f.controller === 'ai';
+    w.mini.players.push({ slot: f.slot, n: ai && kind === 'smash' ? 40 : 0, round: ai && kind === 'timing' ? 3 : 0, results: ai && kind === 'timing' ? [12, 12, 5] : [], done: ai, flash: 0 });
+  }
+  setPhase(w, 'mini', kind === 'smash' ? MINI_COUNTDOWN + MINI_SMASH_FRAMES + 100 : MINI_COUNTDOWN + 60 * 40);
+  w.events.push({ t: 'sound', id: 'wave' });
+}
+
+function miniReward(kind: MiniKind, mp: MiniPlayer): number {
+  return kind === 'smash' ? Math.min(12, Math.floor(mp.n / 5)) * 4 : mp.results.reduce((a, b) => a + b, 0);
+}
+
+function stepMini(w: World, inputs: number[]): void {
+  const m = w.mini;
+  if (!m) { startShop(w); return; }
+  const t = w.frame - m.start - MINI_COUNTDOWN;
+  let all = true;
+  for (const mp of m.players) {
+    if (mp.flash > 0) mp.flash--;
+    const f = w.fighters.find((x) => x.slot === mp.slot && x.team === 0);
+    if (f) {
+      const inp = inputs[mp.slot] ?? 0;
+      const pressed = inp & ~f.prevInput & (IN.LIGHT | IN.HEAVY | IN.CONFIRM | IN.SPECIAL);
+      f.prevInput = inp;
+      if (!mp.done && t >= 0 && pressed) {
+        if (m.kind === 'smash') {
+          mp.n++;
+          mp.flash = 4;
+          w.events.push({ t: 'sound', id: mp.n % 5 === 0 ? 'cratebreak' : 'hit', x: f.x });
+        } else {
+          const d = Math.abs(miniCursor(w, mp) - 0.5);
+          const r = d < 0.06 ? 25 : d < 0.14 ? 12 : d < 0.24 ? 5 : 0;
+          mp.results.push(r);
+          mp.round++;
+          mp.flash = 30;
+          w.events.push({ t: 'text', x: f.x, y: f.y + 140, z: f.z, text: r === 25 ? 'PARFAIT !' : r === 12 ? 'BIEN' : r === 5 ? 'LIMITE' : 'RATÉ', color: r === 25 ? '#7dffb0' : r >= 12 ? '#ffe14d' : '#ff8a6a' });
+          w.events.push({ t: 'sound', id: r >= 12 ? 'confirm' : 'deny' });
+          if (mp.round >= 3) mp.done = true;
+        }
+      }
+      if (m.kind === 'smash' && t >= MINI_SMASH_FRAMES) mp.done = true;
+    } else mp.done = true;
+    if (!mp.done) all = false;
+  }
+  if (all || w.phaseTimer === 0) {
+    let total = 0;
+    for (const mp of m.players) {
+      const r = miniReward(m.kind, mp);
+      total += r;
+      const f = w.fighters.find((x) => x.slot === mp.slot && x.team === 0);
+      if (f && r > 0) w.events.push({ t: 'text', x: f.x, y: f.y + 160, z: f.z, text: `+${r} 🪙`, color: '#ffe14d' });
+    }
+    w.coins += total;
+    w.score += total * 5;
+    w.mini = null;
+    startShop(w);
+  }
 }
 
 function startShop(w: World): void {
@@ -950,13 +1024,16 @@ function stepPhase(w: World, inputs: number[]): void {
     case 'stageClear':
       if (w.phaseTimer === 0) {
         if (w.stageIndex + 1 < STAGES.length) {
-          startShop(w);
+          startMini(w);
         } else {
           w.winnerTeam = 0;
           setPhase(w, 'matchEnd', 0);
           w.events.push({ t: 'sound', id: 'victory' });
         }
       }
+      break;
+    case 'mini':
+      stepMini(w, inputs);
       break;
     case 'shop': {
       let all = true;

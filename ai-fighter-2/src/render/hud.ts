@@ -9,6 +9,7 @@ import { project, type Camera } from './camera';
 import { STAGES } from '../sim/stages';
 import { SHOP_ITEMS, WEAPONS } from '../sim/types';
 import { REVIVE_FRAMES } from '../sim/constants';
+import { MINI_COUNTDOWN, MINI_SMASH_FRAMES, miniCursor } from '../sim/sim';
 
 const FONT = '"Segoe UI", system-ui, -apple-system, sans-serif';
 
@@ -167,6 +168,7 @@ export function drawHud(ctx: CanvasRenderingContext2D, w: World, fx: Fx, cam: Ca
   // --- choix de bonus ---
   if (w.phase === 'bonus') drawBonusChoice(ctx, w, info, time);
   if (w.phase === 'shop') drawShop(ctx, w, info, time);
+  if (w.phase === 'mini') drawMini(ctx, w, info, time);
   if (fx.alert) drawAlert(ctx, fx.alert, time);
   // --- écrans de fin ---
   if (w.phase === 'matchEnd' || w.phase === 'gameOver') drawEndScreen(ctx, w, time);
@@ -407,6 +409,80 @@ function drawAlert(ctx: CanvasRenderingContext2D, a: { text: string; life: numbe
   ctx.fillStyle = blink ? '#ff5f5f' : '#ffd166';
   ctx.fillText(a.text, view.w / 2, 130);
   ctx.restore();
+  ctx.textAlign = 'left';
+}
+
+function drawMini(ctx: CanvasRenderingContext2D, w: World, info: HudInfo, time: number): void {
+  const m = w.mini;
+  if (!m) return;
+  ctx.fillStyle = 'rgba(10,10,20,0.68)';
+  ctx.fillRect(0, 0, view.w, view.h);
+  ctx.textAlign = 'center';
+  ctx.font = `900 28px ${FONT}`;
+  ctx.fillStyle = '#ffd166';
+  ctx.fillText(m.kind === 'smash' ? 'ÉPREUVE : CASSE LES PLANCHES !' : 'ÉPREUVE : CONCENTRATION', view.w / 2, 64);
+  const t = w.frame - m.start - MINI_COUNTDOWN;
+  ctx.font = `14px ${FONT}`;
+  ctx.fillStyle = '#ccc';
+  ctx.fillText(m.kind === 'smash' ? 'Matraque Attaque (ou touche l\'écran) le plus vite possible !' : 'Appuie sur Attaque quand le curseur est dans la zone verte (3 essais, de plus en plus vite).', view.w / 2, 88);
+  if (t < 0) {
+    ctx.font = `900 90px ${FONT}`;
+    ctx.fillStyle = '#fff';
+    ctx.fillText(String(Math.ceil(-t / 40)), view.w / 2, view.h / 2 + 30);
+    ctx.textAlign = 'left';
+    return;
+  }
+  const rowH = Math.min(120, 380 / Math.max(1, m.players.length));
+  m.players.forEach((mp, ri) => {
+    const f = w.fighters.find((x) => x.slot === mp.slot && x.team === 0);
+    const pal = f ? PALETTE[f.color % PALETTE.length] : PALETTE[0];
+    const y = 130 + ri * rowH;
+    ctx.textAlign = 'left';
+    ctx.font = `bold 14px ${FONT}`;
+    ctx.fillStyle = pal.main;
+    ctx.fillText(`P${mp.slot + 1} · ${f?.name ?? ''}${info.localSlots.includes(mp.slot) ? '  (toi)' : ''}${mp.done ? '  ✔' : ''}`, 60, y);
+    const bx = 60, bw = view.w - 120;
+    if (m.kind === 'smash') {
+      const boards = 12, n = Math.min(boards, Math.floor(mp.n / 5));
+      for (let i = 0; i < boards; i++) {
+        const x = bx + i * (bw / boards);
+        const broken = i < n;
+        ctx.save();
+        ctx.translate(x + 2, y + 18);
+        if (broken) { ctx.fillStyle = '#6b4a30'; ctx.beginPath(); ctx.moveTo(0, 36); ctx.lineTo(6, 20); ctx.lineTo(bw / boards - 10, 40); ctx.closePath(); ctx.fill(); }
+        else {
+          const crack = i === n ? (mp.n % 5) / 5 : 0;
+          ctx.fillStyle = '#c99a62'; ctx.fillRect(crack > 0 ? Math.sin(time) * crack * 2 : 0, 0, bw / boards - 8, 40);
+          ctx.strokeStyle = '#7a5530'; ctx.lineWidth = 1.5; ctx.strokeRect(0, 0, bw / boards - 8, 40);
+          if (crack > 0) { ctx.beginPath(); ctx.moveTo(8, 0); ctx.lineTo(8 + crack * 8, 20); ctx.lineTo(4, 40); ctx.stroke(); }
+        }
+        ctx.restore();
+      }
+      ctx.font = `bold 12px ${FONT}`;
+      ctx.fillStyle = '#ffe14d';
+      ctx.fillText(`${mp.n} coups · +${Math.min(12, Math.floor(mp.n / 5)) * 4} 🪙`, bx, y + 74);
+      const left = Math.max(0, MINI_SMASH_FRAMES - t);
+      ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillRect(bx + 200, y + 64, bw - 200, 8);
+      ctx.fillStyle = '#7dd0ff'; ctx.fillRect(bx + 200, y + 64, (bw - 200) * left / MINI_SMASH_FRAMES, 8);
+    } else {
+      const by = y + 28;
+      ctx.fillStyle = 'rgba(255,255,255,0.14)'; ctx.fillRect(bx, by, bw, 26);
+      ctx.fillStyle = 'rgba(255,200,60,0.5)'; ctx.fillRect(bx + bw * 0.26, by, bw * 0.48, 26);
+      ctx.fillStyle = 'rgba(255,225,60,0.7)'; ctx.fillRect(bx + bw * 0.36, by, bw * 0.28, 26);
+      ctx.fillStyle = 'rgba(80,255,150,0.85)'; ctx.fillRect(bx + bw * 0.44, by, bw * 0.12, 26);
+      if (!mp.done) {
+        const cx = bx + bw * miniCursor(w, mp);
+        ctx.fillStyle = '#fff'; ctx.fillRect(cx - 3, by - 6, 6, 38);
+      }
+      ctx.font = `bold 13px ${FONT}`;
+      ctx.fillStyle = '#ffe14d';
+      ctx.fillText(mp.results.map((r) => (r === 25 ? '★' : r >= 12 ? '●' : r > 0 ? '◐' : '○')).join('  ') + `   +${mp.results.reduce((a, b) => a + b, 0)} 🪙`, bx, y + 74);
+    }
+  });
+  ctx.fillStyle = '#9fc4e6';
+  ctx.font = `13px ${FONT}`;
+  ctx.textAlign = 'center';
+  ctx.fillText('Les pièces gagnées vont dans la cagnotte commune (échoppe ensuite).', view.w / 2, view.h - 30);
   ctx.textAlign = 'left';
 }
 
