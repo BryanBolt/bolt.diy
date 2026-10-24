@@ -2,6 +2,7 @@
 import type { Fighter } from '../sim/types';
 import { getChar, skeletonStyle, PALETTE } from '../sim/chars';
 import { lerp } from '../core/math';
+import type { Rig, P } from './ragdoll';
 
 // Conventions (degrés) : 0 = vers le bas, positif = vers l'avant (sens du regard).
 // Bras  [haut, flexion]  : avant-bras = haut + flexion (la main remonte vers l'avant).
@@ -309,6 +310,7 @@ export interface DrawOpts {
   ghost?: boolean;
   time: number;
   rim?: boolean; // passe de contour de lisibilité (interne)
+  rig?: Rig; // squelette simulé (ragdoll), coordonnées relatives aux pieds
 }
 
 export function colorsFor(f: Fighter): { main: string; dark: string; glow: string } {
@@ -324,6 +326,37 @@ function luma(hex: string): number {
 /** Couleur qui ressort sur le corps (bandeau, écharpe, visière). */
 function accent(main: string): string {
   return luma(main) > 150 ? '#14161f' : '#ffffff';
+}
+
+/** Squelette en coordonnées relatives aux pieds (avant écrasement). Colonne cambrée : bassin → milieu → cou. */
+export function figureScale(f: Fighter, scale: number): number {
+  return scale * skeletonStyle(getChar(f.charId)).scale * 1.1;
+}
+
+export function computeRig(f: Fighter, pose: Pose, S: number, fx: number): Rig {
+  const sk = skeletonStyle(getChar(f.charId));
+  const hipX = pose.hx * S * fx;
+  const hipY = -pose.h * sk.legs * S;
+  const standing = pose.h > 22;
+  const lean = (pose.lean + (standing ? 4 : 0)) * DEG;
+  const TL = L.torso * sk.torso * S;
+  const a1 = lean * 0.45 - (standing ? 0.04 : 0), a2 = lean * 1.3 + (standing ? 0.07 : 0); // dos arrondi, buste projeté en avant
+  const midX = hipX + Math.sin(a1) * TL * 0.5 * fx, midY = hipY - Math.cos(a1) * TL * 0.5;
+  const neckX = midX + Math.sin(a2) * TL * 0.5 * fx, neckY = midY - Math.cos(a2) * TL * 0.5;
+  const shX = midX + Math.sin(a2) * TL * 0.4 * fx, shY = midY - Math.cos(a2) * TL * 0.4;
+  const headR = sk.headR * 1.12 * S;
+  const headAng = a2 + (pose.tilt + (standing ? 9 : 0)) * DEG; // tête légèrement en avant
+  const headX = neckX + Math.sin(headAng) * (headR + 2 * S) * fx;
+  const headY = neckY - Math.cos(headAng) * (headR + 2 * S);
+  const joint = (ox: number, oy: number, a1d: number, l1: number, a2d: number, l2: number): [P, P] => {
+    const x1 = ox + Math.sin(a1d * DEG) * l1 * S * fx;
+    const y1 = oy + Math.cos(a1d * DEG) * l1 * S;
+    return [{ x: x1, y: y1 }, { x: x1 + Math.sin(a2d * DEG) * l2 * S * fx, y: y1 + Math.cos(a2d * DEG) * l2 * S }];
+  };
+  const arm = (a: [number, number]) => joint(shX, shY, a[0], L.arm * sk.arms, a[0] + a[1], L.fore * sk.arms);
+  const leg = (l: [number, number]) => joint(hipX, hipY, l[0], L.thigh * sk.legs, l[0] - l[1], L.shin * sk.legs);
+  const [aFe, aFw] = arm(pose.aF), [aBe, aBw] = arm(pose.aB), [lFk, lFa] = leg(pose.lF), [lBk, lBa] = leg(pose.lB);
+  return { hip: { x: hipX, y: hipY }, mid: { x: midX, y: midY }, sh: { x: shX, y: shY }, neck: { x: neckX, y: neckY }, head: { x: headX, y: headY }, aFe, aFw, aBe, aBw, lFk, lFa, lBk, lBa, headR };
 }
 
 export function drawStickman(ctx: CanvasRenderingContext2D, f: Fighter, pose: Pose, o: DrawOpts): void {
@@ -348,36 +381,23 @@ function drawBody(ctx: CanvasRenderingContext2D, f: Fighter, pose: Pose, o: Draw
     const st = Math.max(-0.14, Math.min(0.16, Math.abs(f.vy) * 0.012 - (f.y <= 0.5 && f.state === 'jump' ? 0.12 : 0)));
     ctx.scale(1 - st * 0.55, 1 + st);
   }
-  if (pose.spin) {
+  if (pose.spin && !o.rig) {
     ctx.translate(0, -50 * S);
     ctx.rotate(pose.spin * DEG * fx);
     ctx.translate(0, 50 * S);
   }
-  const hipX = pose.hx * S * fx;
-  const hipY = -pose.h * sk.legs * S;
-  const lean = pose.lean * DEG;
-  const TL = L.torso * sk.torso;
-  const neckX = hipX + Math.sin(lean) * TL * S * fx;
-  const neckY = hipY - Math.cos(lean) * TL * S;
-  const headR = sk.headR * 1.12 * S;
-  const headAng = (pose.lean + pose.tilt) * DEG;
-  const headX = neckX + Math.sin(headAng) * (headR + 2 * S) * fx;
-  const headY = neckY - Math.cos(headAng) * (headR + 2 * S);
-  const shX = hipX + Math.sin(lean) * TL * 0.9 * S * fx;
-  const shY = hipY - Math.cos(lean) * TL * 0.9 * S;
-
-  const joint = (ox: number, oy: number, a1: number, l1: number, a2: number, l2: number): number[] => {
-    const x1 = ox + Math.sin(a1 * DEG) * l1 * S * fx;
-    const y1 = oy + Math.cos(a1 * DEG) * l1 * S;
-    return [x1, y1, x1 + Math.sin(a2 * DEG) * l2 * S * fx, y1 + Math.cos(a2 * DEG) * l2 * S];
+  const rig = o.rig ?? computeRig(f, pose, S, fx);
+  const hipX = rig.hip.x, hipY = rig.hip.y, neckX = rig.neck.x, neckY = rig.neck.y, shX = rig.sh.x, shY = rig.sh.y;
+  const midX = rig.mid.x, midY = rig.mid.y, headX = rig.head.x, headY = rig.head.y, headR = rig.headR;
+  const aF = [rig.aFe.x, rig.aFe.y, rig.aFw.x, rig.aFw.y], aB = [rig.aBe.x, rig.aBe.y, rig.aBw.x, rig.aBw.y];
+  const lF = [rig.lFk.x, rig.lFk.y, rig.lFa.x, rig.lFa.y], lB = [rig.lBk.x, rig.lBk.y, rig.lBa.x, rig.lBa.y];
+  // le pied prolonge le tibia vers l'avant
+  const footDir = (l: number[]): [number, number] => {
+    const dx = l[2] - l[0], dy = l[3] - l[1];
+    const d = Math.hypot(dx, dy) || 1;
+    return [(dy / d) * fx, (-dx / d) * fx];
   };
-  const arm = (a: [number, number]) => joint(shX, shY, a[0], L.arm * sk.arms, a[0] + a[1], L.fore * sk.arms);
-  const leg = (l: [number, number]) => joint(hipX, hipY, l[0], L.thigh * sk.legs, l[0] - l[1], L.shin * sk.legs);
-  const aF = arm(pose.aF), aB = arm(pose.aB), lF = leg(pose.lF), lB = leg(pose.lB);
-  const footDir = (l: [number, number]): [number, number] => {
-    const s = (l[0] - l[1]) * DEG;
-    return [Math.cos(s) * fx, -Math.sin(s)];
-  };
+  const handAng = Math.atan2((aF[2] - aF[0]) * fx, aF[3] - aF[1]);
 
   const lum = luma(col.main);
   const rimColor = lum < 120 ? '#eaf2ff' : '#0a0c16';
@@ -419,15 +439,15 @@ function drawBody(ctx: CanvasRenderingContext2D, f: Fighter, pose: Pose, o: Draw
   if (!tint && !rim) drawAccessoryBack(ctx, sk.accessory, neckX, neckY, shX, shY, fx, S, col, o.time, f);
 
   limbs(aB, [shX, shY], null, back);
-  limbs(lB, [hipX, hipY], footDir(pose.lB), back);
-  stroke([[hipX, hipY], [neckX, neckY]], thick * 1.18, main);
+  limbs(lB, [hipX, hipY], footDir(lB), back);
+  stroke([[hipX, hipY], [midX, midY], [neckX, neckY]], thick * 1.18, main);
   if (!flat && (sk.trim.includes('belt') || sk.trim.includes('sash'))) {
-    stroke([[hipX, hipY], [hipX + (neckX - hipX) * 0.2, hipY + (neckY - hipY) * 0.2]], thick * 1.32, trimCol);
+    stroke([[hipX, hipY], [hipX + (midX - hipX) * 0.4, hipY + (midY - hipY) * 0.4]], thick * 1.32, trimCol);
     if (sk.trim.includes('sash')) stroke([[hipX, hipY], [hipX - fx * 10 * S, hipY + 14 * S + Math.sin(o.time * 0.25 + f.id) * 3 * S]], thick * 0.5, trimCol);
   }
-  limbs(lF, [hipX, hipY], footDir(pose.lF), main);
+  limbs(lF, [hipX, hipY], footDir(lF), main);
   limbs(aF, [shX, shY], null, main);
-  if (f.weapon > 0 && f.weaponKind && !tint && !rim) drawHeldWeapon(ctx, f.weaponKind, aF[2], aF[3], (pose.aF[0] + pose.aF[1]) * DEG, fx, S, thick * 0.6, o.time);
+  if (f.weapon > 0 && f.weaponKind && !tint && !rim) drawHeldWeapon(ctx, f.weaponKind, aF[2], aF[3], handAng, fx, S, thick * 0.6, o.time);
   ctx.beginPath();
   ctx.arc(headX, headY, headR + (rim ? 2.4 * S : 0), 0, Math.PI * 2);
   ctx.fillStyle = main;

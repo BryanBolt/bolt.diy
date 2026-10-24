@@ -39,6 +39,7 @@ export class Fx {
   flash = new Map<number, number>(); // id -> intensité
   superFocus = 0; // assombrissement pendant un super
   superOwner = -1;
+  cracks: { x: number; z: number; life: number; seed: number; size: number }[] = [];
   punch = 0; // à-coup de zoom sur les gros impacts
   impacts: { x: number; y: number; z: number; life: number; ang: number; color: string; size: number }[] = [];
   reduce = false;
@@ -66,6 +67,7 @@ export class Fx {
             if (e.power > 0.8) this.ring(e.x, e.y, e.z, '#ffffff', 30 + e.power * 30);
             if (e.power > 0.45) this.impacts.push({ x: e.x, y: e.y, z: e.z, life: 10, ang: e.dir > 0 ? 0 : Math.PI, color: e.crit ? '#ffe14d' : '#ffffff', size: 26 + e.power * 44 });
             if (e.power > 0.8) this.punch = Math.max(this.punch, 0.035 + e.power * 0.02);
+            if (e.power > 1.05 && e.y < 40) this.cracks.push({ x: e.x, z: e.z, life: 150, seed: Math.floor(e.x * 7 + e.z), size: 30 + e.power * 26 });
           }
           const a = world.fighters.find((f) => f.id === e.attacker);
           if (a && !e.blocked && a.comboHits >= 2) this.comboPops.set(a.id, { hits: a.comboHits, life: 60 });
@@ -101,6 +103,7 @@ export class Fx {
             this.burst(e.x, e.y + 50, e.z, 14, '#a86bff', 'dust', 6, 2);
           } else if (e.kind === 'shock') {
             this.ring(e.x, e.y + 10, e.z, '#ffffff', 120);
+            this.cracks.push({ x: e.x, z: e.z, life: 150, seed: Math.floor(e.x * 3 + e.z), size: 80 });
             this.burst(e.x, e.y, e.z, 12, '#c9a060', 'dust', 6, 3);
           } else {
             this.burst(e.x, e.y + 60, e.z, 10, '#7cf6ff', 'spark', 3, 3);
@@ -215,6 +218,8 @@ export class Fx {
       }
       this.particles = this.particles.filter((p) => p.life < p.max);
       for (const im of this.impacts) im.life--;
+      for (const c of this.cracks) c.life--;
+      this.cracks = this.cracks.filter((c) => c.life > 0);
       this.impacts = this.impacts.filter((im) => im.life > 0);
       this.punch *= 0.86;
       for (const t of this.texts) { t.life--; t.y += 0.7; }
@@ -289,6 +294,34 @@ export class Fx {
           ctx.beginPath(); ctx.ellipse(a.x, a.y, 60, 16, 0, 0, Math.PI * 2); ctx.ellipse(a.x + 30, a.y - 8, 40, 14, 0, 0, Math.PI * 2); ctx.fill();
           break;
       }
+    }
+  }
+
+  /** Fissures au sol laissées par les gros impacts (s'estompent). */
+  drawCracks(ctx: CanvasRenderingContext2D, cam: Camera): void {
+    for (const c of this.cracks) {
+      const { sx, sy, s } = project(cam, c.x, 0, c.z);
+      let seed = c.seed >>> 0 || 1;
+      const rnd = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, c.life / 40) * 0.8;
+      ctx.strokeStyle = '#1a1208';
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      for (let b = 0; b < 7; b++) {
+        const a = (b / 7) * Math.PI * 2 + rnd() * 0.5;
+        let x = sx, y = sy;
+        ctx.lineWidth = (3.2 - b * 0.15) * s;
+        ctx.beginPath(); ctx.moveTo(x, y);
+        const segs = 4 + Math.floor(rnd() * 3);
+        for (let k = 0; k < segs; k++) {
+          const aa = a + (rnd() - 0.5) * 0.9, len = (c.size / segs) * (0.6 + rnd() * 0.8) * s;
+          x += Math.cos(aa) * len; y += Math.sin(aa) * len * 0.4;
+          ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
+      ctx.restore();
     }
   }
 

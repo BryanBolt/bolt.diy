@@ -263,6 +263,14 @@ export const COMMANDS: CommandInfo[] = [
   { id: 'c_step', name: 'Pas éclair (Shunpo / Hiraishin)', input: '↓ ↓ (double tap) + Lourd', assist: '—', note: 'Téléportation derrière la cible + frappe', cost: '8 Ki' },
   { id: 'c_rasen', name: 'Sphère tournoyante (Rasengan)', input: '↓ ↑ + Attaque', assist: '—', note: 'Sphère de Ki au corps à corps, 6 touches', cost: '20 Ki' },
   { id: 'c_rider', name: 'Rider Kick', input: 'En l\'air : → + Lourd', assist: '—', note: 'Coup de pied plongeant diagonal', cost: '8 Ki' },
+  { id: 'c_cmb_rafale', name: 'Rafale', input: 'P P P puis E', assist: 'Attaque ×3 puis Ki', note: 'Finisseur : 8 coups rapides', cost: '18 Ki' },
+  { id: 'c_cmb_tempete', name: 'Tempête de pieds', input: 'K K K puis E', assist: 'Lourd ×3 puis Ki', note: 'Finisseur : 7 coups de pied', cost: '18 Ki' },
+  { id: 'c_cmb_briseur', name: 'Briseur', input: 'P K P puis E', assist: '—', note: 'Finisseur : lanceur pour jongler', cost: '15 Ki' },
+  { id: 'c_cmb_seisme', name: 'Séisme', input: 'P P K puis E', assist: '—', note: 'Finisseur : onde de choc au sol', cost: '22 Ki' },
+  { id: 'c_cmb_spirale', name: 'Spirale', input: 'K P K puis E', assist: '—', note: 'Finisseur : tourbillon qui avance', cost: '20 Ki' },
+  { id: 'c_cmb_dragon', name: 'Dragon', input: 'P K K puis E', assist: '—', note: 'Finisseur : anti-aérien invincible', cost: '18 Ki' },
+  { id: 'c_cmb_ecrase', name: 'Écrasement', input: 'K K P puis E', assist: '—', note: 'Finisseur : choc blindé, projette', cost: '25 Ki' },
+  { id: 'c_cmb_eclair', name: 'Fente éclair', input: 'K P P puis E', assist: '—', note: 'Finisseur : fente qui projette loin', cost: '12 Ki' },
   { id: 'c_flurry', name: 'Rafale du dragon', input: 'Attaque ×4', assist: '—', note: '6 coups de poing éclair en fin d\'enchaînement', cost: 'gratuit' },
   { id: 'c_airflying', name: 'Coup volant', input: 'En l\'air : → + Attaque', assist: '—', note: 'Longue glissade aérienne', cost: 'gratuit' },
 ];
@@ -295,6 +303,14 @@ function commandMoves(c: CharDef): Record<string, MoveDef> {
   m.c_step = mv('heavy', { id: 'c_step', name: 'Pas éclair', anim: 'backstab', startup: 4, active: 4, recovery: 14, damage: 12, hit: { x: 0, w: 70, y0: 0, y1: 120, z: 36 }, teleport: 60, kbx: 5, kby: 2, knockdown: true, hitstop: 6, invuln: true, kiCost: 8 });
   m.c_rasen = mv('special', { id: 'c_rasen', name: 'Sphère tournoyante', anim: 'palm', startup: 14, active: 14, recovery: 24, damage: 5, hit: { x: 24, w: 62, y0: 10, y1: 110, z: 34 }, kbx: 2, kby: 1, hitstun: 20, hitstop: 3, multi: { hits: 6, every: 2 }, lunge: 2, kiCost: 20 });
   m.c_rider = mv('air', { id: 'c_rider', name: 'Rider Kick', anim: 'rider', startup: 6, active: 20, recovery: 14, damage: 18, hit: { x: 20, w: 76, y0: -40, y1: 80, z: 34 }, lunge: 7, lungeAir: -9, kbx: 8, kby: 3, hitstun: 26, knockdown: true, hitstop: 10, kiCost: 8 });
+  m.c_cmb_rafale = mv('heavy', { id: 'c_cmb_rafale', name: 'Rafale (P P P + E)', anim: 'barrage', startup: 7, active: 24, recovery: 20, damage: 4, hit: { x: 20, w: 80, y0: 10, y1: 120, z: 34 }, kbx: 1.2, hitstun: 18, hitstop: 2, multi: { hits: 8, every: 3 }, kiCost: 18 });
+  m.c_cmb_tempete = mv('heavy', { id: 'c_cmb_tempete', name: 'Tempête de pieds (K K K + E)', anim: 'flurrykick', startup: 6, active: 20, recovery: 20, damage: 4, hit: { x: 30, w: 76, y0: 0, y1: 90, z: 34 }, kbx: 1.4, hitstun: 18, hitstop: 3, multi: { hits: 7, every: 3 }, kiCost: 18 });
+  m.c_cmb_briseur = mv('launcher', { id: 'c_cmb_briseur', name: 'Briseur (P K P + E)', anim: 'uppercut', startup: 8, active: 4, recovery: 22, damage: 15, hit: { x: 24, w: 64, y0: 0, y1: 130, z: 34 }, launch: true, kbx: 2, kby: 12, hitstop: 10, lunge: 5, kiCost: 15 });
+  m.c_cmb_seisme = mv('special', { id: 'c_cmb_seisme', name: 'Séisme (P P K + E)', hit: Z, damage: 0, anim: 'wave', startup: 14, active: 3, recovery: 24, kiCost: 22, projectile: { kind: 'shock', speed: 7, life: 34, damage: 18, radius: 42, y: 24, pierce: true } });
+  m.c_cmb_spirale = mv('heavy', { id: 'c_cmb_spirale', name: 'Spirale (K P K + E)', anim: 'tatsu', startup: 8, active: 24, recovery: 18, damage: 6, hit: { x: 6, w: 76, y0: 0, y1: 100, z: 36 }, kbx: 3, hitstun: 20, hitstop: 4, lunge: 4.5, selfKnock: true, multi: { hits: 5, every: 4 }, kiCost: 20 });
+  m.c_cmb_dragon = mv('launcher', { id: 'c_cmb_dragon', name: 'Dragon (P K K + E)', anim: 'rising', startup: 5, active: 12, recovery: 30, damage: 16, hit: { x: 16, w: 64, y0: 0, y1: 150, z: 36 }, launch: true, kbx: 2, kby: 12, hitstop: 8, lunge: 3, lungeAir: 11, invuln: true, multi: { hits: 2, every: 6 }, kiCost: 18 });
+  m.c_cmb_ecrase = mv('heavy', { id: 'c_cmb_ecrase', name: 'Écrasement (K K P + E)', anim: 'slam', startup: 16, active: 4, recovery: 30, damage: 26, hit: { x: 20, w: 76, y0: 0, y1: 120, z: 40 }, knockdown: true, kbx: 4, kby: 5, hitstop: 14, armor: true, kiCost: 25 });
+  m.c_cmb_eclair = mv('heavy', { id: 'c_cmb_eclair', name: 'Fente éclair (K P P + E)', anim: 'cross', startup: 6, active: 3, recovery: 18, damage: 14, hit: { x: 20, w: 60, y0: 20, y1: 110, z: 32 }, knockdown: true, kbx: 9, kby: 3, hitstop: 8, lunge: 8, kiCost: 12 });
   m.shoot = mv('light', { id: 'shoot', name: 'Tir', anim: 'shoot', startup: 1, active: 1, recovery: 3, damage: 0, hit: { x: 0, w: 0, y0: 0, y1: 0, z: 0 } });
   m.c_flurry = mv('light', { id: 'c_flurry', name: 'Rafale du dragon', anim: 'jab', startup: 4, active: 14, recovery: 16, damage: 3, hit: { x: 30, w: 62, y0: 20, y1: 100, z: 30 }, kbx: 0.8, hitstun: 14, hitstop: 2, multi: { hits: 6, every: 2 }, lunge: 1 });
   m.c_airflying = mv('air', { id: 'c_airflying', name: 'Coup volant', anim: 'airkick', startup: 5, active: 12, recovery: 12, damage: 11, hit: { x: 30, w: 70, y0: -30, y1: 70, z: 30 }, lunge: 6, kbx: 5, hitstun: 22, knockdown: true });

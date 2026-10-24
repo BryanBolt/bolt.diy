@@ -2,12 +2,13 @@
 import type { World, Fighter, Projectile, Item } from '../sim/types';
 import { VIEW_W, VIEW_H, HURT_HW, HURT_H, REVIVE_FRAMES, REVIVE_COST } from '../sim/constants';
 import { getChar, PALETTE } from '../sim/chars';
-import { drawStickman, poseFor, colorsFor, lerpPose, type Pose } from './stickman';
-import { drawStage, themeAccent, drawForeground } from './stage';
+import { drawStickman, poseFor, colorsFor, lerpPose, computeRig, figureScale, type Pose } from './stickman';
+import { RagdollSystem, stiffnessFor, cloneRig, RIG_KEYS, type P, type Rig } from './ragdoll';
+import { drawStage, setStageExtent, themeAccent, drawForeground } from './stage';
 import type { Hazard } from '../sim/types';
 import { Fx } from './fx';
 import { drawHud, type HudInfo } from './hud';
-import { project, groundY, depthScale, applyCamera, type Camera } from './camera';
+import { project, groundY, depthScale, applyCamera, view, type Camera } from './camera';
 
 export class Renderer {
   canvas: HTMLCanvasElement;
@@ -15,12 +16,15 @@ export class Renderer {
   fx = new Fx();
   cam: Camera = { x: 0, zoom: 1, cx: VIEW_W / 2, cy: VIEW_H / 2, shakeX: 0, shakeY: 0 };
   scale = 1;
+  exX = 0;
+  exY = 0;
   offX = 0;
   offY = 0;
   time = 0;
   showHitboxes = false;
   private ghostTick = 0;
   private smooth = new Map<number, Pose>();
+  private ragdolls = new RagdollSystem();
   private lastDt = 16.7;
   private fpsAcc = 0;
   private fpsCount = 0;
@@ -44,8 +48,12 @@ export class Renderer {
     this.canvas.style.width = `${w}px`;
     this.canvas.style.height = `${h}px`;
     this.scale = Math.min(w / VIEW_W, h / VIEW_H) * dpr;
-    this.offX = (this.canvas.width - VIEW_W * this.scale) / 2;
-    this.offY = (this.canvas.height - VIEW_H * this.scale) / 2;
+    view.w = this.canvas.width / this.scale;
+    view.h = this.canvas.height / this.scale;
+    this.exX = (view.w - VIEW_W) / 2;
+    this.exY = (view.h - VIEW_H) / 2;
+    this.offX = this.exX * this.scale;
+    this.offY = this.exY * this.scale;
   }
 
   /** Convertit une position écran (CSS px) en coordonnées virtuelles. */
@@ -57,6 +65,7 @@ export class Renderer {
   render(w: World, info: HudInfo, dtMs: number): void {
     this.time += dtMs / 16.667;
     this.lastDt = dtMs;
+    if (Math.floor(this.time) % 120 === 0) this.ragdolls.forget(new Set(w.fighters.map((f) => f.id)));
     this.fpsAcc += dtMs;
     this.fpsCount++;
     if (this.fpsAcc >= 500) { this.fps = Math.round((this.fpsCount * 1000) / this.fpsAcc); this.fpsAcc = 0; this.fpsCount = 0; }
@@ -86,19 +95,20 @@ export class Renderer {
     ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     ctx.setTransform(this.scale, 0, 0, this.scale, this.offX, this.offY);
     ctx.save();
-    ctx.beginPath();
-    ctx.rect(0, 0, VIEW_W, VIEW_H);
-    ctx.clip();
     applyCamera(ctx, this.cam);
 
     const theme = w.stage?.theme ?? 'dojo';
     fx.theme = theme;
-    drawStage(ctx, theme, this.cam.x + this.cam.shakeX, w.stage?.width ?? VIEW_W, this.time, { l: w.arenaL, r: w.arenaR, locked: w.locked });
+    setStageExtent(view.w, this.exY, this.exY);
+    ctx.save();
+    ctx.translate(-this.exX, 0);
+    drawStage(ctx, theme, this.cam.x + this.cam.shakeX - this.exX, w.stage?.width ?? VIEW_W, this.time, { l: w.arenaL, r: w.arenaR, locked: w.locked });
+    ctx.restore();
 
     // assombrissement super
     if (fx.superFocus > 0) {
       ctx.fillStyle = `rgba(5,5,20,${0.55 * fx.superFocus})`;
-      ctx.fillRect(-200, -200, VIEW_W + 400, VIEW_H + 400);
+      ctx.fillRect(-900, -900, VIEW_W + 1800, VIEW_H + 1800);
       // lignes de vitesse radiales + bandes de cinéma
       ctx.save();
       ctx.translate(VIEW_W / 2, VIEW_H / 2);
@@ -112,8 +122,8 @@ export class Renderer {
       ctx.restore();
       ctx.fillStyle = '#000';
       const bar = 34 * fx.superFocus;
-      ctx.fillRect(-200, -200, VIEW_W + 400, 200 + bar);
-      ctx.fillRect(-200, VIEW_H - bar, VIEW_W + 400, 200 + bar);
+      ctx.fillRect(-900, -900, VIEW_W + 1800, 900 + bar + this.exY);
+      ctx.fillRect(-900, VIEW_H - bar - this.exY, VIEW_W + 1800, 900 + bar + this.exY);
     }
 
     // dangers en fond (train, drone)
@@ -121,6 +131,7 @@ export class Renderer {
     // ombres + anneaux
     const sorted = [...w.fighters].sort((a, b) => a.z - b.z);
     for (const f of sorted) this.drawShadow(f);
+    fx.drawCracks(ctx, this.cam);
     for (const it of w.items) this.drawItemShadow(it);
 
     // images rémanentes
@@ -146,20 +157,23 @@ export class Renderer {
     for (const d of drawables) d.draw();
 
     fx.drawParticles(ctx, this.cam);
-    drawForeground(ctx, theme, this.cam.x, this.time);
+    ctx.save();
+    ctx.translate(-this.exX, 0);
+    drawForeground(ctx, theme, this.cam.x - this.exX, this.time);
+    ctx.restore();
     fx.drawAmbient(ctx);
     fx.drawTexts(ctx, this.cam);
-    if (fx.rageFlash > 0) { ctx.fillStyle = `rgba(255,40,40,${fx.rageFlash * 0.35})`; ctx.fillRect(-200, -200, VIEW_W + 400, VIEW_H + 400); }
+    if (fx.rageFlash > 0) { ctx.fillStyle = `rgba(255,40,40,${fx.rageFlash * 0.35})`; ctx.fillRect(-900, -900, VIEW_W + 1800, VIEW_H + 1800); }
     ctx.restore();
 
     // vignette légère
-    const vg = ctx.createRadialGradient(VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.5, VIEW_W / 2, VIEW_H / 2, VIEW_W * 0.75);
+    ctx.setTransform(this.scale, 0, 0, this.scale, 0, 0); // l'interface colle aux bords réels de l'écran
+    const vg = ctx.createRadialGradient(view.w / 2, view.h / 2, view.h * 0.5, view.w / 2, view.h / 2, view.w * 0.75);
     vg.addColorStop(0, 'rgba(0,0,0,0)');
     vg.addColorStop(1, 'rgba(0,0,0,0.35)');
     ctx.fillStyle = vg;
-    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
-
-    drawHud(ctx, w, fx, this.cam, info, this.time);
+    ctx.fillRect(0, 0, view.w, view.h);
+    drawHud(ctx, w, fx, { ...this.cam, x: this.cam.x - this.exX, shakeY: this.cam.shakeY + this.exY }, info, this.time);
   }
 
   private drawHazard(h: Hazard, w: World): void {
@@ -344,7 +358,20 @@ export class Renderer {
       ctx.restore();
     }
     const bs = f.boss ? 1.28 : 1;
-    drawStickman(ctx, f, pose, { x: sx, y: sy, scale: s * bs, facing: f.facing, alpha, flash: this.fx.flash.get(f.id) ?? 0, time: this.time });
+    this.drawPower(f, sx, sy, s * bs, col);
+    // ragdoll : les membres suivent la pose avec une raideur selon l'état (mous en vol et au sol)
+    const stiff = stiffnessFor(f.state);
+    const S = figureScale(f, s * bs);
+    const rel = computeRig(f, pose, S, f.facing);
+    const abs = cloneRig(rel);
+    for (const k of ['hip', ...RIG_KEYS] as const) { (abs[k] as P).x += sx; (abs[k] as P).y += sy; }
+    const sim = this.ragdolls.step(f.id, abs, stiff <= 0.82 ? stiff : 1, this.lastDt / 16.7, sy + f.y * s);
+    let rig: Rig | undefined;
+    if (stiff <= 0.82) {
+      rig = cloneRig(sim);
+      for (const k of ['hip', ...RIG_KEYS] as const) { (rig[k] as P).x -= sx; (rig[k] as P).y -= sy; }
+    }
+    drawStickman(ctx, f, rig ? { ...pose, spin: 0 } : pose, { x: sx, y: sy, scale: s * bs, facing: f.facing, alpha, flash: this.fx.flash.get(f.id) ?? 0, time: this.time, rig });
     if (f.boss && f.state !== 'ko') this.drawBossMarks(f, sx, sy, s * bs);
     if (f.controller === 'player' && f.state !== 'ko' && f.state !== 'down') {
       // repère de joueur au-dessus de la tête : flèche + pastille, toujours lisible
@@ -356,6 +383,18 @@ export class Renderer {
       ctx.font = '800 11px system-ui, sans-serif'; ctx.textAlign = 'center';
       ctx.lineWidth = 3; ctx.strokeStyle = '#06101e'; ctx.strokeText('P' + (f.slot + 1), 0, -12);
       ctx.fillStyle = '#fff'; ctx.fillText('P' + (f.slot + 1), 0, -12);
+      if (f.cmb.length && w.frame - f.cmbFrame < 40) {
+        // suite de boutons en cours : P (poing) / K (pied), + « E » quand un finisseur est prêt
+        const chars = f.cmb.split('');
+        const ready = f.cmb.length >= 3;
+        ctx.font = '900 12px system-ui, sans-serif';
+        chars.forEach((ch, i) => {
+          const x = (i - (chars.length - 1) / 2) * 15;
+          ctx.fillStyle = ch === 'P' ? '#ffb347' : '#6cf0ff';
+          ctx.strokeText(ch, x, -28); ctx.fillText(ch, x, -28);
+        });
+        if (ready) { ctx.fillStyle = '#ffe14d'; ctx.strokeText('+ E !', 0, -42); ctx.fillText('+ E !', 0, -42); }
+      }
       ctx.restore();
     }
     // statuts
@@ -497,6 +536,54 @@ export class Renderer {
     }
   }
 
+  /** Effets de puissance : aura de charge, éclairs d'incantation, colonne d'énergie ascendante. */
+  private drawPower(f: Fighter, sx: number, sy: number, s: number, col: { main: string; glow: string }): void {
+    const ctx = this.ctx;
+    if (f.state === 'ko' || f.state === 'down') return;
+    const m = f.state === 'attack' && f.moveId ? getChar(f.charId).moves[f.moveId] : null;
+    const charge = Math.min(1, f.heavyCharge / 50);
+    const casting = !!m && (m.kind === 'special' || m.kind === 'special2' || m.kind === 'super' || f.moveId!.startsWith('c_')) && f.stateFrame <= m.startup + 4;
+    const power = Math.max(charge, casting ? Math.min(1, 0.4 + f.stateFrame / Math.max(6, m!.startup)) : 0);
+    if (power <= 0.05) return;
+    const t = this.time;
+    ctx.save();
+    // halo
+    const R = (46 + power * 52) * s;
+    const g = ctx.createRadialGradient(sx, sy - 52 * s, 4, sx, sy - 52 * s, R);
+    g.addColorStop(0, `rgba(255,255,255,${0.35 * power})`);
+    g.addColorStop(0.45, col.glow + Math.round(90 * power).toString(16).padStart(2, '0'));
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(sx, sy - 52 * s, R, 0, Math.PI * 2); ctx.fill();
+    // anneau au sol qui pulse
+    ctx.strokeStyle = col.glow; ctx.globalAlpha = 0.7 * power; ctx.lineWidth = 3 * s;
+    const pr = (24 + ((t * 2.2) % 30)) * s * (0.8 + power * 0.6);
+    ctx.beginPath(); ctx.ellipse(sx, sy, pr, pr * 0.34, 0, 0, Math.PI * 2); ctx.stroke();
+    // colonne d'énergie : traits qui montent
+    ctx.globalAlpha = 0.75 * power; ctx.lineCap = 'round';
+    for (let i = 0; i < 8; i++) {
+      const ph = (t * (0.9 + (i % 3) * 0.3) + i * 17) % 40;
+      const x = sx + ((i * 37) % 44 - 22) * s * (0.6 + power * 0.5);
+      ctx.strokeStyle = i % 2 ? '#fff' : col.glow; ctx.lineWidth = (2 + (i % 3)) * s;
+      ctx.beginPath(); ctx.moveTo(x, sy - ph * 3.2 * s); ctx.lineTo(x, sy - (ph * 3.2 + 16 + power * 22) * s); ctx.stroke();
+    }
+    // éclairs (clignotent)
+    if (power > 0.45 && Math.floor(t / 2) % 3 !== 0) {
+      ctx.globalAlpha = 0.95; ctx.lineJoin = 'round';
+      let seed = (Math.floor(t / 2) * 9301 + f.id * 49297) >>> 0;
+      const rnd = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
+      for (let a = 0; a < 4; a++) {
+        let x = sx + (rnd() - 0.5) * 20 * s, y = sy - (20 + rnd() * 80) * s;
+        const dir = rnd() < 0.5 ? -1 : 1;
+        ctx.beginPath(); ctx.moveTo(x, y);
+        for (let k = 0; k < 5; k++) { x += dir * (6 + rnd() * 12) * s * (0.6 + power); y += (rnd() - 0.5) * 24 * s; ctx.lineTo(x, y); }
+        ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.4 * s; ctx.stroke();
+        ctx.strokeStyle = col.glow; ctx.lineWidth = 1 * s; ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
   private drawProjectile(p: Projectile): void {
     const ctx = this.ctx;
     const { sx, sy, s } = project(this.cam, p.x, p.y, p.z);
@@ -573,8 +660,19 @@ export class Renderer {
         ctx.lineCap = 'round';
         ctx.beginPath();
         ctx.moveTo(sx, sy);
-        ctx.lineTo(sx - p.vx * 3, sy + p.vy * 3);
+        ctx.lineTo(sx - p.vx * (p.radius >= 30 ? 9 : 3), sy + p.vy * 3);
         ctx.stroke();
+        if (p.radius >= 30) {
+          // gros rayon : cœur blanc, halo pulsé et filaments
+          ctx.globalAlpha = 0.9;
+          ctx.fillStyle = '#fff';
+          ctx.beginPath(); ctx.ellipse(sx - p.vx * 2, sy, r * (0.9 + Math.sin(this.time * 0.8) * 0.1), r * 0.55, 0, 0, Math.PI * 2); ctx.fill();
+          ctx.globalAlpha = 0.7; ctx.strokeStyle = c0; ctx.lineWidth = 2 * s;
+          for (let i = 0; i < 3; i++) {
+            const o = Math.sin(this.time * 0.9 + i * 2.1) * r * 0.9;
+            ctx.beginPath(); ctx.moveTo(sx, sy + o); ctx.lineTo(sx - p.vx * 7, sy + o * 0.4); ctx.stroke();
+          }
+        }
         break;
       }
     }

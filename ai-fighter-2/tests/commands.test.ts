@@ -228,3 +228,27 @@ describe('techniques cultes en simulation', () => {
     }
   });
 });
+
+describe('finisseurs façon Budokai', () => {
+  it('P P P puis E lance la Rafale, K K K puis E la Tempête', () => {
+    for (const [seq, id] of [[[A, A, A], 'c_cmb_rafale'], [[K, K, K], 'c_cmb_tempete'], [[A, K, A], 'c_cmb_briseur']] as [number[], string][]) {
+      const w = world();
+      const p = w.fighters.find((f) => f.slot === 0)!;
+      p.ki = 100;
+      let seen = false;
+      const frames: number[] = [];
+      for (const b of seq) { frames.push(b, b, 0, 0, 0, 0, 0); }
+      frames.push(IN.SPECIAL, IN.SPECIAL, ...hold(0, 80));
+      for (const i of frames) { step(w, [i]); if (p.moveId === id) seen = true; }
+      expect(seen, id).toBe(true);
+    }
+  });
+  it('sans assez de Ki, le finisseur ne part pas', () => {
+    const w = world();
+    const p = w.fighters.find((f) => f.slot === 0)!;
+    p.ki = 0;
+    let seen = false;
+    for (const i of [A, 0, 0, 0, 0, 0, 0, A, 0, 0, 0, 0, 0, 0, A, 0, 0, IN.SPECIAL, 0, 0, 0, 0, 0, 0, 0, 0]) { step(w, [i]); if (p.moveId === 'c_cmb_rafale') seen = true; }
+    expect(seen).toBe(false);
+  });
+});

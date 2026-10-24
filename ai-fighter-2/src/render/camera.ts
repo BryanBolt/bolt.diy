@@ -34,4 +34,7 @@ export function applyCamera(ctx: CanvasRenderingContext2D, cam: Camera): void {
   ctx.translate(-cam.cx, -cam.cy);
 }
 
+/** Taille visible en coordonnées virtuelles (≥ 960×540 : l'écran est rempli, le décor s'étend). */
+export const view = { w: VIEW_W, h: VIEW_H };
+
 export { VIEW_W, VIEW_H };

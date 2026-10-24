@@ -1,6 +1,7 @@
 // Interface en jeu : barres de vie, jauges, vagues, combos, bannières, choix de bonus, pause.
 import type { World, Fighter } from '../sim/types';
-import { VIEW_W, VIEW_H, SUPER_MAX, KI_MAX, FPS } from '../sim/constants';
+import { SUPER_MAX, KI_MAX, FPS } from '../sim/constants';
+import { view } from './camera';
 import { getChar, PALETTE } from '../sim/chars';
 import { BONUS_BY_ID } from '../sim/bonuses';
 import type { Fx } from './fx';
@@ -63,12 +64,12 @@ export function drawHud(ctx: CanvasRenderingContext2D, w: World, fx: Fx, cam: Ca
   const n = Math.max(1, panelPlayers.length);
   const leftCount = duel ? Math.ceil(n / 2) : n;
   const rightCount = n - leftCount;
-  const sideW = duel ? VIEW_W / 2 - 90 : VIEW_W - 40;
+  const sideW = duel ? view.w / 2 - 90 : view.w - 40;
   const pw = Math.min(230, sideW / Math.max(1, Math.max(leftCount, rightCount)) - 8);
   const panelX = (i: number): number => {
     if (!duel || i < leftCount) return 20 + i * (pw + 8);
     const k = i - leftCount;
-    return VIEW_W - 20 - (rightCount - k) * (pw + 8) + 8;
+    return view.w - 20 - (rightCount - k) * (pw + 8) + 8;
   };
   panelPlayers.forEach((f, i) => drawPlayerPanel(ctx, f, panelX(i), 14, pw, info, w, time));
   const centerY = !duel && n > 2 ? 92 : 30;
@@ -84,12 +85,12 @@ export function drawHud(ctx: CanvasRenderingContext2D, w: World, fx: Fx, cam: Ca
   const boss = w.fighters.find((f) => f.team !== 0 && f.ai?.kind === 'boss' && f.state !== 'ko');
   if (boss && !duel) {
     const bw = 420;
-    const x = (VIEW_W - bw) / 2;
-    const y = VIEW_H - 46;
+    const x = (view.w - bw) / 2;
+    const y = view.h - 46;
     ctx.font = `bold 13px ${FONT}`;
     ctx.fillStyle = '#fff';
     ctx.textAlign = 'center';
-    ctx.fillText(boss.name.toUpperCase(), VIEW_W / 2, y - 6);
+    ctx.fillText(boss.name.toUpperCase(), view.w / 2, y - 6);
     bar(ctx, x, y, bw, 12, boss.hp / boss.hpMax, boss.hp / boss.hpMax < 0.3 ? '#ff2d2d' : '#ff7a3d', 'rgba(0,0,0,0.6)', ghostOf(boss));
     ctx.textAlign = 'left';
   }
@@ -101,14 +102,14 @@ export function drawHud(ctx: CanvasRenderingContext2D, w: World, fx: Fx, cam: Ca
     ctx.fillStyle = t <= 10 ? '#ff5f5f' : '#fff';
     ctx.strokeStyle = 'rgba(0,0,0,0.7)';
     ctx.lineWidth = 5;
-    ctx.strokeText(String(t), VIEW_W / 2, 48);
-    ctx.fillText(String(t), VIEW_W / 2, 48);
+    ctx.strokeText(String(t), view.w / 2, 48);
+    ctx.fillText(String(t), view.w / 2, 48);
     // pastilles de victoires
     const need = Math.ceil(w.config.rounds / 2);
     const teams = [...new Set(w.fighters.map((f) => f.team))].sort();
     teams.forEach((team, ti) => {
       for (let k = 0; k < need; k++) {
-        const px = VIEW_W / 2 + (ti === 0 ? -1 : 1) * (40 + k * 14);
+        const px = view.w / 2 + (ti === 0 ? -1 : 1) * (40 + k * 14);
         ctx.beginPath();
         ctx.arc(px, 60, 5, 0, Math.PI * 2);
         ctx.fillStyle = k < w.wins[team] ? '#ffd166' : 'rgba(255,255,255,0.25)';
@@ -121,18 +122,18 @@ export function drawHud(ctx: CanvasRenderingContext2D, w: World, fx: Fx, cam: Ca
     const total = w.stage ? w.stage.waves.length : 0;
     const label = w.mode === 'survival' ? `VAGUE ${w.waveIndex + 1}` : w.waveIndex >= total ? 'BOSS' : `VAGUE ${Math.max(1, w.waveIndex + 1)} / ${total}`;
     const stageLabel = w.mode === 'survival' ? 'SURVIE' : `STAGE ${w.stageIndex + 1}/${STAGES.length}`;
-    ctx.fillText(`${stageLabel}  ·  ${label}`, VIEW_W / 2, centerY);
+    ctx.fillText(`${stageLabel}  ·  ${label}`, view.w / 2, centerY);
     ctx.font = `bold 13px ${FONT}`;
     ctx.fillStyle = '#ffe14d';
-    ctx.fillText(`${w.score} pts   ·   ${w.coins} 🪙`, VIEW_W / 2, centerY + 18);
+    ctx.fillText(`${w.score} pts   ·   ${w.coins} 🪙`, view.w / 2, centerY + 18);
     // flèche GO
     if (!w.locked && w.phase === 'fight' && Math.floor(time / 20) % 2 === 0) {
       ctx.font = `900 30px ${FONT}`;
       ctx.fillStyle = '#ffd166';
       ctx.strokeStyle = 'rgba(0,0,0,0.6)';
       ctx.lineWidth = 5;
-      ctx.strokeText('GO  ➜', VIEW_W - 110, VIEW_H / 2 - 40);
-      ctx.fillText('GO  ➜', VIEW_W - 110, VIEW_H / 2 - 40);
+      ctx.strokeText('GO  ➜', view.w - 110, view.h / 2 - 40);
+      ctx.fillText('GO  ➜', view.w - 110, view.h / 2 - 40);
     }
   }
   ctx.textAlign = 'left';
@@ -174,24 +175,24 @@ export function drawHud(ctx: CanvasRenderingContext2D, w: World, fx: Fx, cam: Ca
   if (info.stalledMs > 400 && info.waitingSlots.length) {
     const names = info.waitingSlots.map((s) => info.names.get(s) ?? `Joueur ${s + 1}`).join(', ');
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    roundRect(ctx, VIEW_W / 2 - 180, VIEW_H / 2 - 24, 360, 48, 12);
+    roundRect(ctx, view.w / 2 - 180, view.h / 2 - 24, 360, 48, 12);
     ctx.fill();
     ctx.fillStyle = '#fff';
     ctx.font = `bold 15px ${FONT}`;
     ctx.textAlign = 'center';
-    ctx.fillText(`Connexion… en attente de ${names}`, VIEW_W / 2, VIEW_H / 2 + 5);
+    ctx.fillText(`Connexion… en attente de ${names}`, view.w / 2, view.h / 2 + 5);
     ctx.textAlign = 'left';
   }
   if (info.desync) {
     ctx.fillStyle = '#ff5f5f';
     ctx.font = `bold 12px ${FONT}`;
-    ctx.fillText('⚠ Désynchronisation détectée : les joueurs ne voient plus la même partie.', 20, VIEW_H - 8);
+    ctx.fillText('⚠ Désynchronisation détectée : les joueurs ne voient plus la même partie.', 20, view.h - 8);
   }
   if (info.showDebug) {
     ctx.fillStyle = 'rgba(255,255,255,0.7)';
     ctx.font = `11px ${FONT}`;
     ctx.textAlign = 'right';
-    ctx.fillText(`${info.fps} fps${info.online ? `  ·  ping ${Math.round(info.ping)} ms` : ''}  ·  f${w.frame}`, VIEW_W - 12, VIEW_H - 8);
+    ctx.fillText(`${info.fps} fps${info.online ? `  ·  ping ${Math.round(info.ping)} ms` : ''}  ·  f${w.frame}`, view.w - 12, view.h - 8);
     ctx.textAlign = 'left';
   }
 }
@@ -201,7 +202,7 @@ const ARROWS: Record<number, string> = { 0: '·', 1: '→', 2: '←', 4: '↓', 
 function drawTrainingPad(ctx: CanvasRenderingContext2D, w: World, info: HudInfo): void {
   const f = w.fighters.find((x) => x.slot >= 0 && info.localSlots.includes(x.slot)) ?? w.fighters.find((x) => x.slot >= 0);
   if (!f) return;
-  const y = VIEW_H - 84;
+  const y = view.h - 84;
   ctx.fillStyle = 'rgba(0,0,0,0.55)';
   roundRect(ctx, 20, y - 20, 330, 70, 10);
   ctx.fill();
@@ -311,7 +312,7 @@ function drawBanner(ctx: CanvasRenderingContext2D, b: { text: string; sub?: stri
   ctx.globalAlpha = a;
   ctx.textAlign = 'center';
   const sc = 1 + Math.max(0, 0.25 - t * 2);
-  ctx.translate(VIEW_W / 2, VIEW_H / 2 - 40);
+  ctx.translate(view.w / 2, view.h / 2 - 40);
   ctx.scale(sc, sc);
   ctx.font = `900 52px ${FONT}`;
   ctx.lineWidth = 8;
@@ -332,14 +333,14 @@ function drawBanner(ctx: CanvasRenderingContext2D, b: { text: string; sub?: stri
 
 function drawBonusChoice(ctx: CanvasRenderingContext2D, w: World, info: HudInfo, time: number): void {
   ctx.fillStyle = 'rgba(10,10,20,0.55)';
-  ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+  ctx.fillRect(0, 0, view.w, view.h);
   ctx.textAlign = 'center';
   ctx.font = `900 28px ${FONT}`;
   ctx.fillStyle = '#ffd166';
-  ctx.fillText('CHOISIS UN BONUS', VIEW_W / 2, 90);
+  ctx.fillText('CHOISIS UN BONUS', view.w / 2, 90);
   ctx.font = `13px ${FONT}`;
   ctx.fillStyle = '#ccc';
-  ctx.fillText(`← → choisir · Attaque valider · Lourd relancer (25 🪙, tu as ${w.coins})  ·  ${Math.ceil(w.phaseTimer / FPS)} s`, VIEW_W / 2, 112);
+  ctx.fillText(`← → choisir · Attaque valider · Lourd relancer (25 🪙, tu as ${w.coins})  ·  ${Math.ceil(w.phaseTimer / FPS)} s`, view.w / 2, 112);
   const rows = w.bonusChoices;
   const rowH = Math.min(120, 380 / Math.max(1, rows.length));
   rows.forEach((bc, ri) => {
@@ -391,26 +392,26 @@ function drawAlert(ctx: CanvasRenderingContext2D, a: { text: string; life: numbe
   ctx.font = `900 20px ${FONT}`;
   ctx.lineWidth = 5;
   ctx.strokeStyle = 'rgba(0,0,0,0.8)';
-  ctx.strokeText(a.text, VIEW_W / 2, 130);
+  ctx.strokeText(a.text, view.w / 2, 130);
   ctx.fillStyle = blink ? '#ff5f5f' : '#ffd166';
-  ctx.fillText(a.text, VIEW_W / 2, 130);
+  ctx.fillText(a.text, view.w / 2, 130);
   ctx.restore();
   ctx.textAlign = 'left';
 }
 
 function drawShop(ctx: CanvasRenderingContext2D, w: World, info: HudInfo, time: number): void {
   ctx.fillStyle = 'rgba(10,10,20,0.6)';
-  ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+  ctx.fillRect(0, 0, view.w, view.h);
   ctx.textAlign = 'center';
   ctx.font = `900 28px ${FONT}`;
   ctx.fillStyle = '#ffd166';
-  ctx.fillText('ÉCHOPPE DE NOUILLES', VIEW_W / 2, 70);
+  ctx.fillText('ÉCHOPPE DE NOUILLES', view.w / 2, 70);
   ctx.font = `13px ${FONT}`;
   ctx.fillStyle = '#ccc';
-  ctx.fillText(`${w.coins} 🪙 en commun  ·  ← → choisir · Attaque acheter · Garde/Saut terminer  ·  ${Math.ceil(w.phaseTimer / FPS)} s`, VIEW_W / 2, 92);
+  ctx.fillText(`${w.coins} 🪙 en commun  ·  ← → choisir · Attaque acheter · Garde/Saut terminer  ·  ${Math.ceil(w.phaseTimer / FPS)} s`, view.w / 2, 92);
   const rows = w.shopChoices;
   const rowH = Math.min(110, 400 / Math.max(1, rows.length));
-  const cw = Math.min(170, (VIEW_W - 100) / SHOP_ITEMS.length - 8);
+  const cw = Math.min(170, (view.w - 100) / SHOP_ITEMS.length - 8);
   rows.forEach((sc, ri) => {
     const f = w.fighters.find((x) => x.slot === sc.slot && x.team === 0);
     const y = 120 + ri * rowH;
@@ -466,13 +467,13 @@ function drawEndScreen(ctx: CanvasRenderingContext2D, w: World, time: number): v
   const t = Math.min(1, (w.elapsed % 100000) / 60);
   void t;
   ctx.fillStyle = 'rgba(10,10,20,0.45)';
-  ctx.fillRect(0, VIEW_H / 2 - 40, VIEW_W, 180);
+  ctx.fillRect(0, view.h / 2 - 40, view.w, 180);
   ctx.textAlign = 'center';
   ctx.font = `bold 15px ${FONT}`;
   ctx.fillStyle = '#fff';
   if (w.mode === 'duel') {
     const winners = w.fighters.filter((f) => f.team === w.winnerTeam).map((f) => f.name).join(' & ');
-    ctx.fillText(w.winnerTeam >= 0 ? `${winners} remporte le match` : 'Match nul', VIEW_W / 2, VIEW_H / 2 + 60);
+    ctx.fillText(w.winnerTeam >= 0 ? `${winners} remporte le match` : 'Match nul', view.w / 2, view.h / 2 + 60);
   } else {
     const ps = w.fighters.filter((f) => f.team === 0 && f.slot >= 0);
     const line = ps.map((p) => `${p.name} : ${p.kills} KO`).join('   ·   ');
@@ -480,32 +481,32 @@ function drawEndScreen(ctx: CanvasRenderingContext2D, w: World, time: number): v
       const epilogue = ['NOVA s\'éteint dans une pluie de pixels. La ville respire.', 'Le sensei rouvre le dojo. Le videur Tora sert les nouilles.', 'Quant au sandwich… il n\'a jamais été retrouvé.'];
       ctx.font = `italic 14px ${FONT}`;
       ctx.fillStyle = '#ffd166';
-      epilogue.forEach((l, i) => ctx.fillText(l, VIEW_W / 2, VIEW_H / 2 - 2 + i * 18 - 18));
+      epilogue.forEach((l, i) => ctx.fillText(l, view.w / 2, view.h / 2 - 2 + i * 18 - 18));
     }
     ctx.font = `bold 15px ${FONT}`;
     ctx.fillStyle = '#fff';
-    ctx.fillText(line, VIEW_W / 2, VIEW_H / 2 + 60);
+    ctx.fillText(line, view.w / 2, view.h / 2 + 60);
     ctx.fillStyle = '#ffe14d';
-    ctx.fillText(`Score ${w.score}   ·   ${w.coins} pièces   ·   ${w.mode === 'survival' ? `vague ${w.survivalWave}` : `stage ${w.stageIndex + 1}`}`, VIEW_W / 2, VIEW_H / 2 + 84);
+    ctx.fillText(`Score ${w.score}   ·   ${w.coins} pièces   ·   ${w.mode === 'survival' ? `vague ${w.survivalWave}` : `stage ${w.stageIndex + 1}`}`, view.w / 2, view.h / 2 + 84);
   }
   if (Math.floor(time / 30) % 2 === 0) {
     ctx.fillStyle = '#ccc';
     ctx.font = `13px ${FONT}`;
-    ctx.fillText('Appuie sur Pause / Échap pour continuer', VIEW_W / 2, VIEW_H / 2 + 118);
+    ctx.fillText('Appuie sur Pause / Échap pour continuer', view.w / 2, view.h / 2 + 118);
   }
   ctx.textAlign = 'left';
 }
 
 function drawPause(ctx: CanvasRenderingContext2D, w: World, info: HudInfo): void {
   ctx.fillStyle = 'rgba(5,6,14,0.72)';
-  ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+  ctx.fillRect(0, 0, view.w, view.h);
   ctx.textAlign = 'center';
   ctx.font = `900 46px ${FONT}`;
   ctx.fillStyle = '#fff';
-  ctx.fillText('PAUSE', VIEW_W / 2, 150);
+  ctx.fillText('PAUSE', view.w / 2, 150);
   ctx.font = `14px ${FONT}`;
   ctx.fillStyle = '#ccc';
   const who = info.names.get(w.pausedBy) ?? `Joueur ${w.pausedBy + 1}`;
-  ctx.fillText(`mise en pause par ${who}`, VIEW_W / 2, 178);
+  ctx.fillText(`mise en pause par ${who}`, view.w / 2, 178);
   ctx.textAlign = 'left';
 }

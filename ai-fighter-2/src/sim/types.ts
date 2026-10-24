@@ -253,6 +253,8 @@ export interface Fighter {
   gunCd: number; // délai entre deux tirs
   lastCmd: string; // dernière commande réussie (affichage entraînement)
   lastCmdFrame: number;
+  cmb: string; // suite de boutons récents (P = attaque, K = lourd) pour les finisseurs façon Budokai
+  cmbFrame: number;
   backHold: number; // frames passées à maintenir « arrière » (pas arrière sans se retourner)
 }
 

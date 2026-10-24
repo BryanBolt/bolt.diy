@@ -168,6 +168,8 @@ export function makeFighter(w: World, charId: string, name: string, team: number
     lastCmd: '',
     lastCmdFrame: -999,
     backHold: 0,
+    cmb: '',
+    cmbFrame: -999,
   };
   return f;
 }
@@ -923,6 +925,11 @@ function stepFighter(w: World, f: Fighter, inp: number, acting: boolean): void {
   const pressed = inp & ~f.prevInput;
   // mémoire tampon des attaques (9 frames) : rend les enchaînements tolérants
   const attackBits = IN.LIGHT | IN.HEAVY | IN.SPECIAL | IN.SUPER | IN.JUMP;
+  if (pressed & (IN.LIGHT | IN.HEAVY)) {
+    if (w.frame - f.cmbFrame > 40) f.cmb = '';
+    f.cmb = (f.cmb + (pressed & IN.LIGHT ? 'P' : '') + (pressed & IN.HEAVY ? 'K' : '')).slice(-4);
+    f.cmbFrame = w.frame;
+  }
   if (pressed & attackBits) {
     f.bufferedInput |= pressed & attackBits;
     f.bufferTimer = C.BUFFER_FRAMES;
@@ -1149,6 +1156,16 @@ function nearestEnemy(w: World, f: Fighter): Fighter | null {
 }
 
 // Déclenche une attaque si une entrée (tampon compris) le demande.
+/** Finisseur façon Budokai : P/K enchaînés puis E (Spécial). Retourne l'identifiant du coup, ou null. */
+const FINISHERS: Record<string, string> = { PPP: 'c_cmb_rafale', KKK: 'c_cmb_tempete', PKP: 'c_cmb_briseur', PPK: 'c_cmb_seisme', KPK: 'c_cmb_spirale', PKK: 'c_cmb_dragon', KKP: 'c_cmb_ecrase', KPP: 'c_cmb_eclair' };
+function comboFinisher(w: World, f: Fighter, c: CharDef): string | null {
+  if (w.frame - f.cmbFrame > 40 || f.cmb.length < 3) return null;
+  const id = FINISHERS[f.cmb.slice(-3)];
+  const m = id ? c.moves[id] : null;
+  if (!m || f.ki < (m.kiCost ?? 0)) return null;
+  return id;
+}
+
 function tryAttack(w: World, f: Fighter, c: CharDef, inp: number, dirX: number, dirZ: number): boolean {
   const buf = f.bufferedInput;
   const onGround = !airborne(f);
@@ -1178,6 +1195,10 @@ function tryAttack(w: World, f: Fighter, c: CharDef, inp: number, dirX: number, 
     f.bufferedInput &= ~IN.LIGHT;
     startShoot(w, f);
     return true;
+  }
+  if (!moveId && buf & IN.SPECIAL && onGround) {
+    const fin = comboFinisher(w, f, c);
+    if (fin && w.frame >= f.nextMoveFrame) { f.bufferedInput &= ~IN.SPECIAL; f.cmb = ''; startMove(w, f, fin); return true; }
   }
   if (!moveId && buf & IN.SPECIAL) {
     // raccourci manette / tactile : Spécial + direction = commande
@@ -1385,6 +1406,11 @@ function stepAttack(w: World, f: Fighter, c: CharDef, inp: number, dirX: number,
     physics(w, f);
     return;
   }
+  // finisseur P/K + E : annule n'importe quel coup normal dès le départ (façon Budokai)
+  if (f.bufferedInput & IN.SPECIAL && fr >= 3 && !inAir && (m.kind === 'light' || m.kind === 'heavy' || m.kind === 'launcher' || m.kind === 'low')) {
+    const fin = comboFinisher(w, f, c);
+    if (fin && fin !== f.moveId) { f.bufferedInput = 0; f.cmb = ''; startMove(w, f, fin); return; }
+  }
   // annulation / enchaînement
   const cancelFrom = m.cancelFrom ?? activeEnd;
   if (fr >= cancelFrom && m.next && m.next.length && f.bufferedInput) {
@@ -1411,6 +1437,10 @@ function tryChain(w: World, f: Fighter, c: CharDef, m: MoveDef, inp: number, dir
   const back = dirX !== 0 && dirX === -f.facing;
   const down = dirZ > 0 || (inp & IN.DOWN) !== 0;
   const inAir = airborne(f);
+  if (buf & IN.SPECIAL && !inAir) {
+    const fin = comboFinisher(w, f, c);
+    if (fin) { f.bufferedInput = 0; f.cmb = ''; startMove(w, f, fin); return true; }
+  }
   const candidates: string[] = [];
   if (buf & IN.SUPER && f.superMeter >= C.SUPER_MAX) candidates.push(c.superMove);
   if (buf & IN.SPECIAL) {

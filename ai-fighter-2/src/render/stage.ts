@@ -1,5 +1,7 @@
 // Décors procéduraux par thème, avec parallaxe. Tout est dessiné en primitives.
-import { VIEW_W, VIEW_H } from '../sim/constants';
+// Étendue visible : VW = largeur totale, EY = marge au-dessus, VB = bas de l'écran (coordonnées de jeu 960×540).
+let VW = 960, VB = 540, EY = 0;
+export function setStageExtent(vw: number, extraTop: number, extraBottom: number): void { VW = vw; EY = extraTop; VB = 540 + extraBottom; }
 import { FLOOR_TOP, FLOOR_BOTTOM } from './camera';
 import { Rng } from '../core/math';
 import { drawLowPolyRidge } from './lowpoly';
@@ -55,9 +57,9 @@ function propsFor(theme: string, width: number): { far: Prop[]; mid: Prop[] } {
   const r = new Rng(hashSeed(key));
   const far: Prop[] = [];
   const mid: Prop[] = [];
-  const span = width * 0.5 + VIEW_W;
-  for (let x = -200; x < span; x += r.int(90, 170)) far.push({ x, w: r.int(70, 160), h: r.int(80, 260), kind: r.int(0, 3), seed: r.nextU32() });
-  for (let x = -100; x < width + VIEW_W; x += r.int(160, 320)) mid.push({ x, w: r.int(30, 80), h: r.int(60, 180), kind: r.int(0, 4), seed: r.nextU32() });
+  const span = width * 0.5 + VW;
+  for (let x = -500; x < span; x += r.int(90, 170)) far.push({ x, w: r.int(70, 160), h: r.int(80, 260), kind: r.int(0, 3), seed: r.nextU32() });
+  for (let x = -500; x < width + VW; x += r.int(160, 320)) mid.push({ x, w: r.int(30, 80), h: r.int(60, 180), kind: r.int(0, 4), seed: r.nextU32() });
   const out = { far, mid };
   propsCache.set(key, out);
   return out;
@@ -70,13 +72,13 @@ export function drawStage(ctx: CanvasRenderingContext2D, themeId: string, camX: 
   g.addColorStop(0, t.sky[0]);
   g.addColorStop(1, t.sky[1]);
   ctx.fillStyle = g;
-  ctx.fillRect(0, 0, VIEW_W, FLOOR_TOP + 2);
+  ctx.fillRect(0, -EY, VW, FLOOR_TOP + 2 + EY);
   const props = propsFor(themeId, width);
   // montagnes low poly en fond (parallaxe lente)
   if (t.kind !== 'metro') {
     ctx.save();
     ctx.translate(-camX * 0.1, 0);
-    drawLowPolyRidge(ctx, hashSeed(themeId), FLOOR_TOP + 4, width * 0.4 + VIEW_W + 200, t.kind === 'tower' ? 190 : 140, t.far + 'aa', t.mid + '88');
+    drawLowPolyRidge(ctx, hashSeed(themeId), FLOOR_TOP + 4, width * 0.4 + VW + 200, t.kind === 'tower' ? 190 : 140, t.far + 'aa', t.mid + '88');
     ctx.restore();
   }
   // couche lointaine (parallaxe 0.25)
@@ -90,7 +92,7 @@ export function drawStage(ctx: CanvasRenderingContext2D, themeId: string, camX: 
     hg.addColorStop(0, 'rgba(255,255,255,0)');
     hg.addColorStop(1, t.accent + '44');
     ctx.fillStyle = hg;
-    ctx.fillRect(0, FLOOR_TOP - 90, VIEW_W, 90);
+    ctx.fillRect(0, FLOOR_TOP - 90, VW, 90);
   }
   // couche moyenne (parallaxe 0.6)
   ctx.save();
@@ -98,20 +100,20 @@ export function drawStage(ctx: CanvasRenderingContext2D, themeId: string, camX: 
   for (const p of props.mid) drawMid(ctx, t, p, time);
   ctx.restore();
   // sol
-  const fg = ctx.createLinearGradient(0, FLOOR_TOP, 0, VIEW_H);
+  const fg = ctx.createLinearGradient(0, FLOOR_TOP, 0, VB);
   fg.addColorStop(0, t.floor[0]);
   fg.addColorStop(1, t.floor[1]);
   ctx.fillStyle = fg;
-  ctx.fillRect(0, FLOOR_TOP, VIEW_W, VIEW_H - FLOOR_TOP);
+  ctx.fillRect(0, FLOOR_TOP, VW, VB - FLOOR_TOP);
   // lignes de perspective
   ctx.strokeStyle = t.line;
   ctx.globalAlpha = 0.35;
   ctx.lineWidth = 1.5;
   const step = 120;
   const off = ((-camX) % step + step) % step;
-  for (let x = off - step; x < VIEW_W + step; x += step) {
+  for (let x = off - step; x < VW + step; x += step) {
     const far = x;
-    const near = (x - VIEW_W / 2) * 1.35 + VIEW_W / 2;
+    const near = (x - VW / 2) * 1.35 + VW / 2;
     ctx.beginPath();
     ctx.moveTo(far, FLOOR_TOP);
     ctx.lineTo(near, FLOOR_BOTTOM + 12);
@@ -121,18 +123,18 @@ export function drawStage(ctx: CanvasRenderingContext2D, themeId: string, camX: 
     const y = FLOOR_TOP + ((FLOOR_BOTTOM - FLOOR_TOP) * i * i) / 16;
     ctx.beginPath();
     ctx.moveTo(0, y);
-    ctx.lineTo(VIEW_W, y);
+    ctx.lineTo(VW, y);
     ctx.stroke();
   }
   ctx.globalAlpha = 1;
   drawFloorDetail(ctx, t, camX, time);
   // bord du fond (mur/garde-fou)
   ctx.fillStyle = t.mid;
-  ctx.fillRect(0, FLOOR_TOP - 6, VIEW_W, 8);
+  ctx.fillRect(0, FLOOR_TOP - 6, VW, 8);
   // murs d'arène verrouillée
   if (arena.locked) {
     for (const wx of [arena.l - camX, arena.r - camX]) {
-      if (wx < -10 || wx > VIEW_W + 10) continue;
+      if (wx < -10 || wx > VW + 10) continue;
       ctx.fillStyle = 'rgba(255,255,255,0.08)';
       ctx.fillRect(wx - 2, FLOOR_TOP - 40, 4, FLOOR_BOTTOM - FLOOR_TOP + 50);
     }
@@ -332,16 +334,16 @@ function drawFloorDetail(ctx: CanvasRenderingContext2D, t: Theme, camX: number, 
       // voie ferrée sur la ligne du fond (zone du train)
       const y0 = FLOOR_TOP + 4, y1 = FLOOR_TOP + 40;
       ctx.fillStyle = 'rgba(0,0,0,0.25)';
-      ctx.fillRect(0, y0, VIEW_W, y1 - y0);
+      ctx.fillRect(0, y0, VW, y1 - y0);
       ctx.strokeStyle = '#9aa7b8';
       ctx.lineWidth = 2;
-      for (const y of [y0 + 8, y1 - 8]) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(VIEW_W, y); ctx.stroke(); }
+      for (const y of [y0 + 8, y1 - 8]) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(VW, y); ctx.stroke(); }
       ctx.fillStyle = '#5c4a3a';
       const off = ((-camX) % 34 + 34) % 34;
-      for (let x = off - 34; x < VIEW_W; x += 34) ctx.fillRect(x, y0 + 4, 10, y1 - y0 - 8);
+      for (let x = off - 34; x < VW; x += 34) ctx.fillRect(x, y0 + 4, 10, y1 - y0 - 8);
       // ligne jaune de sécurité
       ctx.fillStyle = 'rgba(255,225,77,0.5)';
-      ctx.fillRect(0, y1 + 4, VIEW_W, 3);
+      ctx.fillRect(0, y1 + 4, VW, 3);
       break;
     }
     case 'dojo': {
@@ -349,8 +351,8 @@ function drawFloorDetail(ctx: CanvasRenderingContext2D, t: Theme, camX: number, 
       ctx.strokeStyle = 'rgba(80,50,20,0.25)';
       ctx.lineWidth = 2;
       const off = ((-camX * 1.1) % 180 + 180) % 180;
-      for (let x = off - 180; x < VIEW_W + 180; x += 180) {
-        ctx.beginPath(); ctx.moveTo(x, FLOOR_TOP + 70); ctx.lineTo((x - VIEW_W / 2) * 1.2 + VIEW_W / 2, FLOOR_BOTTOM + 12); ctx.stroke();
+      for (let x = off - 180; x < VW + 180; x += 180) {
+        ctx.beginPath(); ctx.moveTo(x, FLOOR_TOP + 70); ctx.lineTo((x - VW / 2) * 1.2 + VW / 2, FLOOR_BOTTOM + 12); ctx.stroke();
       }
       break;
     }
@@ -358,7 +360,7 @@ function drawFloorDetail(ctx: CanvasRenderingContext2D, t: Theme, camX: number, 
       // reflets des néons sur le sol mouillé
       const colors = [t.accent, '#4fe3ff', '#ffe14d'];
       const off = ((-camX * 0.6) % 300 + 300) % 300;
-      for (let x = off - 300, i = 0; x < VIEW_W + 300; x += 300, i++) {
+      for (let x = off - 300, i = 0; x < VW + 300; x += 300, i++) {
         const g = ctx.createLinearGradient(0, FLOOR_TOP, 0, FLOOR_BOTTOM);
         g.addColorStop(0, colors[i % 3] + '55');
         g.addColorStop(1, colors[i % 3] + '00');
@@ -373,7 +375,7 @@ function drawFloorDetail(ctx: CanvasRenderingContext2D, t: Theme, camX: number, 
       const off = ((-camX) % 40 + 40) % 40;
       for (let row = 0; row < 5; row++) {
         const y = FLOOR_TOP + 20 + row * row * 9;
-        for (let x = off - 40 + (row % 2) * 20; x < VIEW_W; x += 40) ctx.fillRect(x, y, 30, 5 + row * 2);
+        for (let x = off - 40 + (row % 2) * 20; x < VW; x += 40) ctx.fillRect(x, y, 30, 5 + row * 2);
       }
       break;
     }
@@ -381,7 +383,7 @@ function drawFloorDetail(ctx: CanvasRenderingContext2D, t: Theme, camX: number, 
       // marbre : reflets
       ctx.fillStyle = 'rgba(255,255,255,0.18)';
       const off = ((-camX * 0.8) % 240 + 240) % 240;
-      for (let x = off - 240; x < VIEW_W + 240; x += 240) { ctx.beginPath(); ctx.moveTo(x, FLOOR_TOP); ctx.lineTo(x + 40, FLOOR_TOP); ctx.lineTo(x + 120, FLOOR_BOTTOM); ctx.lineTo(x + 60, FLOOR_BOTTOM); ctx.closePath(); ctx.fill(); }
+      for (let x = off - 240; x < VW + 240; x += 240) { ctx.beginPath(); ctx.moveTo(x, FLOOR_TOP); ctx.lineTo(x + 40, FLOOR_TOP); ctx.lineTo(x + 120, FLOOR_BOTTOM); ctx.lineTo(x + 60, FLOOR_BOTTOM); ctx.closePath(); ctx.fill(); }
       break;
     }
     case 'core': {
@@ -389,7 +391,7 @@ function drawFloorDetail(ctx: CanvasRenderingContext2D, t: Theme, camX: number, 
       ctx.strokeStyle = t.accent;
       ctx.globalAlpha = 0.18 + Math.sin(time * 0.05) * 0.08;
       ctx.lineWidth = 1;
-      for (let i = 0; i <= 8; i++) { const y = FLOOR_TOP + ((FLOOR_BOTTOM - FLOOR_TOP) * i * i) / 64; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(VIEW_W, y); ctx.stroke(); }
+      for (let i = 0; i <= 8; i++) { const y = FLOOR_TOP + ((FLOOR_BOTTOM - FLOOR_TOP) * i * i) / 64; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(VW, y); ctx.stroke(); }
       ctx.globalAlpha = 1;
       break;
     }
@@ -406,19 +408,19 @@ export function drawForeground(ctx: CanvasRenderingContext2D, themeId: string, c
   const par = 1.3;
   const off = ((-camX * par) % 700 + 700) % 700;
   ctx.globalAlpha = 0.85;
-  for (let x = off - 700; x < VIEW_W + 700; x += 700) {
+  for (let x = off - 700; x < VW + 700; x += 700) {
     switch (t.kind) {
       case 'dojo':
         ctx.fillStyle = '#3b2412';
-        ctx.fillRect(x + 40, VIEW_H - 120, 14, 120);
+        ctx.fillRect(x + 40, VB - 120, 14, 120);
         ctx.fillStyle = '#c0392b';
-        ctx.beginPath(); ctx.ellipse(x + 47, VIEW_H - 128 + Math.sin(time * 0.05 + x) * 3, 12, 16, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(x + 47, VB - 128 + Math.sin(time * 0.05 + x) * 3, 12, 16, 0, 0, Math.PI * 2); ctx.fill();
         break;
       case 'city':
         ctx.strokeStyle = '#141622';
         ctx.lineWidth = 6;
-        ctx.beginPath(); ctx.moveTo(x, VIEW_H - 30); ctx.lineTo(x + 260, VIEW_H - 30); ctx.stroke();
-        for (let k = 0; k < 6; k++) { ctx.beginPath(); ctx.moveTo(x + k * 50, VIEW_H - 30); ctx.lineTo(x + k * 50, VIEW_H); ctx.stroke(); }
+        ctx.beginPath(); ctx.moveTo(x, VB - 30); ctx.lineTo(x + 260, VB - 30); ctx.stroke();
+        for (let k = 0; k < 6; k++) { ctx.beginPath(); ctx.moveTo(x + k * 50, VB - 30); ctx.lineTo(x + k * 50, VB); ctx.stroke(); }
         break;
       case 'market':
         ctx.strokeStyle = '#2a1a1f';
@@ -429,27 +431,27 @@ export function drawForeground(ctx: CanvasRenderingContext2D, themeId: string, c
         break;
       case 'metro':
         ctx.fillStyle = 'rgba(14,18,26,0.9)';
-        ctx.fillRect(x + 300, 0, 28, VIEW_H);
+        ctx.fillRect(x + 300, 0, 28, VB);
         ctx.fillStyle = 'rgba(255,255,255,0.08)';
-        ctx.fillRect(x + 300, 0, 4, VIEW_H);
+        ctx.fillRect(x + 300, 0, 4, VB);
         break;
       case 'tower':
         // garde-corps en verre au premier plan
         ctx.fillStyle = 'rgba(200,225,255,0.18)';
-        ctx.fillRect(x, VIEW_H - 40, 700, 40);
+        ctx.fillRect(x, VB - 40, 700, 40);
         ctx.fillStyle = 'rgba(255,255,255,0.5)';
-        ctx.fillRect(x, VIEW_H - 42, 700, 3);
+        ctx.fillRect(x, VB - 42, 700, 3);
         break;
       case 'core':
         ctx.strokeStyle = t.accent;
         ctx.lineWidth = 3;
         ctx.globalAlpha = 0.35;
-        ctx.beginPath(); ctx.moveTo(x, VIEW_H - 60); ctx.quadraticCurveTo(x + 200, VIEW_H - 140, x + 420, VIEW_H - 40); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x, VB - 60); ctx.quadraticCurveTo(x + 200, VB - 140, x + 420, VB - 40); ctx.stroke();
         ctx.globalAlpha = 0.85;
         break;
       case 'arena':
         ctx.fillStyle = '#2b1d12';
-        ctx.fillRect(x + 200, VIEW_H - 70, 26, 70);
+        ctx.fillRect(x + 200, VB - 70, 26, 70);
         break;
     }
   }
