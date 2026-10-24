@@ -7,7 +7,7 @@
 import { Rng, clamp, approach, q, sign } from '../core/math';
 import { getChar, ENEMY_CHAR, ENEMY_NAMES } from './chars';
 import { STAGES, SURVIVAL_STAGE, DUEL_STAGES } from './stages';
-import { BONUSES } from './bonuses';
+import { BONUSES, STACKABLE, stacks, activeSynergies, rollBonuses } from './bonuses';
 import { aiInput } from './ai';
 import * as C from './constants';
 import { IN } from './types';
@@ -336,14 +336,9 @@ function survivalWave(w: World, idx: number): { kind: EnemyKind; level: number }
 function startBonusPhase(w: World): void {
   w.bonusChoices = [];
   for (const f of players(w)) {
-    const pool = BONUSES.filter((b) => !f.bonuses.includes(b.id) || b.id === 'power' || b.id === 'speed' || b.id === 'vitality');
-    const options: BonusId[] = [];
+    const pool = BONUSES.filter((b) => !f.bonuses.includes(b.id) || STACKABLE.has(b.id));
     const r = rng(w);
-    while (options.length < 3 && pool.length) {
-      const i = r.int(0, pool.length - 1);
-      options.push(pool[i].id);
-      pool.splice(i, 1);
-    }
+    const options = rollBonuses(pool, 3, w.waveIndex, (lo, hi) => r.int(lo, hi));
     commitRng(w, r);
     w.bonusChoices.push({ slot: f.slot, options, cursor: 0, chosen: f.controller === 'ai' ? 0 : -1 });
   }
@@ -365,7 +360,12 @@ function finishBonusPhase(w: World): void {
 }
 
 export function applyBonus(w: World, f: Fighter, b: BonusId): void {
+  const before = activeSynergies(f.bonuses).length;
   f.bonuses.push(b);
+  if (activeSynergies(f.bonuses).length > before) {
+    const sy = activeSynergies(f.bonuses).slice(-1)[0];
+    w.events.push({ t: 'text', x: f.x, y: f.y + 170, z: f.z, text: `SYNERGIE : ${sy.name}`, color: '#ffb830' });
+  }
   switch (b) {
     case 'power': f.stats.power *= 1.15; break;
     case 'speed': f.stats.speed *= 1.12; break;
@@ -764,10 +764,9 @@ function stepPhase(w: World, inputs: number[]): void {
           // relance des 3 propositions (25 pièces)
           if (w.coins >= 25) {
             w.coins -= 25;
-            const pool = BONUSES.filter((b) => !f.bonuses.includes(b.id) && !bc.options.includes(b.id));
+            const pool = BONUSES.filter((b) => (!f.bonuses.includes(b.id) || STACKABLE.has(b.id)) && !bc.options.includes(b.id));
             const r = rng(w);
-            const next: BonusId[] = [];
-            while (next.length < 3 && pool.length) { const i = r.int(0, pool.length - 1); next.push(pool[i].id); pool.splice(i, 1); }
+            const next = rollBonuses(pool, 3, w.waveIndex, (lo, hi) => r.int(lo, hi));
             commitRng(w, r);
             while (next.length < 3) next.push(bc.options[next.length]);
             bc.options = next;
@@ -920,6 +919,10 @@ export function setState(f: Fighter, s: FState): void {
   if (s === 'idle' || s === 'walk') f.chainIndex = 0;
 }
 
+function hasSyn(f: Fighter, id: string): boolean {
+  return f.bonuses.length > 1 && activeSynergies(f.bonuses).some((sy) => sy.id === id);
+}
+
 function hasBonus(f: Fighter, b: BonusId): boolean {
   return f.bonuses.includes(b);
 }
@@ -945,7 +948,7 @@ function stepFighter(w: World, f: Fighter, inp: number, acting: boolean): void {
   if (f.state !== 'guard' && f.state !== 'block') f.guardFrames = Math.min(99, f.guardFrames + 1);
   // régénération de garde / ki
   if (f.state !== 'block' && f.guardMeter < C.GUARD_MAX) f.guardMeter = Math.min(C.GUARD_MAX, f.guardMeter + (hasBonus(f, 'guard') ? 0.5 : 0.25));
-  if (hasBonus(f, 'kiflow') && f.ki < C.KI_MAX) f.ki = Math.min(C.KI_MAX, f.ki + 0.08);
+  if (hasBonus(f, 'kiflow') && f.ki < C.KI_MAX) f.ki = Math.min(C.KI_MAX, f.ki + 0.08 * stacks(f.bonuses, 'kiflow'));
 
   // statuts
   if (f.status.burn > 0 && f.state !== 'ko') {
@@ -1915,8 +1918,11 @@ function resolveHit(w: World, a: Fighter, t: Fighter, m0: MoveDef, proj?: Projec
   const elem = elementOf(a, m, proj, mw);
   if (elem !== 'none' && !guardOk) dmg = Math.round(dmg * elementReaction(w, a, t, elem, dir));
   if (proj?.wk === 'pistol' && rand(w) < 0.25) { dmg *= 2; w.events.push({ t: 'text', x: t.x, y: t.y + 150, z: t.z, text: 'TIR À LA TÊTE !', color: '#ff5f5f' }); }
-  const crit = !proj && hasBonus(a, 'crit') && rand(w) < 0.15;
-  if (crit) dmg = Math.round(dmg * 1.6);
+  const crit = !proj && hasBonus(a, 'crit') && rand(w) < Math.min(0.5, 0.15 * stacks(a.bonuses, 'crit'));
+  if (crit) {
+    dmg = Math.round(dmg * 1.6);
+    if (hasSyn(a, 'jackpot')) { w.coins += 3; w.events.push({ t: 'text', x: t.x, y: t.y + 130, z: t.z, text: '+3 🪙', color: '#ffe14d' }); }
+  }
   // contre-coup : la cible était en préparation d'attaque
   const counter = !proj && t.state === 'attack' && t.moveId !== null && t.stateFrame <= getChar(t.charId).moves[t.moveId].startup && !t.armor;
   if (counter) dmg = Math.round(dmg * 1.3);
@@ -1955,12 +1961,12 @@ function resolveHit(w: World, a: Fighter, t: Fighter, m0: MoveDef, proj?: Projec
   const prevHp = t.hp;
   damageRaw(w, t, dmg, a.id);
   // jauges
-  a.ki = Math.min(C.KI_MAX, a.ki + (hasBonus(a, 'kiflow') ? 9 : 4));
+  a.ki = Math.min(C.KI_MAX, a.ki + (hasBonus(a, 'kiflow') ? 5 + 4 * stacks(a.bonuses, 'kiflow') : 4));
   a.superMeter = Math.min(C.SUPER_MAX, a.superMeter + dmg * 0.55 * (hasBonus(a, 'superflow') ? 2 : 1));
   t.superMeter = Math.min(C.SUPER_MAX, t.superMeter + dmg * 0.3 * (hasBonus(t, 'superflow') ? 2 : 1));
   t.ki = Math.min(C.KI_MAX, t.ki + 2);
-  if (hasBonus(a, 'lifesteal')) a.hp = Math.min(a.hpMax, a.hp + 1);
-  if (hasBonus(t, 'thorns') && !proj) damageRaw(w, a, Math.round(dmg * 0.25), t.id);
+  if (hasBonus(a, 'lifesteal')) a.hp = Math.min(a.hpMax, a.hp + stacks(a.bonuses, 'lifesteal'));
+  if (hasBonus(t, 'thorns') && !proj) damageRaw(w, a, Math.round(dmg * 0.25 * Math.min(3, stacks(t.bonuses, 'thorns'))), t.id);
   if (m.heal) a.hp = Math.min(a.hpMax, a.hp + m.heal);
   // statuts
   const heavyish = m.kind === 'heavy' || m.kind === 'launcher' || m.kind === 'low' || m.kind === 'airHeavy';
@@ -2069,7 +2075,15 @@ function computeDamage(w: World, a: Fighter, t: Fighter, m: MoveDef, proj?: Proj
   let base = proj ? proj.damage : m.damage * a.stats.power;
   if (!proj && a.chargeBonus) base *= 1 + a.chargeBonus / 56;
   if (!proj) { const mw = meleeOf(a, m); if (mw) base *= mw.dmg; }
-  if (hasBonus(a, 'berserk') && a.hp < a.hpMax * 0.35) base *= 1.5;
+  if (hasBonus(a, 'berserk') && a.hp < a.hpMax * (hasSyn(a, 'bloodlust') ? 0.6 : 0.35)) base *= 1.5;
+  if (hasSyn(a, 'thermal') && (t.status.burn > 0 || t.state === 'frozen')) base *= 1.3;
+  if (hasSyn(t, 'fortress')) base *= 0.85;
+  if (a.team === 0 && a.bonuses.length) {
+    // coopération : chaque allié qui partage un de tes bonus te donne +6 %
+    let mates = 0;
+    for (const o of w.fighters) if (o.id !== a.id && o.team === 0 && alive(o) && o.bonuses.some((b) => a.bonuses.includes(b))) mates++;
+    if (mates) base *= 1 + 0.06 * Math.min(3, mates);
+  }
   const mw2 = proj ? null : meleeOf(a, m);
   const scale = proj && proj.kind === 'slug' ? 1 : mw2?.fx === 'combo' ? Math.max(0.55, 1 - a.comboHits * 0.035) : Math.max(0.35, 1 - a.comboHits * 0.07);
   base *= scale;
@@ -2109,8 +2123,8 @@ function knockOut(w: World, t: Fighter, a: Fighter | null, dir: number, m: MoveD
   w.events.push({ t: 'shake', power: 5 });
   if (a) {
     a.kills++;
-    if (hasBonus(a, 'lifesteal')) a.hp = Math.min(a.hpMax, a.hp + 10);
-    if (hasBonus(a, 'explode')) spawnShock(w, t, 0, 80, 16, a);
+    if (hasBonus(a, 'lifesteal')) a.hp = Math.min(a.hpMax, a.hp + 10 * stacks(a.bonuses, 'lifesteal'));
+    if (hasBonus(a, 'explode')) { const ch = hasSyn(a, 'chain'); spawnShock(w, t, 0, ch ? 120 : 80, ch ? 24 : 16, a); }
     if (t.team !== 0 && a.team === 0) {
       const lvl = Math.max(1, t.level);
       w.score += 100 * lvl * (t.ai?.kind === 'boss' ? 10 : 1);

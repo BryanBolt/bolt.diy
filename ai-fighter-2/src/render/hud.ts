@@ -3,7 +3,7 @@ import type { World, Fighter } from '../sim/types';
 import { SUPER_MAX, KI_MAX, FPS } from '../sim/constants';
 import { view } from './camera';
 import { getChar, PALETTE } from '../sim/chars';
-import { BONUS_BY_ID } from '../sim/bonuses';
+import { BONUS_BY_ID, RARITY, activeSynergies, synergiesUnlockedBy, stacks } from '../sim/bonuses';
 import type { Fx } from './fx';
 import { project, type Camera } from './camera';
 import { STAGES } from '../sim/stages';
@@ -285,6 +285,8 @@ function drawPlayerPanel(ctx: CanvasRenderingContext2D, f: Fighter, x: number, y
     ctx.font = `11px ${FONT}`;
     const icons = f.bonuses.slice(-8).map((b) => BONUS_BY_ID[b]?.icon ?? '•').join(' ');
     ctx.fillText(icons, x + 46 + Math.min(f.lives, 3) * 10 + (world.mode === 'duel' ? 0 : 8), y + 50);
+    const syn = activeSynergies(f.bonuses);
+    if (syn.length) { ctx.fillStyle = '#ffb830'; ctx.fillText('✨' + syn.map((q) => q.name).join(' · '), x + 46, y + 62); }
   }
   if (f.weapon > 0 && f.weaponKind && !ko) {
     const wp = WEAPONS[f.weaponKind];
@@ -361,11 +363,12 @@ function drawBonusChoice(ctx: CanvasRenderingContext2D, w: World, info: HudInfo,
       roundRect(ctx, x, y, cw, rowH - 22, 10);
       ctx.fillStyle = chosen ? 'rgba(255,209,102,0.35)' : selected ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.45)';
       ctx.fill();
-      if (selected) {
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = chosen ? '#ffd166' : pal.main;
-        ctx.stroke();
-      }
+      const rar = RARITY[b.rarity];
+      ctx.lineWidth = selected ? 3 : 1.5;
+      ctx.strokeStyle = chosen ? '#ffd166' : selected ? pal.main : rar.color;
+      ctx.stroke();
+      const own = f ? stacks(f.bonuses, id) : 0;
+      const syn = f ? synergiesUnlockedBy(f.bonuses, id) : [];
       ctx.font = `26px ${FONT}`;
       ctx.fillStyle = '#fff';
       ctx.fillText(b.icon, x + 12, y + 36);
@@ -374,6 +377,13 @@ function drawBonusChoice(ctx: CanvasRenderingContext2D, w: World, info: HudInfo,
       ctx.font = `12px ${FONT}`;
       ctx.fillStyle = '#ddd';
       wrapText(ctx, b.desc, x + 52, y + 46, cw - 64, 14);
+      ctx.font = `bold 10px ${FONT}`;
+      ctx.fillStyle = rar.color;
+      ctx.fillText(rar.label.toUpperCase() + (own ? `  ·  ×${own + 1}` : ''), x + 52, y + 12);
+      if (syn.length) {
+        ctx.fillStyle = '#ffb830';
+        ctx.fillText('✨ ' + syn[0].name + ' : ' + syn[0].desc, x + 12, y + rowH - 28);
+      }
       if (chosen) {
         ctx.font = `bold 12px ${FONT}`;
         ctx.fillStyle = '#ffd166';
