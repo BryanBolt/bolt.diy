@@ -2,7 +2,7 @@
 import type { World, Fighter, Projectile, Item } from '../sim/types';
 import { VIEW_W, VIEW_H, HURT_HW, HURT_H, REVIVE_FRAMES, REVIVE_COST } from '../sim/constants';
 import { getChar, PALETTE } from '../sim/chars';
-import { drawStickman, poseFor, colorsFor } from './stickman';
+import { drawStickman, poseFor, colorsFor, lerpPose, type Pose } from './stickman';
 import { drawStage, themeAccent, drawForeground } from './stage';
 import type { Hazard } from '../sim/types';
 import { Fx } from './fx';
@@ -20,6 +20,8 @@ export class Renderer {
   time = 0;
   showHitboxes = false;
   private ghostTick = 0;
+  private smooth = new Map<number, Pose>();
+  private lastDt = 16.7;
   private fpsAcc = 0;
   private fpsCount = 0;
   fps = 60;
@@ -54,6 +56,7 @@ export class Renderer {
 
   render(w: World, info: HudInfo, dtMs: number): void {
     this.time += dtMs / 16.667;
+    this.lastDt = dtMs;
     this.fpsAcc += dtMs;
     this.fpsCount++;
     if (this.fpsAcc >= 500) { this.fps = Math.round((this.fpsCount * 1000) / this.fpsAcc); this.fpsAcc = 0; this.fpsCount = 0; }
@@ -295,7 +298,14 @@ export class Renderer {
   private drawFighter(f: Fighter, w: World, info: HudInfo): void {
     const ctx = this.ctx;
     const { sx, sy, s } = project(this.cam, f.x, f.y, f.z);
-    const pose = poseFor(f, this.time);
+    // pose lissée : les changements d'état s'enchaînent en fondu (chorégraphie fluide)
+    const target = poseFor(f, this.time);
+    const prev = this.smooth.get(f.id);
+    const snappy = f.state === 'attack' || f.state === 'hit' || f.state === 'launch' ? 0.62 : f.state === 'run' || f.state === 'walk' ? 0.5 : 0.3;
+    const k = prev ? 1 - Math.pow(1 - snappy, Math.min(3, this.lastDt / 16.7)) : 1;
+    const pose = prev ? lerpPose(prev, target, k) : target;
+    pose.spin = target.spin;
+    this.smooth.set(f.id, pose);
     const col = colorsFor(f);
     const inv = f.invuln > 0 && f.state !== 'dodge' && f.state !== 'attack';
     const alpha = f.state === 'ko' && f.team !== 0 ? Math.max(0, 1 - Math.max(0, f.koTimer - 40) / 40) : inv && Math.floor(this.time * 2) % 2 === 0 ? 0.55 : 1;

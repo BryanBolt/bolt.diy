@@ -216,8 +216,8 @@ function alive(f: Fighter): boolean {
 function placePlayers(w: World, x0: number): void {
   const ps = players(w);
   ps.forEach((f, i) => {
-    f.x = x0 + i * 46;
-    f.z = 110 + ((i * 53) % 110);
+    f.x = x0 + [0, 42, 10, 56][i % 4] + Math.floor(i / 4) * 80;
+    f.z = [150, 190, 112, 170][i % 4];
     f.y = 0;
     f.vx = f.vy = f.vz = 0;
     f.facing = 1;
@@ -557,7 +557,7 @@ function startDuelRound(w: World, first: boolean): void {
     f.status = { burn: 0, burnDps: 0, frozen: 0, poison: 0 };
     const t = n <= 1 ? 0.5 : i / (n - 1);
     f.x = q(140 + t * (w.stage!.width - 280));
-    f.z = 140 + (i % 2 === 0 ? -30 : 30);
+    f.z = n <= 2 ? 150 : 150 + (i % 2 === 0 ? -34 : 34);
     f.y = 0;
     f.vx = f.vy = f.vz = 0;
     f.facing = t < 0.5 ? 1 : -1;
@@ -651,6 +651,7 @@ export function step(w: World, inputs: number[]): void {
     stepFighter(w, f, inp, acting);
     f.prevInput = inp;
   }
+  separate(w);
   // --- dangers, boss ---
   if (canAct && w.mode !== 'duel') { stepHazards(w); stepBossRage(w); }
   // --- projectiles / objets ---
@@ -1283,6 +1284,20 @@ function startMove(w: World, f: Fighter, moveId: string): void {
       w.events.push({ t: 'special', id: f.id, x: f.x, y: f.y, z: f.z, kind: 'teleport' });
     }
   }
+  // chorégraphie : se tourne vers l'adversaire proche, s'aligne sur sa ligne et avance pour que le coup porte
+  if (!m.teleport && f.y <= 0 && m.kind !== 'super') {
+    const t = nearestEnemy(w, f);
+    if (t) {
+      const dx = t.x - f.x, ad = Math.abs(dx);
+      if (ad < 190 && Math.abs(t.z - f.z) < 70 && !(m.id === 'shoot')) {
+        f.facing = dx >= 0 ? 1 : -1;
+        f.z = q(clamp(f.z + clamp(t.z - f.z, -10, 10), C.Z_MIN, C.Z_MAX));
+        const melee = m.kind === 'light' || m.kind === 'heavy' || m.kind === 'launcher' || m.kind === 'low';
+        const gap = ad - (m.hit.x + m.hit.w * 0.55);
+        if (melee && !m.lunge && !m.projectile && gap > 6) f.vx = f.facing * Math.min(gap * 0.14, 6);
+      }
+    }
+  }
   if (m.lunge) f.vx = f.facing * m.lunge * f.stats.speed;
   if (m.lungeAir) f.vy = m.lungeAir;
   if (m.kind === 'super') {
@@ -1706,10 +1721,40 @@ function breakCrate(w: World, it: Item, dir: number): void {
 // Physique, projectiles, objets
 // ---------------------------------------------------------------------------
 
+/** Les corps ne s'empilent pas : poussée douce sur x, glissement sur z quand ils se recouvrent. */
+function separate(w: World): void {
+  const fs = w.fighters;
+  for (let i = 0; i < fs.length; i++) {
+    const a = fs[i];
+    if (a.y > 24 || a.state === 'ko' || a.state === 'down' || a.state === 'launch' || a.state === 'revive') continue;
+    for (let j = i + 1; j < fs.length; j++) {
+      const b = fs[j];
+      if (b.y > 24 || b.state === 'ko' || b.state === 'down' || b.state === 'launch' || b.state === 'revive') continue;
+      const dz = b.z - a.z;
+      if (Math.abs(dz) >= 22) continue;
+      const dx = b.x - a.x;
+      const gap = 36 - Math.abs(dx);
+      if (gap <= 0) continue;
+      const dir = dx > 0 ? 1 : dx < 0 ? -1 : a.id < b.id ? 1 : -1;
+      // le combattant en attaque/garde se fait moins pousser
+      const wa = a.state === 'attack' ? 0.25 : 0.5, wb = b.state === 'attack' ? 0.25 : 0.5;
+      const push = Math.min(gap, 6) * 0.5;
+      a.x = q(a.x - dir * push * wa * 2);
+      b.x = q(b.x + dir * push * wb * 2);
+      if (Math.abs(dx) < 18) {
+        const zd = dz >= 0 ? 1 : -1;
+        a.z = q(clamp(a.z - zd * 1.2, C.Z_MIN, C.Z_MAX));
+        b.z = q(clamp(b.z + zd * 1.2, C.Z_MIN, C.Z_MAX));
+      }
+    }
+  }
+}
+
 function physics(w: World, f: Fighter): void {
   const inAir = f.y > 0 || f.vy > 0;
   if (inAir) {
     f.vy -= C.GRAV * (f.state === 'launch' ? 0.9 : 1);
+    if (f.state === 'launch' || f.state === 'ko') f.vx *= 0.992; // traînée de l'air
     f.y += f.vy;
     if (f.y <= 0) {
       f.y = 0;
@@ -1726,6 +1771,7 @@ function physics(w: World, f: Fighter): void {
   } else {
     f.vx *= f.state === 'hit' || f.state === 'block' || f.state === 'stagger' || f.state === 'dodge' ? 0.86 : 1;
     if (f.state === 'attack') f.vx *= 0.85;
+    if (f.state === 'down' || f.state === 'ko' || f.state === 'launch' || f.state === 'getup') f.vx *= 0.86; // glissade au sol
     if (f.state === 'idle' || f.state === 'guard') f.vx *= C.FRICTION;
   }
   f.x = q(f.x + f.vx);

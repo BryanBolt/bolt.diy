@@ -121,7 +121,7 @@ export const POSES: Record<string, Pose> = Object.fromEntries(Object.entries(AUT
 
 const ANIM_KEYS = ['shoot', 'grab', 'jab', 'cross', 'kick', 'heavy', 'uppercut', 'sweep', 'knee', 'airkick', 'dive', 'special', 'rising', 'super', 'charge', 'slam', 'lasso', 'backstab', 'counter'];
 
-function lerpPose(a: Pose, b: Pose, t: number): Pose {
+export function lerpPose(a: Pose, b: Pose, t: number): Pose {
   const l = (x: number, y: number) => lerp(x, y, t);
   return {
     lean: l(a.lean, b.lean),
