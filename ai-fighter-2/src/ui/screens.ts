@@ -338,11 +338,12 @@ export function pauseHtml(canQuit: boolean, isHost: boolean, online: boolean, ot
   </div>`;
 }
 
-export function endHtml(title: string, lines: string[], opts: { canReplay: boolean; canLobby: boolean; isHost: boolean; online: boolean; nextStage?: boolean }): string {
+export function endHtml(title: string, lines: string[], opts: { canReplay: boolean; canLobby: boolean; isHost: boolean; online: boolean; nextStage?: boolean; canWatch?: boolean; canShare?: boolean }): string {
   return `<h2>${esc(title)}</h2>
   <div class="col small muted">${lines.map((l) => `<div>${esc(l)}</div>`).join('')}</div>
   <div class="col" style="margin-top:12px">
     ${opts.canReplay ? `<button class="btn primary" data-action="replay">🔁 Rejouer</button>` : ''}
+    ${opts.canWatch ? `<button class="btn" data-action="watch">🎬 Revoir la partie</button>` : ''}${opts.canShare ? `<button class="btn" data-action="share-replay">🔗 Partager la rediffusion</button>` : ''}
     ${opts.canLobby ? `<button class="btn" data-action="lobby">${opts.online ? '🏠 Retour au salon' : '🏠 Retour au salon'}</button>` : opts.online ? `<span class="small muted">L'hôte décide de la suite…</span>` : ''}
     <button class="btn" data-action="idea">💡 Proposer une idée / une amélioration</button>
     <button class="btn ghost" data-action="menu">Menu principal</button>

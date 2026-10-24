@@ -13,6 +13,7 @@ import type { CtlEvent, PublicRoom, IceServer } from '../shared/protocol';
 import { PROTOCOL_VERSION, MAX_PLAYERS, REJOIN_MARGIN, makeRoomCode, normalizeRoomCode, DEFAULT_OPTIONS, encodeRle } from '../shared/protocol';
 import { randomUUID } from 'node:crypto';
 import { todayUtc, isDateString, type DailyEntry } from '../shared/daily';
+import { validReplay, type ReplayFile } from '../shared/replay';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -529,10 +530,57 @@ async function handleDaily(req: import('node:http').IncomingMessage, res: import
   return false;
 }
 
+// ---- Rediffusions partageables ----
+// POST /api/replay {…ReplayFile} → {id} · GET /api/replay?id=XXXXXX → le fichier. Gardées en mémoire (300 dernières) et dans REPLAYS_FILE (JSONL).
+const REPLAYS_FILE = process.env.REPLAYS_FILE ?? join(resolve(__dirname, '..'), 'data', 'replays.jsonl');
+const replayMem = new Map<string, ReplayFile>();
+const replayRate = new Map<string, number[]>();
+function replayPut(id: string, r: ReplayFile): void {
+  replayMem.set(id, r);
+  if (replayMem.size > 300) replayMem.delete(replayMem.keys().next().value as string);
+}
+void (async () => {
+  try {
+    const raw = await readFile(REPLAYS_FILE, 'utf8');
+    for (const line of raw.split('\n')) if (line.trim()) { try { const r = JSON.parse(line) as { id: string; r: ReplayFile }; if (validReplay(r.r)) replayPut(r.id, r.r); } catch { /* ligne abîmée */ } }
+  } catch { /* pas encore de fichier */ }
+})();
+
+async function handleReplay(req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse, url: URL): Promise<boolean> {
+  if (url.pathname !== '/api/replay') return false;
+  const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type', 'access-control-allow-methods': 'POST, GET, OPTIONS', 'content-type': 'application/json' };
+  if (req.method === 'OPTIONS') { res.writeHead(204, cors); res.end(); return true; }
+  if (req.method === 'GET') {
+    const r = replayMem.get(String(url.searchParams.get('id') ?? '').toUpperCase());
+    if (!r) { res.writeHead(404, cors); res.end('{"ok":false,"error":"rediffusion introuvable"}'); return true; }
+    res.writeHead(200, cors); res.end(JSON.stringify(r));
+    return true;
+  }
+  if (req.method === 'POST') {
+    const ip = String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim() || req.socket.remoteAddress || '?';
+    const now = Date.now();
+    const recent = (replayRate.get(ip) ?? []).filter((t) => now - t < 10 * 60_000);
+    if (recent.length >= 10) { res.writeHead(429, cors); res.end('{"ok":false,"error":"trop de partages"}'); return true; }
+    try {
+      const r = JSON.parse(await readBody(req, 400_000)) as ReplayFile;
+      if (!validReplay(r)) { res.writeHead(400, cors); res.end('{"ok":false,"error":"rediffusion invalide"}'); return true; }
+      const clean: ReplayFile = { v: 1, title: String(r.title ?? '').slice(0, 60), ts: now, config: r.config, seed: r.seed >>> 0, slots: r.slots, events: r.events, frames: r.frames, hl: r.hl.slice(0, 60).map((h) => ({ f: Number(h.f) | 0, label: String(h.label).slice(0, 40) })) };
+      const id = makeRoomCode(Math.random) + makeRoomCode(Math.random).slice(0, 1);
+      recent.push(now); replayRate.set(ip, recent);
+      replayPut(id, clean);
+      try { await mkdir(dirname(REPLAYS_FILE), { recursive: true }); await appendFile(REPLAYS_FILE, JSON.stringify({ id, r: clean }) + '\n'); } catch (err) { console.warn('écriture rediffusion impossible', (err as Error).message); }
+      res.writeHead(200, cors); res.end(JSON.stringify({ ok: true, id }));
+    } catch { res.writeHead(400, cors); res.end('{"ok":false,"error":"requête invalide"}'); }
+    return true;
+  }
+  return false;
+}
+
 const http = createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://x');
   if (await handleIdeas(req, res, url)) return;
   if (await handleDaily(req, res, url)) return;
+  if (await handleReplay(req, res, url)) return;
   if (url.pathname === '/health') {
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ ok: true, rooms: rooms.size, clients: clients.size }));

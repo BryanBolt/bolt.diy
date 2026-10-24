@@ -24,6 +24,11 @@ export interface ReplayData {
   resumeFrom?: number;
   /** en local : démarre en pause une fois la partie reconstruite */
   pauseWhenDone?: boolean;
+  /** rediffusion : ne reconstruit que jusqu'à cette frame, puis joue le reste du journal */
+  stopAt?: number;
+  /** rediffusion : la partie s'arrête à la dernière frame du journal */
+  viewOnly?: boolean;
+  frames?: number;
 }
 
 export interface SessionOptions {
@@ -74,6 +79,9 @@ export class Session {
   catching = false;
   private catchTarget = 0;
   private pauseWhenDone = false;
+  /** rediffusion : dernière frame jouable (0 : partie normale) */
+  playbackEnd = 0;
+  atEnd = false;
   /** session gelée (reconstruction demandée) : plus de lecture ni d'envoi d'entrées */
   frozen = false;
   /** diagnostic (développement) : résumé de l'état toutes les 60 frames */
@@ -107,8 +115,9 @@ export class Session {
         if (src && src.length) { this.inputs.set(s, src.slice()); maxLen = Math.max(maxLen, src.length); }
       }
       this.ctl = o.replay.events.map((e) => ({ ...e }));
-      this.catchTarget = maxLen;
-      this.catching = maxLen > 2;
+      this.catchTarget = o.replay.stopAt !== undefined ? Math.min(maxLen, o.replay.stopAt) : maxLen;
+      this.catching = this.catchTarget > 2;
+      if (o.replay.viewOnly) this.playbackEnd = o.replay.frames ?? maxLen;
       this.pauseWhenDone = !!o.replay.pauseWhenDone;
       this.sendFrame = o.replay.resumeFrom ?? Math.max(o.delay, ...o.localSlots.map((s) => this.inputs.get(s)?.length ?? 0));
     }
@@ -188,6 +197,7 @@ export class Session {
   /** Simule une frame si toutes les entrées sont connues. */
   private tryStep(live: boolean): boolean {
     const f = this.simFrame;
+    if (this.playbackEnd && f >= this.playbackEnd) { this.atEnd = true; return false; }
     const missing: number[] = [];
     for (const slot of this.allSlots) if (!this.inputReady(slot, f)) missing.push(slot);
     if (missing.length) {

@@ -18,6 +18,8 @@ import { DEFAULT_OPTIONS, normalizeRoomCode, decodeRle } from '../shared/protoco
 import type { ServerMsg } from '../shared/protocol';
 import * as S from './ui/screens';
 import type { LobbyCard } from './ui/screens';
+import { createReplayBar, uploadReplay, downloadReplay, replayLink, SPEEDS, type ReplayBar } from './ui/replay';
+import type { ReplayFile } from '../shared/replay';
 import { dailyHtml, dailyTableHtml, fetchDaily, submitDaily } from './ui/daily';
 import { dailyOf, todayUtc } from '../shared/daily';
 import type { HudInfo } from './render/hud';
@@ -606,7 +608,7 @@ function resumeLocal(): void {
 }
 
 function autosaveLocal(): void {
-  if (!session || gameOnline || session.catching || !lastStartConfig) return;
+  if (replayMode || !session || gameOnline || session.catching || !lastStartConfig) return;
   const w = session.world;
   if (w.mode === 'training' || w.phase === 'matchEnd' || w.phase === 'gameOver') return;
   const lg = session.exportLog();
@@ -797,7 +799,7 @@ function tickOnlineLobby(): void {
 function startGame(config: SimConfig, seed: number, localSlots: number[], allSlots: number[], delay: number, n: NetClient | null, replay?: ReplayData): void {
   endSession();
   currentSeed = seed;
-  if (!replay) resyncCount = 0;
+  if (!replay) { resyncCount = 0; highlights = []; }
   showReco(null);
   state = 'game';
   S.hide();
@@ -820,6 +822,49 @@ function startGame(config: SimConfig, seed: number, localSlots: number[], allSlo
   endTimer = 0;
   const theme = config.mode === 'duel' ? 'duel' : (session.world.stage?.theme ?? 'dojo');
   synth.startMusic(theme);
+}
+
+// ---- Rediffusions : revoir une partie (vitesse, saut, moments forts) et la partager par lien ----
+let replayMode: { file: ReplayFile; speed: number; bar: ReplayBar; pauseNext: boolean; id?: string } | null = null;
+let highlights: { f: number; label: string }[] = [];
+
+function makeReplayFile(): ReplayFile | null {
+  if (!session || !lastStartConfig) return null;
+  const lg = session.exportLog();
+  const w = session.world;
+  const hl = highlights.slice(-30);
+  if (!hl.length || lg.frames - hl[hl.length - 1].f > 200) hl.push({ f: Math.max(0, lg.frames - 60), label: 'Final' });
+  return { v: 1, title: `${S.MODE_LABEL[w.mode]}${w.stage && w.mode !== 'duel' ? ' · ' + w.stage.name : ''}`, ts: Date.now(), config: lastStartConfig.config, seed: currentSeed, slots: lg.slots, events: lg.events, frames: lg.frames, hl };
+}
+
+function playReplay(file: ReplayFile, from = 0, pause = false): void {
+  const log: Record<number, number[]> = {};
+  for (const e of file.slots) log[e.slot] = decodeRle(e.rle);
+  gameOnline = false;
+  const prev = replayMode;
+  replayMode = null; // startGame ne doit pas se croire en rediffusion pendant la mise en place
+  startGame(file.config as SimConfig, file.seed, [], file.slots.map((s) => s.slot), 0, null, { log, events: file.events, stopAt: from, viewOnly: true, frames: file.frames });
+  const speed = prev?.speed ?? 1;
+  const bar = prev?.bar ?? createReplayBar(file, {
+    toggle: () => { if (!session || !replayMode) return; if (session.atEnd) playReplay(file, 0); else session.frozen = !session.frozen; },
+    seek: (f) => playReplay(file, f, !!session?.frozen),
+    speed: () => { if (replayMode) replayMode.speed = SPEEDS[(SPEEDS.indexOf(replayMode.speed) + 1) % SPEEDS.length]; },
+    share: () => { void shareReplay(file, replayMode); },
+    quit: () => { replayMode?.bar.remove(); replayMode = null; endSession(); goMenu(); },
+  });
+  replayMode = { file, speed, bar, pauseNext: pause, id: prev?.id };
+}
+
+async function shareReplay(file: ReplayFile | null, mode: { id?: string } | null = null): Promise<void> {
+  if (!file) return;
+  if (noNet) { S.toast('Le partage demande la version avec serveur.', 4000); return; }
+  S.toast('Envoi de la rediffusion…', 2000);
+  const id = mode?.id ?? (await uploadReplay(file));
+  if (!id) { S.toast('Impossible d\'envoyer la rediffusion (trop longue ou serveur injoignable).', 5000); return; }
+  if (mode) mode.id = id;
+  const link = replayLink(id);
+  if (navigator.share) { navigator.share({ title: 'AI Fighter 2 — rediffusion', text: file.title, url: link }).catch(() => {}); return; }
+  try { await navigator.clipboard.writeText(link); S.toast('Lien de la rediffusion copié !', 4000); } catch { S.toast(link, 8000); }
 }
 
 function endSession(): void {
@@ -875,14 +920,18 @@ function showEndMenu(): void {
   const lines: string[] = [];
   if (w.mode !== 'duel') lines.push(`Score ${w.score} · ${w.coins} pièces`, ...w.fighters.filter((f) => f.team === 0 && f.slot >= 0).map((f) => `${f.name} : ${f.kills} KO`));
   else lines.push(...w.fighters.map((f) => `${f.name} (équipe ${f.team + 1}) : ${w.wins[f.team]} manche${w.wins[f.team] > 1 ? 's' : ''}`));
-  const el = S.show(S.endHtml(title, lines, { canReplay: isHost, canLobby: isHost, isHost, online: gameOnline }), 'compact');
+  const el = S.show(S.endHtml(title, lines, { canReplay: isHost, canLobby: isHost, isHost, online: gameOnline, canWatch: true, canShare: !noNet }), 'compact');
   endShown = true;
   el.addEventListener('click', (e) => {
     const a = actionOf(e);
     if (a === 'replay') {
       if (gameOnline) net?.send({ t: 'start', seed: (Math.random() * 0xffffffff) >>> 0 });
       else if (lastStartConfig) startGame(lastStartConfig.config, (Math.random() * 0xffffffff) >>> 0, lastStartConfig.localSlots, lastStartConfig.allSlots, 0, null);
-    } else if (a === 'lobby') quitToLobby();
+    } else if (a === 'watch') {
+      const f = makeReplayFile();
+      if (f) { S.hide(); playReplay(f); }
+    } else if (a === 'share-replay') { void shareReplay(makeReplayFile()); }
+    else if (a === 'lobby') quitToLobby();
     else if (a === 'idea') openIdeaBox();
     else if (a === 'menu') { endSession(); saveLocalGame(null); if (gameOnline && net) { saveOnlineResume(null); net.send({ t: 'leave' }); net.close(); net = null; } goMenu(); }
   });
@@ -890,6 +939,7 @@ function showEndMenu(): void {
 
 function handleEvents(events: SimEvent[]): void {
   if (!session) return;
+  const replaying = !!replayMode;
   const w = session.world;
   renderer.fx.consume(events, w);
   const profile = loadProfile();
@@ -904,9 +954,14 @@ function handleEvents(events: SimEvent[]): void {
     } else if (e.t === 'ko') {
       const t = w.fighters.find((f) => f.id === e.id);
       const killer = t ? w.fighters.find((f) => f.id === t.lastHitBy) : null;
+      if (!replaying && t) {
+        const label = t.boss ? `K.O. ${t.name}` : w.mode === 'duel' ? `${killer?.name ?? '?'} bat ${t.name}` : t.team === 0 ? `${t.name} tombe` : killer && killer.comboHits >= 8 ? `Combo de ${killer.comboHits} coups` : '';
+        const last = highlights[highlights.length - 1];
+        if (label && (!last || session.simFrame - last.f > 150)) highlights.push({ f: session.simFrame, label });
+      }
       if (killer && killer.slot >= 0 && session.localSlots.includes(killer.slot) && t && t.team !== 0) { patch.totalKo = (patch.totalKo ?? profile.totalKo) + 1; changed = true; }
     } else if (e.t === 'phase') {
-      if (e.phase === 'matchEnd' || e.phase === 'gameOver') saveLocalGame(null);
+      if ((e.phase === 'matchEnd' || e.phase === 'gameOver') && !replaying) saveLocalGame(null);
       if (e.phase === 'stageClear' && w.mode === 'campaign') {
         const reached = Math.max(profile.stageReached, w.stageIndex + 1);
         if (reached > profile.stageReached) {
@@ -916,7 +971,7 @@ function handleEvents(events: SimEvent[]): void {
         }
         if (w.stageIndex + 1 < STAGES.length) synth.startMusic(STAGES[w.stageIndex + 1].theme);
       }
-      if ((e.phase === 'matchEnd' || e.phase === 'gameOver') && w.config.modifier && w.mode === 'survival' && session!.localSlots.length === 1) {
+      if ((e.phase === 'matchEnd' || e.phase === 'gameOver') && !replaying && w.config.modifier && w.mode === 'survival' && session!.localSlots.length === 1) {
         const date = todayUtc();
         const key = 'aif2.daily.' + date;
         const prev = Number(localStorage.getItem(key) ?? 0);
@@ -938,7 +993,7 @@ function handleEvents(events: SimEvent[]): void {
       if (e.phase === 'intro' && w.mode !== 'duel' && w.stage) synth.startMusic(w.stage.theme);
     }
   }
-  if (changed) saveProfile(patch);
+  if (changed && !replaying) saveProfile(patch);
 }
 
 function requestLandscape(): void {
@@ -1006,8 +1061,12 @@ function loop(now: number): void {
   }
   const w = session.world;
   { const ts = session.localSlots.find((sl) => input.deviceFor(sl)?.kind === 'touch'); const tf = ts !== undefined ? w.fighters.find((f) => f.slot === ts) : undefined; if (tf) input.touch.facing = tf.facing; }
-  session.timeScale = w.slowmo > 0 ? 0.35 : 1;
+  session.timeScale = (w.slowmo > 0 ? 0.35 : 1) * (replayMode?.speed ?? 1);
   const steps = session.update(now);
+  if (replayMode) {
+    if (replayMode.pauseNext && !session.catching) { session.frozen = true; replayMode.pauseNext = false; }
+    replayMode.bar.update(session.simFrame, session.frozen, replayMode.speed, session.atEnd);
+  }
   if (session.events.length) { handleEvents(session.events); session.events = []; }
   // reconstruction de la partie (reprise) : barre de progression
   if (session.catching) {
@@ -1037,7 +1096,7 @@ function loop(now: number): void {
   // menus de pause / fin
   if (w.paused && !pauseShown && !endShown) showPauseMenu();
   if (!w.paused && pauseShown && state === 'game') { S.hide(); pauseShown = false; }
-  if ((w.phase === 'matchEnd' || w.phase === 'gameOver') && !endShown) {
+  if ((w.phase === 'matchEnd' || w.phase === 'gameOver') && !endShown && !replayMode) {
     endTimer += dt;
     if (endTimer > 2600 || (w.paused)) { if (w.paused) session.queue(session.localSlots[0], IN.PAUSE); showEndMenu(); }
   }
@@ -1166,4 +1225,11 @@ if (salon && resumeInfo && resumeInfo.code === normalizeRoomCode(salon) && !noNe
   void resumeOnline();
 } else if (salon) goOnline(normalizeRoomCode(salon));
 else goMenu();
+const replayId = params.get('replay');
+if (replayId && !noNet) {
+  void downloadReplay(replayId).then((f) => {
+    if (f) playReplay(f);
+    else S.toast('Rediffusion introuvable (lien expiré ?).', 5000);
+  });
+}
 requestAnimationFrame(loop);
