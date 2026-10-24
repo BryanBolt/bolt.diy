@@ -321,6 +321,90 @@ for (const ch of ROSTER) Object.assign(ch.moves, commandMoves(ch));
 // rafale du dragon : prolonge l'enchaînement léger
 for (const ch of ROSTER) { const l3 = ch.moves.l3; if (l3.next) l3.next = [...l3.next, 'c_flurry']; }
 
+// ---------------------------------------------------------------------------
+// Chaque héros a ses propres techniques : les commandes universelles redondantes sont retirées,
+// et ↓↘→ / →↓↘ / ↓↙← / ↓↘→↓↘→ + Attaque donnent un coup différent selon le personnage.
+// ---------------------------------------------------------------------------
+const Zb = { x: 0, w: 0, y0: 0, y1: 0, z: 0 };
+const shot = (id: string, name: string, anim: string, startup: number, recovery: number, kiCost: number, projectile: NonNullable<MoveDef['projectile']>, extra: Partial<MoveDef> = {}): MoveDef =>
+  mv('special', { id, name, anim, startup, active: 3, recovery, kiCost, damage: 0, hit: Zb, projectile, ...extra });
+const arts = (id: string, kind: MoveKind, name: string, anim: string, o: Partial<MoveDef>): MoveDef => mv(kind, { id, name, anim, ...o });
+
+const PERSONAL: Record<string, { cmds: Record<string, MoveDef>; sigs: string[] }> = {
+  kai: { sigs: ['c_wave', 'c_meteor', 'c_rider'], cmds: {
+    c_fire: shot('c_fire', 'Onde Ki', 'special', 11, 22, 12, { kind: 'ki', speed: 9, life: 80, damage: 13, radius: 18, y: 55 }),
+    c_dp: arts('c_dp', 'launcher', 'Lune montante', 'rising', { startup: 5, active: 12, recovery: 30, damage: 14, hit: { x: 16, w: 64, y0: 0, y1: 150, z: 36 }, launch: true, kbx: 2, kby: 12, lungeAir: 11, lunge: 3, invuln: true, kiCost: 15, multi: { hits: 2, every: 6 } }),
+    c_tatsu: arts('c_tatsu', 'heavy', 'Tourbillon', 'tatsu', { startup: 8, active: 22, recovery: 18, damage: 7, hit: { x: 6, w: 76, y0: 0, y1: 100, z: 36 }, kbx: 3, hitstun: 20, hitstop: 4, knockdown: false, lunge: 4.5, selfKnock: true, kiCost: 15, multi: { hits: 4, every: 5 } }),
+    c_superfire: shot('c_superfire', 'Grande Onde Ki', 'super', 16, 30, 0, { kind: 'orb', speed: 7, life: 110, damage: 26, radius: 46, y: 60, pierce: true }, { superCost: 50, invuln: true, kiCost: undefined }),
+  } },
+  tora: { sigs: ['c_falcon', 'c_serious', 'c_rocket'], cmds: {
+    c_fire: shot('c_fire', 'Rugissement', 'special', 14, 26, 14, { kind: 'shock', speed: 6, life: 46, damage: 14, radius: 34, y: 14, pierce: true }),
+    c_dp: arts('c_dp', 'launcher', 'Paume sismique', 'slam', { startup: 9, active: 5, recovery: 28, damage: 20, hit: { x: 24, w: 120, y0: 0, y1: 70, z: 60 }, launch: true, kbx: 3, kby: 9, armor: true, kiCost: 15 }),
+    c_tatsu: arts('c_tatsu', 'run', "Charge d'épaule", 'charge', { startup: 7, active: 16, recovery: 22, damage: 16, hit: { x: 20, w: 70, y0: 0, y1: 110, z: 36 }, kbx: 9, knockdown: true, lunge: 7.5, selfKnock: true, armor: true, kiCost: 15 }),
+    c_superfire: shot('c_superfire', 'Cri du tigre', 'super', 18, 34, 0, { kind: 'shock', speed: 7, life: 60, damage: 28, radius: 64, y: 20, pierce: true }, { superCost: 50, invuln: true, kiCost: undefined }),
+  } },
+  zed: { sigs: ['c_step', 'c_omni', 'c_rider'], cmds: {
+    c_fire: shot('c_fire', 'Pluie de kunaï', 'special', 9, 20, 12, { kind: 'shuriken', speed: 11, life: 55, damage: 8, radius: 11, y: 55, count: 3 }),
+    c_dp: arts('c_dp', 'launcher', 'Entaille ascendante', 'rising', { startup: 4, active: 9, recovery: 24, damage: 11, hit: { x: 14, w: 58, y0: 0, y1: 140, z: 36 }, launch: true, kby: 11, lungeAir: 10, invuln: true, poisonTarget: 160, kiCost: 14 }),
+    c_tatsu: arts('c_tatsu', 'heavy', 'Disparition', 'backstab', { startup: 5, active: 6, recovery: 14, damage: 10, hit: { x: 0, w: 70, y0: 0, y1: 120, z: 36 }, teleport: 80, knockdown: true, invuln: true, kiCost: 14 }),
+    c_superfire: shot('c_superfire', 'Mille lames', 'super', 14, 28, 0, { kind: 'shuriken', speed: 12, life: 60, damage: 12, radius: 12, y: 55, count: 5, pierce: true }, { superCost: 50, invuln: true, kiCost: undefined }),
+  } },
+  vex: { sigs: ['c_rocket', 'c_step', 'c_meteor'], cmds: {
+    c_fire: shot('c_fire', 'Fouet éclair', 'special', 9, 20, 12, { kind: 'bolt', speed: 15, life: 36, damage: 12, radius: 14, y: 58, pierce: true }),
+    c_dp: arts('c_dp', 'special', 'Vrille', 'tatsu', { startup: 6, active: 16, recovery: 22, damage: 8, hit: { x: 0, w: 210, y0: 0, y1: 130, z: 50 }, multi: { hits: 3, every: 5 }, kby: 8, launch: true, invuln: true, kiCost: 15 }),
+    c_tatsu: arts('c_tatsu', 'special', 'Lasso', 'lasso', { startup: 10, active: 5, recovery: 24, damage: 8, hit: { x: 20, w: 240, y0: 10, y1: 110, z: 40 }, pull: true, hitstun: 36, kbx: 1, kiCost: 12 }),
+    c_superfire: shot('c_superfire', 'Tempête de fouets', 'super', 14, 30, 0, { kind: 'bolt', speed: 13, life: 50, damage: 14, radius: 20, y: 58, count: 3, pierce: true }, { superCost: 50, invuln: true, kiCost: undefined }),
+  } },
+  orion: { sigs: ['c_wave', 'c_purple', 'c_rasen'], cmds: {
+    c_fire: shot('c_fire', 'Sphère guidée', 'special', 12, 24, 14, { kind: 'orb', speed: 6, life: 90, damage: 12, radius: 20, y: 55, homing: 0.35 }),
+    c_dp: arts('c_dp', 'special2', 'Nova', 'rising', { startup: 6, active: 10, recovery: 28, damage: 14, hit: { x: 0, w: 150, y0: 0, y1: 150, z: 70 }, launch: true, kby: 11, invuln: true, kiCost: 18 }),
+    c_tatsu: arts('c_tatsu', 'heavy', 'Pas stellaire', 'backstab', { startup: 5, active: 5, recovery: 16, damage: 9, hit: { x: 0, w: 70, y0: 0, y1: 120, z: 36 }, teleport: 70, knockdown: true, invuln: true, kiCost: 14 }),
+    c_superfire: shot('c_superfire', 'Constellation', 'super', 16, 30, 0, { kind: 'orb', speed: 7, life: 110, damage: 18, radius: 34, y: 60, count: 3, pierce: true, homing: 0.2 }, { superCost: 50, invuln: true, kiCost: undefined }),
+  } },
+  blaze: { sigs: ['c_falcon', 'c_rasen', 'c_wave'], cmds: {
+    c_fire: shot('c_fire', 'Boule de feu', 'special', 11, 22, 12, { kind: 'fire', speed: 8.5, life: 80, damage: 13, radius: 20, y: 55 }, { burnTarget: 100 }),
+    c_dp: arts('c_dp', 'launcher', 'Colonne de flammes', 'rising', { startup: 6, active: 14, recovery: 30, damage: 15, hit: { x: 16, w: 80, y0: 0, y1: 180, z: 44 }, launch: true, kby: 12, lungeAir: 11, invuln: true, burnTarget: 150, kiCost: 15 }),
+    c_tatsu: arts('c_tatsu', 'heavy', 'Roulade enflammée', 'tatsu', { startup: 6, active: 22, recovery: 20, damage: 6, hit: { x: 6, w: 80, y0: 0, y1: 100, z: 36 }, lunge: 5.5, selfKnock: true, multi: { hits: 4, every: 5 }, burnTarget: 120, kiCost: 15 }),
+    c_superfire: shot('c_superfire', 'Soleil', 'super', 16, 30, 0, { kind: 'fire', speed: 7, life: 110, damage: 26, radius: 50, y: 60, pierce: true }, { superCost: 50, invuln: true, burnTarget: 160, kiCost: undefined }),
+  } },
+  frost: { sigs: ['c_purple', 'c_step', 'c_rocket'], cmds: {
+    c_fire: shot('c_fire', 'Éclat de glace', 'special', 11, 22, 12, { kind: 'ice', speed: 8.5, life: 80, damage: 12, radius: 18, y: 55 }, { freezeTarget: 40 }),
+    c_dp: arts('c_dp', 'launcher', 'Pic de glace', 'rising', { startup: 6, active: 12, recovery: 28, damage: 13, hit: { x: 16, w: 64, y0: 0, y1: 150, z: 36 }, launch: true, kby: 11, lungeAir: 10, invuln: true, slowTarget: 180, kiCost: 15 }),
+    c_tatsu: arts('c_tatsu', 'heavy', 'Glissade', 'flurrykick', { startup: 6, active: 18, recovery: 20, damage: 7, hit: { x: 10, w: 80, y0: 0, y1: 60, z: 36 }, lunge: 6, selfKnock: true, multi: { hits: 3, every: 6 }, slowTarget: 150, low: true, kiCost: 14 }),
+    c_superfire: shot('c_superfire', 'Blizzard', 'super', 16, 30, 0, { kind: 'ice', speed: 7, life: 110, damage: 22, radius: 52, y: 55, pierce: true }, { superCost: 50, invuln: true, slowTarget: 240, kiCost: undefined }),
+  } },
+  shade: { sigs: ['c_omni', 'c_step', 'c_serious'], cmds: {
+    c_fire: shot('c_fire', "Lame d'ombre", 'special', 9, 20, 12, { kind: 'poison', speed: 10, life: 70, damage: 10, radius: 16, y: 55 }),
+    c_dp: arts('c_dp', 'launcher', 'Entaille venimeuse', 'rising', { startup: 5, active: 10, recovery: 26, damage: 12, hit: { x: 14, w: 58, y0: 0, y1: 140, z: 36 }, launch: true, kby: 11, lungeAir: 10, invuln: true, poisonTarget: 220, kiCost: 15 }),
+    c_tatsu: arts('c_tatsu', 'heavy', 'Éclipse', 'backstab', { startup: 5, active: 6, recovery: 14, damage: 11, hit: { x: 0, w: 70, y0: 0, y1: 120, z: 36 }, teleport: 90, knockdown: true, invuln: true, poisonTarget: 140, kiCost: 14 }),
+    c_superfire: shot('c_superfire', 'Nuée sombre', 'super', 16, 30, 0, { kind: 'poison', speed: 7, life: 110, damage: 20, radius: 46, y: 60, pierce: true }, { superCost: 50, invuln: true, poisonTarget: 260, kiCost: undefined }),
+  } },
+  gorr: { sigs: ['c_serious', 'c_falcon', 'c_rocket'], cmds: {
+    c_fire: shot('c_fire', 'Jet de rocher', 'special', 14, 26, 14, { kind: 'rock', speed: 7.5, life: 60, damage: 17, radius: 22, y: 70, gravity: 0.16 }),
+    c_dp: arts('c_dp', 'special2', 'Séisme', 'slam', { startup: 10, active: 8, recovery: 32, damage: 18, hit: { x: 0, w: 170, y0: 0, y1: 60, z: 90 }, knockdown: true, kbx: 5, armor: true, kiCost: 18 }),
+    c_tatsu: arts('c_tatsu', 'run', 'Charge de bélier', 'charge', { startup: 8, active: 20, recovery: 24, damage: 18, hit: { x: 20, w: 80, y0: 0, y1: 120, z: 40 }, kbx: 10, knockdown: true, lunge: 8, selfKnock: true, armor: true, kiCost: 15 }),
+    c_superfire: shot('c_superfire', 'Éboulement', 'super', 18, 34, 0, { kind: 'rock', speed: 6, life: 90, damage: 30, radius: 56, y: 70, pierce: true, gravity: 0.1 }, { superCost: 50, invuln: true, kiCost: undefined }),
+  } },
+  nova: { sigs: ['c_purple', 'c_wave', 'c_meteor'], cmds: {
+    c_fire: shot('c_fire', 'Rayon stellaire', 'special', 10, 20, 12, { kind: 'bolt', speed: 14, life: 50, damage: 13, radius: 16, y: 58 }),
+    c_dp: arts('c_dp', 'launcher', 'Étoile montante', 'rising', { startup: 5, active: 12, recovery: 28, damage: 14, hit: { x: 16, w: 70, y0: 0, y1: 160, z: 40 }, launch: true, kby: 12, lungeAir: 11, invuln: true, kiCost: 15 }),
+    c_tatsu: arts('c_tatsu', 'heavy', 'Comète', 'tatsu', { startup: 6, active: 20, recovery: 20, damage: 7, hit: { x: 6, w: 80, y0: 0, y1: 110, z: 36 }, lunge: 6.5, selfKnock: true, multi: { hits: 4, every: 5 }, kiCost: 15 }),
+    c_superfire: shot('c_superfire', 'Supernova', 'super', 16, 30, 0, { kind: 'orb', speed: 6, life: 110, damage: 28, radius: 60, y: 60, pierce: true }, { superCost: 50, invuln: true, kiCost: undefined }),
+  } },
+};
+const CULTE = ['c_wave', 'c_rocket', 'c_falcon', 'c_meteor', 'c_purple', 'c_omni', 'c_serious', 'c_step', 'c_rasen', 'c_rider'];
+const REDUNDANT = ['c_hundred', 'c_sonic', 'c_flash', 'c_onein', 'c_ewgf', 'c_hop'];
+for (const ch of ROSTER) {
+  for (const id of REDUNDANT) delete ch.moves[id];
+  const p = PERSONAL[ch.id];
+  if (p) {
+    Object.assign(ch.moves, p.cmds);
+    for (const id of CULTE) if (!p.sigs.includes(id)) delete ch.moves[id];
+  }
+  // transformation (ki à fond, maintenu) : géré par le simulateur
+  ch.moves.transform = mv('super', { id: 'transform', name: '', anim: 'super', startup: 36, active: 2, recovery: 22, damage: 0, hit: Zb, superCost: 0, multi: undefined, unblockable: false, knockdown: false, invuln: true, hitstun: 0, kbx: 0, kby: 0 });
+}
+
 
 export function getChar(id: string): CharDef {
   return CHARS[id] ?? CHARS.kai;

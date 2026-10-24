@@ -19,6 +19,7 @@ export const IN = {
 
 export type FState =
   | 'idle'
+  | 'charge'
   | 'walk'
   | 'run'
   | 'jump'
@@ -50,7 +51,7 @@ export type MoveKind =
   | 'super'
   | 'finisher';
 
-export type ProjectileKind = 'ki' | 'fire' | 'ice' | 'shuriken' | 'bullet' | 'orb' | 'shock' | 'bottle' | 'bat' | 'slug';
+export type ProjectileKind = 'ki' | 'fire' | 'ice' | 'shuriken' | 'bullet' | 'orb' | 'shock' | 'bottle' | 'bat' | 'slug' | 'poison' | 'bolt' | 'rock' | 'wind';
 
 export interface ProjectileDef {
   kind: ProjectileKind;
@@ -92,6 +93,10 @@ export interface MoveDef {
   cancelFrom?: number; // frame absolue à partir de laquelle on peut enchaîner
   next?: string[]; // coups autorisés en enchaînement
   kiCost?: number;
+  poisonTarget?: number; // empoisonne la cible N frames
+  slowTarget?: number; // ralentit la cible N frames
+  stunTarget?: number; // étourdit (frames de hitstun en plus)
+  pull?: boolean; // attire la cible vers le lanceur (lasso)
   superCost?: number;
   projectile?: ProjectileDef;
   multi?: { hits: number; every: number }; // coups multiples
@@ -177,6 +182,7 @@ export interface StatusEffects {
   burnDps: number;
   frozen: number;
   poison: number;
+  slow: number;
 }
 
 export interface AiState {
@@ -255,6 +261,13 @@ export interface Fighter {
   lastCmdFrame: number;
   cmb: string; // suite de boutons récents (P = attaque, K = lourd) pour les finisseurs façon Budokai
   cmbFrame: number;
+  phase2: boolean; // boss : renforts appelés
+  form: number; // transformation : frames restantes (0 = forme normale)
+  kiCharge: number; // frames passées à charger le ki
+  carry: string; // objet porté ('crate' | 'barrel' | variantes) ou ''
+  holding: number; // id du combattant qu'on tient (saisie / immobilisation), -1 sinon
+  heldBy: number; // id du combattant qui nous tient, -1 sinon
+  holdFrames: number;
   backHold: number; // frames passées à maintenir « arrière » (pas arrière sans se retourner)
 }
 

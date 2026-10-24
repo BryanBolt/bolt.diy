@@ -98,6 +98,16 @@ export class Fx {
             this.superOwner = e.id;
             this.ring(e.x, e.y + 50, e.z, '#ffd166', 160);
             this.burst(e.x, e.y + 50, e.z, 30, '#ffd166', 'spark', 4, 8);
+          } else if (e.kind === 'transform') {
+            this.ring(e.x, e.y + 50, e.z, '#ffffff', 220);
+            this.ring(e.x, e.y + 50, e.z, '#ffd166', 140);
+            this.burst(e.x, e.y + 50, e.z, 46, '#ffffff', 'spark', 5, 11);
+            this.superFocus = 0.8;
+            this.superOwner = e.id;
+            this.punch = Math.max(this.punch, 0.07);
+          } else if (e.kind === 'charge') {
+            this.ring(e.x, e.y + 8, e.z, '#7cf6ff', 54);
+            this.burst(e.x, e.y + 20, e.z, 6, '#bff6ff', 'spark', 3, 3);
           } else if (e.kind === 'muzzle') {
             this.burst(e.x, e.y, e.z, 5, '#ffe38a', 'spark', 3, 5);
             this.burst(e.x, e.y, e.z, 2, '#ffffff', 'star', 5, 1);

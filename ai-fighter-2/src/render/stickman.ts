@@ -5,6 +5,7 @@ import { drawWeapon } from './weapons';
 import { getChar, skeletonStyle, PALETTE } from '../sim/chars';
 import { lerp } from '../core/math';
 import type { Rig, P } from './ragdoll';
+import { FORMS } from '../sim/forms';
 
 // Conventions (degrés) : 0 = vers le bas, positif = vers l'avant (sens du regard).
 // Bras  [haut, flexion]  : avant-bras = haut + flexion (la main remonte vers l'avant).
@@ -123,6 +124,7 @@ const AUTH: Record<string, AuthPose> = {
 };
 
 Object.assign(AUTH, {
+  kicharge: A(14, 2, [-26, 70], [-30, 74], [30, 'g'], [-30, 'g'], 36),
   stance_karate: A(1, 0, [62, 62], [-12, 122], [34, 'g'], [-28, 'g'], 44),
   stance_boxer: A(3, 0, [36, 112], [20, 132], [18, 'g'], [-22, 'g'], 46),
   stance_ninja: A(6, 1, [50, 100], [30, 110], [38, 'g'], [-34, 'g'], 40),
@@ -200,6 +202,11 @@ export function poseFor(f: Fighter, time: number): Pose {
       const p = POSES['stance_' + skeletonStyle(getChar(f.charId)).stance] ?? POSES.idle;
       const bounce = Math.sin(ph * 2);
       return { ...p, h: p.h + bounce * 1.4, hx: Math.sin(ph) * 1.5, lean: p.lean + breathe * 1.2, aF: [p.aF[0] + breathe * 3, p.aF[1]], aB: [p.aB[0] - breathe * 2, p.aB[1] + bounce * 3] };
+    }
+    case 'charge': {
+      const p = POSES.kicharge;
+      const sh = Math.sin(time * 0.9) * 1.6;
+      return { ...p, h: p.h + sh * 0.5, aF: [p.aF[0] + sh * 4, p.aF[1]], aB: [p.aB[0] - sh * 4, p.aB[1]] };
     }
     case 'walk':
       return cycle(f, time, false);
@@ -316,9 +323,18 @@ export interface DrawOpts {
   rig?: Rig; // squelette simulé (ragdoll), coordonnées relatives aux pieds
 }
 
+function mixHex(a: string, b: string, t: number): string {
+  const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
+  const ch = (sh: number) => Math.round(((pa >> sh) & 255) * (1 - t) + ((pb >> sh) & 255) * t);
+  return `#${((ch(16) << 16) | (ch(8) << 8) | ch(0)).toString(16).padStart(6, '0')}`;
+}
+
 export function colorsFor(f: Fighter): { main: string; dark: string; glow: string } {
   const pal = PALETTE[f.color % PALETTE.length] ?? PALETTE[0];
-  return pal;
+  const fd = f.form > 0 ? FORMS[f.charId] : null;
+  if (!fd) return pal;
+  // transformé : le corps se teinte de la couleur de la forme, l'aura est celle de la forme
+  return { main: mixHex(pal.main, fd.color, 0.38), dark: mixHex(pal.dark, fd.color, 0.3), glow: fd.color };
 }
 
 function luma(hex: string): number {
@@ -439,7 +455,7 @@ function drawBody(ctx: CanvasRenderingContext2D, f: Fighter, pose: Pose, o: Draw
     if (fd && sk.trim.includes('boots')) stroke([[wx, wy], [a[2], a[3]], [a[2] + fd[0] * 6 * S, a[3] + fd[1] * 6 * S]], thick * 1.08, trimCol);
   };
 
-  if (!tint && !rim) drawAccessoryBack(ctx, sk.accessory, neckX, neckY, shX, shY, fx, S, col, o.time, f);
+  if (!tint && !rim) drawAccessoryBack(ctx, f.form > 0 && (sk.accessory === 'none' || sk.accessory === 'headband') ? 'flamehair' : sk.accessory, neckX, neckY, shX, shY, fx, S, col, o.time, f);
 
   limbs(aB, [shX, shY], null, back);
   limbs(lB, [hipX, hipY], footDir(lB), back);
@@ -456,7 +472,7 @@ function drawBody(ctx: CanvasRenderingContext2D, f: Fighter, pose: Pose, o: Draw
   ctx.fillStyle = main;
   ctx.fill();
   if (tint || rim) { ctx.restore(); return; }
-  drawAccessoryFront(ctx, sk.accessory, headX, headY, headR, fx, S, col, o.time, f);
+  drawAccessoryFront(ctx, f.form > 0 && (sk.accessory === 'none' || sk.accessory === 'headband') ? 'flamehair' : sk.accessory, headX, headY, headR, fx, S, col, o.time, f);
   ctx.restore();
 }
 

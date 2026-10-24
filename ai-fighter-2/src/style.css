@@ -200,7 +200,9 @@ kbd { display: inline-block; padding: 2px 7px; border-radius: 6px; background: r
 }
 #menubg { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 1; display: none; opacity: 0.92; }
 body.menu-open #menubg { display: block; }
-#ui { z-index: 5; }
+#ui { z-index: 40; }
+body.ui-open #touch { display: none !important; }
+#voicebox { z-index: 45; }
 .screen {
   position: relative;
   border: 0;

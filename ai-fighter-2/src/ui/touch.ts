@@ -35,12 +35,6 @@ export class TouchOverlay {
         <div class="t-btn t-special" data-bit="${IN.SPECIAL}"><span>Ki</span><small>Spécial</small></div>
         <div class="t-btn t-super" data-bit="${IN.SUPER}"><span>★</span><small>Super</small></div>
       </div>
-      <div class="t-combos">
-        <div class="t-chip" data-macro="qcf-L"><b>🔥</b><small>Boule</small></div>
-        <div class="t-chip" data-macro="dp-L"><b>⬆</b><small>Dragon</small></div>
-        <div class="t-chip" data-macro="qcb-L"><b>🌊</b><small>Onde</small></div>
-        <div class="t-chip" data-macro="qcb-H"><b>🌀</b><small>Tourbillon</small></div>
-      </div>
       <button class="t-pause" aria-label="Pause">❚❚</button>`;
     this.stick = this.root.querySelector('.t-stick') as HTMLDivElement;
     this.knob = this.root.querySelector('.t-knob') as HTMLDivElement;
@@ -61,7 +55,6 @@ export class TouchOverlay {
     this.root.style.setProperty('--tsize', String(s.touchSize));
     this.root.style.setProperty('--topacity', String(s.touchOpacity));
     this.root.classList.toggle('lefty', !!s.touchLeft);
-    this.root.classList.toggle('no-combos', s.touchCombos === false);
   }
 
   private buzz(ms: number): void {
@@ -69,17 +62,6 @@ export class TouchOverlay {
     try { navigator.vibrate?.(ms); } catch { /* ignore */ }
   }
 
-  /** Quarts de cercle en un appui, relatifs au sens du regard. Chaque étape dure 4 frames. */
-  private macroFrames(kind: string): number[] {
-    const F = this.device.facing >= 0 ? IN.RIGHT : IN.LEFT;
-    const B = this.device.facing >= 0 ? IN.LEFT : IN.RIGHT;
-    const [motion, btn] = kind.split('-');
-    const button = btn === 'H' ? IN.HEAVY : IN.LIGHT;
-    const steps: number[] = motion === 'qcf' ? [IN.DOWN, IN.DOWN | F, F, F | button, F | button]
-      : motion === 'qcb' ? [IN.DOWN, IN.DOWN | B, B, B | button, B | button]
-      : [F, IN.DOWN, IN.DOWN | F, (IN.DOWN | F) | button, (IN.DOWN | F) | button]; // dp
-    return steps.flatMap((b) => [b, b, b, b]);
-  }
 
   show(on: boolean): void {
     this.visible = on;
@@ -99,14 +81,6 @@ export class TouchOverlay {
       const target = e.target as HTMLElement;
       if (target.closest('.t-pause')) return;
       e.preventDefault();
-      const chip = target.closest('.t-chip') as HTMLElement | null;
-      if (chip) {
-        this.device.playMacro(this.macroFrames(chip.dataset.macro || 'qcf-L'));
-        chip.classList.add('on');
-        setTimeout(() => chip.classList.remove('on'), 220);
-        this.buzz(14);
-        return;
-      }
       let btn = this.buttons.find((b) => b.el === target || b.el.contains(target));
       if (!btn && !this.onStickSide(e.clientX)) {
         // zone tolérante : le bouton le plus proche du doigt (dans 1,2 rayon)

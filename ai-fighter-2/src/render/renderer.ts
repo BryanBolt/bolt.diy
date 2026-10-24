@@ -2,7 +2,6 @@
 import type { World, Fighter, Projectile, Item } from '../sim/types';
 import { VIEW_W, VIEW_H, HURT_HW, HURT_H, REVIVE_FRAMES, REVIVE_COST } from '../sim/constants';
 import { getChar, PALETTE } from '../sim/chars';
-import { WEAPONS } from '../sim/types';
 import { drawWeapon, weaponLength } from './weapons';
 import { drawStickman, poseFor, colorsFor, lerpPose, computeRig, figureScale, type Pose } from './stickman';
 import { RagdollSystem, stiffnessFor, cloneRig, RIG_KEYS, type P, type Rig } from './ragdoll';
@@ -383,7 +382,6 @@ export class Renderer {
     }
     const bs = f.boss ? 1.28 : 1;
     this.drawPower(f, sx, sy, s * bs, col);
-    this.drawSlash(f, sx, sy, s * bs);
     // ragdoll : les membres suivent la pose avec une raideur selon l'état (mous en vol et au sol)
     const stiff = stiffnessFor(f.state);
     const S = figureScale(f, s * bs);
@@ -408,18 +406,6 @@ export class Renderer {
       ctx.font = '800 11px system-ui, sans-serif'; ctx.textAlign = 'center';
       ctx.lineWidth = 3; ctx.strokeStyle = '#06101e'; ctx.strokeText('P' + (f.slot + 1), 0, -12);
       ctx.fillStyle = '#fff'; ctx.fillText('P' + (f.slot + 1), 0, -12);
-      if (f.cmb.length && w.frame - f.cmbFrame < 40) {
-        // suite de boutons en cours : P (poing) / K (pied), + « E » quand un finisseur est prêt
-        const chars = f.cmb.split('');
-        const ready = f.cmb.length >= 3;
-        ctx.font = '900 12px system-ui, sans-serif';
-        chars.forEach((ch, i) => {
-          const x = (i - (chars.length - 1) / 2) * 15;
-          ctx.fillStyle = ch === 'P' ? '#ffb347' : '#6cf0ff';
-          ctx.strokeText(ch, x, -28); ctx.fillText(ch, x, -28);
-        });
-        if (ready) { ctx.fillStyle = '#ffe14d'; ctx.strokeText('+ E !', 0, -42); ctx.fillText('+ E !', 0, -42); }
-      }
       ctx.restore();
     }
     // statuts
@@ -561,43 +547,15 @@ export class Renderer {
     }
   }
 
-  /** Croissant de coup d'arme blanche : visible pendant les frames actives. */
-  private drawSlash(f: Fighter, sx: number, sy: number, s: number): void {
-    if (f.state !== 'attack' || f.weapon <= 0 || !f.weaponKind || !f.moveId) return;
-    const wd = WEAPONS[f.weaponKind];
-    if (wd.gun) return;
-    const m = getChar(f.charId).moves[f.moveId];
-    if (!m || m.projectile || !['light', 'heavy', 'launcher', 'low', 'run', 'air', 'airHeavy'].includes(m.kind)) return;
-    const fr = f.stateFrame;
-    if (fr < m.startup - 1 || fr > m.startup + m.active + 3) return;
-    const t = Math.min(1, (fr - (m.startup - 1)) / (m.active + 4));
-    const ctx = this.ctx;
-    const R = (wd.reach + 42) * s;
-    const up = m.kind === 'launcher' ? -1 : m.kind === 'low' ? 1.4 : 0;
-    ctx.save();
-    ctx.translate(sx, sy - 58 * s);
-    ctx.scale(f.facing, 1);
-    ctx.globalAlpha = (1 - t) * 0.9;
-    const a0 = -1.25 + up * 0.5 + t * 0.5, a1 = a0 + 1.5;
-    ctx.beginPath();
-    ctx.arc(0, 0, R, a0, a1);
-    ctx.arc(0, 0, R * 0.78, a1, a0, true);
-    ctx.closePath();
-    ctx.fillStyle = f.weaponKind === 'laser' ? '#9ff6ff' : '#ffffff';
-    ctx.shadowColor = f.weaponKind === 'laser' ? '#4fe3ff' : '#ffffff';
-    ctx.shadowBlur = 10;
-    ctx.fill();
-    ctx.restore();
-  }
-
   /** Effets de puissance : aura de charge, éclairs d'incantation, colonne d'énergie ascendante. */
   private drawPower(f: Fighter, sx: number, sy: number, s: number, col: { main: string; glow: string }): void {
     const ctx = this.ctx;
     if (f.state === 'ko' || f.state === 'down') return;
     const m = f.state === 'attack' && f.moveId ? getChar(f.charId).moves[f.moveId] : null;
-    const charge = Math.min(1, f.heavyCharge / 50);
+    const charge = f.state === 'charge' ? Math.min(1, 0.45 + f.ki / 160 + f.kiCharge / 200) : Math.min(1, f.heavyCharge / 50);
     const casting = !!m && (m.kind === 'special' || m.kind === 'special2' || m.kind === 'super' || f.moveId!.startsWith('c_')) && f.stateFrame <= m.startup + 4;
-    const power = Math.max(charge, casting ? Math.min(1, 0.4 + f.stateFrame / Math.max(6, m!.startup)) : 0);
+    const formAura = f.form > 0 ? 0.55 + Math.sin(this.time * 0.2) * 0.08 : 0;
+    const power = Math.max(charge, formAura, casting ? Math.min(1, 0.4 + f.stateFrame / Math.max(6, m!.startup)) : 0);
     if (power <= 0.05) return;
     const t = this.time;
     ctx.save();
@@ -697,7 +655,7 @@ export class Renderer {
         break;
       }
       default: {
-        const colors: Record<string, [string, string]> = { ki: ['#bff6ff', '#4fe3ff'], fire: ['#ffe14d', '#ff6a2a'], ice: ['#ffffff', '#7cf6ff'], orb: ['#ffffff', '#a86bff'], bottle: ['#7cff9a', '#39d353'] };
+        const colors: Record<string, [string, string]> = { ki: ['#bff6ff', '#4fe3ff'], fire: ['#ffe14d', '#ff6a2a'], ice: ['#ffffff', '#7cf6ff'], orb: ['#ffffff', '#a86bff'], bottle: ['#7cff9a', '#39d353'], poison: ['#eaffd0', '#6cff3a'], bolt: ['#ffffff', '#ffe14d'], rock: ['#e6d3b0', '#8a6a3a'], wind: ['#ffffff', '#bfe8ff'] };
         const [c0, c1] = colors[p.kind] ?? colors.ki;
         const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, r * 1.4);
         g.addColorStop(0, c0);

@@ -13,6 +13,7 @@ import * as C from './constants';
 import { IN } from './types';
 import { SHOP_ITEMS, WEAPONS } from './types';
 import { readCommand, dirMaskOf, pushHistory } from './commands';
+import { FORMS, FORM_FRAMES } from './forms';
 import type { World, Fighter, SimConfig, MoveDef, Projectile, Item, BonusId, EnemyKind, StageDef, AiState, CharDef, SimEvent, Phase, FState, Hazard, ProjectileDef, WeaponKind } from './types';
 
 // ---------------------------------------------------------------------------
@@ -153,7 +154,7 @@ export function makeFighter(w: World, charId: string, name: string, team: number
     lives: C.LIVES,
     stats,
     bonuses: [],
-    status: { burn: 0, burnDps: 0, frozen: 0, poison: 0 },
+    status: { burn: 0, burnDps: 0, frozen: 0, poison: 0, slow: 0 },
     color,
     level,
     kills: 0,
@@ -171,6 +172,13 @@ export function makeFighter(w: World, charId: string, name: string, team: number
     backHold: 0,
     cmb: '',
     cmbFrame: -999,
+    phase2: false,
+    form: 0,
+    kiCharge: 0,
+    carry: '',
+    holding: -1,
+    heldBy: -1,
+    holdFrames: 0,
   };
   return f;
 }
@@ -180,16 +188,17 @@ function makeEnemy(w: World, kind: EnemyKind, level: number, charId?: string, na
   const nm = name ?? ENEMY_NAMES[kind]?.[randInt(w, 0, 3)] ?? 'Ennemi';
   const f = makeFighter(w, cid, nm, 1, level, kind === 'boss' ? getChar(cid).color : 11);
   const diff = C.DIFF_HP[w.difficulty];
-  const base = kind === 'boss' ? 1.75 : kind === 'brute' ? 1.25 : kind === 'ninja' ? 0.7 : kind === 'gunner' ? 0.75 : kind === 'shield' ? 1.1 : kind === 'bomber' ? 0.7 : 0.85;
+  const base = kind === 'boss' ? 2.8 : kind === 'brute' ? 1.25 : kind === 'ninja' ? 0.7 : kind === 'gunner' ? 0.75 : kind === 'shield' ? 1.1 : kind === 'bomber' ? 0.7 : 0.85;
   const players = humanCount(w);
   const crowd = kind === 'boss' ? 1 + (players - 1) * 0.6 : 1 + (players - 1) * 0.3;
   f.hpMax = Math.round(f.hpMax * base * (0.5 + level * 0.1) * diff * crowd);
   f.hp = f.hpMax;
   // en solo, les ennemis frappent un peu moins fort (pas d'allié pour réanimer)
-  f.stats.power = f.stats.power * (kind === 'boss' ? 0.72 : 0.5) * (0.7 + level * 0.06) * C.DIFF_DMG[w.difficulty] * (players === 1 ? 0.88 : 1);
-  f.stats.speed = f.stats.speed * (kind === 'ninja' ? 1.05 : 0.9) * (0.92 + level * 0.012);
+  f.stats.power = f.stats.power * (kind === 'boss' ? 0.95 : 0.5) * (0.7 + level * 0.06) * C.DIFF_DMG[w.difficulty] * (players === 1 ? 0.88 : 1);
+  f.stats.speed = f.stats.speed * (kind === 'ninja' ? 1.05 : kind === 'boss' ? 1.0 : 0.9) * (0.92 + level * 0.012);
   f.stats.defense = f.stats.defense * (kind === 'boss' ? 1.1 : kind === 'shield' ? 1.12 : 0.9);
   f.ai = makeAi(kind, level, w);
+  if (kind === 'boss') f.ai.aggro = Math.max(f.ai.aggro, 0.85);
   f.controller = 'ai';
   f.lives = 0;
   f.boss = kind === 'boss';
@@ -511,6 +520,22 @@ function hazardHit(w: World, f: Fighter, dmg: number, dir: number, kbx: number, 
 
 function stepBossRage(w: World): void {
   for (const f of w.fighters) {
+    if (f.ai && f.ai.kind === 'boss' && !f.rage && alive(f) && f.hp <= f.hpMax * 0.75 && !f.phase2) {
+      // phase 2 : le boss appelle du renfort
+      f.phase2 = true;
+      const minions = w.stage?.boss.minions ?? 'thug';
+      for (let i = 0; i < 2; i++) {
+        const m = makeEnemy(w, minions, Math.max(1, f.level - 1));
+        m.x = i === 0 ? w.arenaL - 40 : w.arenaR + 40;
+        m.z = randInt(w, C.Z_MIN + 10, C.Z_MAX - 10);
+        m.facing = i === 0 ? 1 : -1;
+        m.invuln = 20;
+        w.fighters.push(m);
+        w.events.push({ t: 'spawn', id: m.id });
+      }
+      w.events.push({ t: 'text', x: f.x, y: f.y + 150, z: f.z, text: 'RENFORTS !', color: '#ffd166' });
+      w.events.push({ t: 'shake', power: 4 });
+    }
     if (!f.ai || f.ai.kind !== 'boss' || f.rage || !alive(f) || f.hp > f.hpMax * 0.5) continue;
     f.rage = true;
     f.stats.speed *= 1.12;
@@ -519,7 +544,7 @@ function stepBossRage(w: World): void {
     f.ki = C.KI_MAX;
     f.ai.aggro = 1;
     f.invuln = Math.max(f.invuln, 40);
-    f.status = { burn: 0, burnDps: 0, frozen: 0, poison: 0 };
+    f.status = { burn: 0, burnDps: 0, frozen: 0, poison: 0, slow: 0 };
     if (f.state !== 'ko') setState(f, 'idle');
     w.events.push({ t: 'rage', id: f.id, x: f.x, y: f.y, z: f.z });
     w.events.push({ t: 'text', x: f.x, y: f.y + 150, z: f.z, text: 'FURIE !', color: '#ff5f5f' });
@@ -561,7 +586,7 @@ function startDuelRound(w: World, first: boolean): void {
     f.hp = f.hpMax;
     f.ki = 0;
     f.guardMeter = C.GUARD_MAX;
-    f.status = { burn: 0, burnDps: 0, frozen: 0, poison: 0 };
+    f.status = { burn: 0, burnDps: 0, frozen: 0, poison: 0, slow: 0 };
     const t = n <= 1 ? 0.5 : i / (n - 1);
     f.x = q(140 + t * (w.stage!.width - 280));
     f.z = n <= 2 ? 150 : 150 + (i % 2 === 0 ? -34 : 34);
@@ -599,7 +624,7 @@ function respawn(w: World, f: Fighter, x?: number): void {
   f.hp = f.hpMax;
   f.ki = 0;
   f.guardMeter = C.GUARD_MAX;
-  f.status = { burn: 0, burnDps: 0, frozen: 0, poison: 0 };
+  f.status = { burn: 0, burnDps: 0, frozen: 0, poison: 0, slow: 0 };
   f.x = x ?? (allies.length ? allies[0].x : w.camX + 200);
   f.y = 120;
   f.z = allies.length ? allies[0].z : 140;
@@ -921,6 +946,12 @@ function stepFighter(w: World, f: Fighter, inp: number, acting: boolean): void {
     }
   }
 
+  if (f.status.slow > 0) f.status.slow--;
+  if (f.form > 0 && f.state !== 'ko') {
+    f.form--;
+    if (f.form === 0) endTransform(w, f);
+    else if (f.ki < C.KI_MAX && w.frame % 12 === 0) f.ki = Math.min(C.KI_MAX, f.ki + 1);
+  }
   if (f.status.poison > 0 && f.state !== 'ko') {
     f.status.poison--;
     if (f.status.poison % 15 === 0) {
@@ -968,7 +999,7 @@ function stepFighter(w: World, f: Fighter, inp: number, acting: boolean): void {
           f.revive = 0;
           f.hp = Math.round(f.hpMax * 0.5);
           f.invuln = 90;
-          f.status = { burn: 0, burnDps: 0, frozen: 0, poison: 0 };
+          f.status = { burn: 0, burnDps: 0, frozen: 0, poison: 0, slow: 0 };
           setState(f, 'getup');
           w.events.push({ t: 'text', x: f.x, y: 130, z: f.z, text: `RÉANIMÉ (−${C.REVIVE_COST} 🪙)`, color: '#7cff9a' });
           w.events.push({ t: 'sound', id: 'revive' });
@@ -988,7 +1019,7 @@ function stepFighter(w: World, f: Fighter, inp: number, acting: boolean): void {
             f.koTimer = 0;
             f.hp = Math.round(f.hpMax * 0.5);
             f.invuln = 90;
-            f.status = { burn: 0, burnDps: 0, frozen: 0, poison: 0 };
+            f.status = { burn: 0, burnDps: 0, frozen: 0, poison: 0, slow: 0 };
             setState(f, 'getup');
             setState(ally, 'idle');
             w.events.push({ t: 'text', x: f.x, y: 120, z: f.z, text: 'RÉANIMÉ !', color: '#7cff9a' });
@@ -1000,6 +1031,18 @@ function stepFighter(w: World, f: Fighter, inp: number, acting: boolean): void {
     case 'revive':
       if (!(inp & IN.LIGHT) || f.stateFrame > 3) setState(f, 'idle');
       return;
+    case 'charge': {
+      // recharge du ki : on reste immobile, vulnérable, tant que Ki (ou Garde + Ki) est maintenu
+      const keep = (inp & IN.SPECIAL) !== 0 && !dirX && !dirZ && airborne(f) === false;
+      if (!keep || (pressed & (IN.LIGHT | IN.HEAVY | IN.JUMP))) { f.kiCharge = 0; setState(f, 'idle'); return; }
+      f.kiCharge++;
+      f.vx *= 0.7;
+      f.ki = Math.min(C.KI_MAX, f.ki + (f.form > 0 ? 1.4 : 0.95));
+      if (f.kiCharge % 30 === 0) w.events.push({ t: 'special', id: f.id, x: f.x, y: f.y + 50, z: f.z, kind: 'charge' });
+      if (f.ki >= C.KI_MAX && f.form === 0 && f.kiCharge >= 20 && FORMS[f.charId]) { f.kiCharge = 0; startMove(w, f, 'transform'); return; }
+      physics(w, f);
+      return;
+    }
     case 'win':
       physics(w, f);
       return;
@@ -1062,6 +1105,14 @@ function stepFighter(w: World, f: Fighter, inp: number, acting: boolean): void {
     setState(f, 'idle');
     if (f.airJumps >= 2 && hasBonus(f, 'doublejump')) spawnShock(w, f, 0, 60, 10);
     f.airJumps = 0;
+  }
+
+  // recharge de ki : Ki maintenu sans assez de ki pour un spécial, ou Garde + Ki
+  if (onGround && (inp & IN.SPECIAL) && dirX === 0 && dirZ === 0 && (f.state === 'idle' || f.state === 'walk' || f.state === 'guard') && f.ki < C.KI_MAX && ((inp & IN.GUARD) || f.ki < C.SPECIAL_KI) && !f.bufferedInput) {
+    f.kiCharge = 0;
+    setState(f, 'charge');
+    w.events.push({ t: 'sound', id: 'charge', x: f.x });
+    return;
   }
 
   // garde / esquive
@@ -1137,7 +1188,7 @@ function stepFighter(w: World, f: Fighter, inp: number, acting: boolean): void {
         }
       } else f.backHold = 0;
       const pedal = dirX !== 0 && faceDir !== dirX;
-      const spd = (running ? C.RUN : C.WALK) * f.stats.speed * (pedal ? 0.78 : 1);
+      const spd = (running ? C.RUN : C.WALK) * f.stats.speed * (f.status.slow > 0 ? 0.55 : 1) * (pedal ? 0.78 : 1);
       f.vx = dirX * spd;
       f.vz = dirZ * C.ZSPEED * (running ? 1.3 : 1);
       f.facing = faceDir as 1 | -1;
@@ -1149,8 +1200,9 @@ function stepFighter(w: World, f: Fighter, inp: number, acting: boolean): void {
       setStateKeep(f, 'idle');
     }
   } else {
-    f.vx += dirX * C.AIR_CONTROL * f.stats.speed;
-    f.vx = clamp(f.vx, -C.RUN * f.stats.speed, C.RUN * f.stats.speed);
+    const asp = f.stats.speed * (f.status.slow > 0 ? 0.55 : 1);
+    f.vx += dirX * C.AIR_CONTROL * asp;
+    f.vx = clamp(f.vx, -C.RUN * asp, C.RUN * asp);
     f.vz = dirZ * C.ZSPEED * 0.7;
   }
   physics(w, f);
@@ -1216,7 +1268,7 @@ function tryAttack(w: World, f: Fighter, c: CharDef, inp: number, dirX: number, 
     const fin = comboFinisher(w, f, c);
     if (fin && w.frame >= f.nextMoveFrame) { f.bufferedInput &= ~IN.SPECIAL; f.cmb = ''; startMove(w, f, fin); return true; }
   }
-  if (!moveId && buf & IN.SPECIAL) {
+  if (!moveId && buf & IN.SPECIAL && !(inp & IN.GUARD)) {
     // raccourci manette / tactile : Spécial + direction = commande
     let id = down ? c.special2 : c.special;
     if (!down && fwd) id = 'c_fire';
@@ -1315,6 +1367,7 @@ function startMove(w: World, f: Fighter, moveId: string): void {
   if (!m) return;
   const charged = moveId === c.heavy ? f.heavyCharge : 0;
   f.heavyCharge = 0;
+  if (moveId === 'transform') startTransform(w, f);
   if (m.kiCost) f.ki = Math.max(0, f.ki - m.kiCost);
   if (m.superCost) f.superMeter = m.superCost >= C.SUPER_MAX ? 0 : Math.max(0, f.superMeter - m.superCost);
   setState(f, 'attack');
@@ -1329,7 +1382,6 @@ function startMove(w: World, f: Fighter, moveId: string): void {
     f.lastCmd = m.name;
     f.lastCmdFrame = w.frame;
     w.events.push({ t: 'cmd', id: f.id, name: m.name, x: f.x, y: f.y + 150, z: f.z });
-    if (f.controller === 'player' || f.boss) w.events.push({ t: 'text', x: f.x, y: f.y + 150, z: f.z, text: m.name, color: '#8fe3ff' });
   }
   // téléportation derrière la cible
   if (m.teleport) {
@@ -1668,6 +1720,15 @@ function resolveHit(w: World, a: Fighter, t: Fighter, m0: MoveDef, proj?: Projec
     t.status.burn = Math.max(t.status.burn, m.burnTarget ?? 120);
     t.status.burnDps = Math.max(1, Math.round(2 * a.stats.power));
   }
+  if (m.poisonTarget || (proj?.kind === 'poison')) t.status.poison = Math.max(t.status.poison, m.poisonTarget ?? 150);
+  if (m.slowTarget || proj?.kind === 'ice') t.status.slow = Math.max(t.status.slow, m.slowTarget ?? 120);
+  if (a.form > 0) {
+    const el = FORMS[a.charId]?.elem;
+    if (el === 'fire') { t.status.burn = Math.max(t.status.burn, 90); t.status.burnDps = Math.max(t.status.burnDps, 2); }
+    else if (el === 'ice') t.status.slow = Math.max(t.status.slow, 100);
+    else if (el === 'poison') t.status.poison = Math.max(t.status.poison, 120);
+    else if (el === 'shock') m = { ...m, hitstun: m.hitstun + 10 };
+  }
   // combo
   a.comboHits++;
   a.comboTimer = C.COMBO_RESET;
@@ -1725,7 +1786,7 @@ function resolveHit(w: World, a: Fighter, t: Fighter, m0: MoveDef, proj?: Projec
   } else {
     setState(t, 'hit');
     t.hitFrames = Math.round(m.hitstun * (1 - Math.min(0.4, a.comboHits * 0.03))) + (counter ? 8 : 0);
-    t.vx = mw?.fx === 'impale' ? -dir * 3.2 : dir * m.kbx * kbScale;
+    t.vx = mw?.fx === 'impale' || m.pull ? -dir * (m.pull ? 6 : 3.2) : dir * m.kbx * kbScale;
     if (mw?.fx === 'impale') { t.hitFrames += 10; }
   }
   t.facing = (-dir) as 1 | -1;
@@ -1770,7 +1831,7 @@ function knockOut(w: World, t: Fighter, a: Fighter | null, dir: number, m: MoveD
   t.vx = dir * (m ? Math.max(6, m.kbx * 1.4) : 5);
   t.vy = m ? Math.max(6, m.kby + 5) : 6;
   t.y = Math.max(t.y, 0.1);
-  t.status = { burn: 0, burnDps: 0, frozen: 0, poison: 0 };
+  t.status = { burn: 0, burnDps: 0, frozen: 0, poison: 0, slow: 0 };
   w.events.push({ t: 'ko', x: t.x, y: t.y + 50, z: t.z, id: t.id });
   w.events.push({ t: 'sound', id: 'ko', x: t.x });
   w.events.push({ t: 'shake', power: 5 });
@@ -1972,8 +2033,8 @@ function projectileMove(p: Projectile): MoveDef {
   const heavyProj = shock || p.kind === 'orb' || p.kind === 'bat' || p.kind === 'bottle';
   return {
     id: 'proj', name: '', kind: 'special', anim: 'special', startup: 0, active: 1, recovery: 0,
-    hit: { x: 0, w: 0, y0: -20, y1: 40, z: 40 }, damage: p.damage, hitstun: shot ? 18 : p.wk === 'ak' ? 13 : slug ? 9 : shock ? 24 : 18, blockstun: slug ? 5 : 12,
-    kbx: shock ? 6 : p.kind === 'bat' ? 7 : shot ? 4 : slug ? 1.2 : 4, kby: shock ? 5 : p.kind === 'bat' ? 4 : 0, hitstop: heavyProj ? 7 : slug ? 1 : 4, knockdown: heavyProj, launch: false,
+    hit: { x: 0, w: 0, y0: -20, y1: 40, z: 40 }, damage: p.damage, hitstun: p.kind === 'bolt' ? 34 : shot ? 18 : p.wk === 'ak' ? 13 : slug ? 9 : shock ? 24 : 18, blockstun: slug ? 5 : 12,
+    kbx: shock ? 6 : p.kind === 'bat' ? 7 : shot ? 4 : slug ? 1.2 : 4, kby: shock ? 5 : p.kind === 'bat' ? 4 : 0, hitstop: heavyProj ? 7 : slug ? 1 : 4, knockdown: heavyProj || p.kind === 'rock', launch: false,
     burnTarget: p.kind === 'fire' ? 120 : undefined, freezeTarget: p.kind === 'ice' ? 60 : undefined, low: false,
   };
 }
@@ -2041,6 +2102,27 @@ export function setSlotAi(w: World, slot: number): void {
 /** Nombre de joueurs humains actifs : sert à adapter la difficulté (points de vie, effectifs). */
 function humanCount(w: World): number {
   return Math.max(1, w.fighters.filter((f) => f.team === 0 && f.slot >= 0 && f.controller === 'player').length);
+}
+
+function startTransform(w: World, f: Fighter): void {
+  const fd = FORMS[f.charId];
+  if (!fd || f.form > 0) return;
+  f.form = FORM_FRAMES;
+  f.stats.power *= fd.power; f.stats.speed *= fd.speed; f.stats.defense *= fd.defense; f.stats.reach += fd.reach;
+  f.ki = 40;
+  f.hp = Math.min(f.hpMax, f.hp + f.hpMax * 0.2);
+  f.invuln = Math.max(f.invuln, 50);
+  w.events.push({ t: 'text', x: f.x, y: f.y + 160, z: f.z, text: fd.name.toUpperCase(), color: fd.color });
+  w.events.push({ t: 'special', id: f.id, x: f.x, y: f.y, z: f.z, kind: 'transform' });
+  w.events.push({ t: 'shake', power: 6 });
+  w.slowmo = Math.max(w.slowmo, 40);
+}
+
+function endTransform(w: World, f: Fighter): void {
+  const fd = FORMS[f.charId];
+  if (!fd) return;
+  f.stats.power /= fd.power; f.stats.speed /= fd.speed; f.stats.defense /= fd.defense; f.stats.reach -= fd.reach;
+  w.events.push({ t: 'text', x: f.x, y: f.y + 130, z: f.z, text: 'Forme terminée', color: '#ccc' });
 }
 
 /** Un joueur entre dans la partie en cours (déterministe, à la frame annoncée par le serveur). */

@@ -5,8 +5,8 @@ import { IN } from '../src/sim/types';
 import type { SimConfig, Fighter } from '../src/sim/types';
 import { COMMANDS, ROSTER } from '../src/sim/chars';
 
-function world(mode: SimConfig['mode'] = 'training') {
-  const cfg: SimConfig = { mode, difficulty: 1, rounds: 3, teams: false, stageIndex: 0, players: [{ slot: 0, charId: 'kai', name: 'A', color: 0, team: 0 }], bots: [] };
+function world(mode: SimConfig['mode'] = 'training', charId = 'kai') {
+  const cfg: SimConfig = { mode, difficulty: 1, rounds: 3, teams: false, stageIndex: 0, players: [{ slot: 0, charId, name: 'A', color: 0, team: 0 }], bots: [] };
   return createWorld(cfg, 7);
 }
 
@@ -70,7 +70,7 @@ describe('commandes en jeu', () => {
     const w = world();
     w.fighters[0].ki = 60;
     play(w, [...hold(Dn, 3), ...hold(Dn | R, 3), ...hold(R, 2), R | A, ...hold(0, 20)]);
-    expect(w.fighters[0].lastCmd).toBe('Boule de Ki');
+    expect(w.fighters[0].lastCmd).toBe('Onde Ki');
     expect(w.fighters[0].ki).toBeLessThan(60);
   });
   it('→ ↓ ↘ + Attaque : dragon montant, le combattant décolle', () => {
@@ -78,7 +78,7 @@ describe('commandes en jeu', () => {
     w.fighters[0].ki = 60;
     let maxY = 0;
     for (const bits of [...hold(R, 3), ...hold(Dn, 3), ...hold(Dn | R, 2), Dn | R | A, ...hold(0, 20)]) { step(w, [bits]); maxY = Math.max(maxY, w.fighters[0].y); }
-    expect(w.fighters[0].lastCmd).toBe('Dragon montant');
+    expect(w.fighters[0].lastCmd).toBe('Lune montante');
     expect(maxY).toBeGreaterThan(40);
   });
   it('Attaque + Lourd simultanés : saisie qui touche et projette', () => {
@@ -95,7 +95,7 @@ describe('commandes en jeu', () => {
     const w = world();
     w.fighters[0].ki = 60;
     play(w, [R | IN.SPECIAL, ...hold(0, 20)]);
-    expect(w.fighters[0].lastCmd).toBe('Boule de Ki');
+    expect(w.fighters[0].lastCmd).toBe('Onde Ki');
   });
   it('le pas arrière ne retourne pas le personnage quand un ennemi est devant', () => {
     const w = world();
@@ -109,7 +109,8 @@ describe('commandes en jeu', () => {
     expect(p.facing).toBe(-1);
   });
   it('tous les héros ont toutes les commandes', () => {
-    for (const c of ROSTER) for (const cmd of COMMANDS) expect(c.moves[cmd.id], `${c.id}:${cmd.id}`).toBeTruthy();
+    for (const c of ROSTER) for (const id of ['c_fire', 'c_dp', 'c_tatsu', 'c_superfire', 'c_grab', 'c_piledriver', 'c_side', 'c_airflying', 'c_flurry']) expect(c.moves[id], `${c.id}:${id}`).toBeTruthy();
+    expect(COMMANDS.length).toBeGreaterThan(10);
   });
 });
 
@@ -201,10 +202,15 @@ describe('techniques cultes', () => {
     expect(readCommand(s.f, ctx(s.f, K, s.now, { inp: R, onGround: false }))).toBe('c_rider');
   });
   it('tous les héros possèdent les nouveaux coups et ils se lancent', () => {
-    for (const id of ['c_wave', 'c_rocket', 'c_falcon', 'c_meteor', 'c_purple', 'c_omni', 'c_serious', 'c_step', 'c_rasen', 'c_rider']) {
-      for (const ch of ROSTER) expect(ch.moves[id], `${ch.id}.${id}`).toBeDefined();
-      expect(COMMANDS.find((c) => c.id === id), id).toBeDefined();
+    // chaque héros a ses 3 signatures + ses 4 commandes perso ; les commandes redondantes ont disparu
+    for (const ch of ROSTER) {
+      for (const id of ['c_fire', 'c_dp', 'c_tatsu', 'c_superfire', 'c_grab', 'transform']) expect(ch.moves[id], `${ch.id}.${id}`).toBeDefined();
+      const sigs = ['c_wave', 'c_rocket', 'c_falcon', 'c_meteor', 'c_purple', 'c_omni', 'c_serious', 'c_step', 'c_rasen', 'c_rider'].filter((id) => ch.moves[id]);
+      expect(sigs.length, ch.id).toBe(3);
+      expect(ch.moves.c_hundred, ch.id).toBeUndefined();
     }
+    expect(new Set(ROSTER.map((ch) => ch.moves.c_fire.name)).size).toBe(ROSTER.length);
+    for (const id of ['c_wave', 'c_rocket', 'c_falcon', 'c_meteor', 'c_purple', 'c_omni', 'c_serious', 'c_step', 'c_rasen', 'c_rider']) expect(COMMANDS.find((c) => c.id === id), id).toBeDefined();
   });
 });
 
@@ -217,8 +223,9 @@ describe('techniques cultes en simulation', () => {
       c_step: [...hold(Dn, 2), 0, ...hold(Dn, 2), Dn | K],
       c_rasen: [...hold(Dn, 3), ...hold(IN.UP, 2), IN.UP | A],
     };
+    const owner: Record<string, string> = { c_wave: 'kai', c_falcon: 'tora', c_rocket: 'tora', c_step: 'zed', c_rasen: 'orion' };
     for (const [id, inputs] of Object.entries(seqs)) {
-      const w = world();
+      const w = world('training', owner[id]);
       const p = w.fighters.find((f) => f.slot === 0)!;
       p.ki = 100; p.superMeter = 100;
       let seen = false;

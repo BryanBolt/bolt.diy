@@ -12,10 +12,12 @@ export const ui = document.getElementById('ui') as HTMLDivElement;
 
 export function show(html: string, cls = ''): HTMLElement {
   ui.innerHTML = `<div class="screen ${cls}">${html}</div>`;
+  document.body.classList.add('ui-open');
   return ui.firstElementChild as HTMLElement;
 }
 export function hide(): void {
   ui.innerHTML = '';
+  document.body.classList.remove('ui-open');
 }
 export function toast(msg: string, ms = 2200): void {
   const t = document.getElementById('toast')!;
@@ -52,7 +54,7 @@ export function unlockHint(charId: string): string {
 
 // ---- Portraits (stickman statique) ----
 const portraitFighter = (charId: string, color: number): Fighter =>
-  ({ id: 0, charId, name: '', team: 0, slot: 0, controller: 'player', ai: null, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, facing: 1, hp: 1, hpMax: 1, ki: 0, superMeter: 0, guardMeter: 0, state: 'idle', stateFrame: 0, moveId: null, moveHits: [], multiLeft: 0, chainIndex: 0, freeze: 0, invuln: 0, armor: false, comboHits: 0, comboTimer: 0, comboDamage: 0, guardFrames: 0, lowGuard: false, prevInput: 0, bufferedInput: 0, bufferTimer: 0, tapTimer: 0, tapDir: 0, runFrames: 0, airJumps: 0, heavyCharge: 0, chargeBonus: 0, hitFrames: 0, lastHitBy: 0, koTimer: 0, revive: 0, lives: 0, stats: getChar(charId).stats, bonuses: [], status: { burn: 0, burnDps: 0, frozen: 0, poison: 0 }, color, level: 0, kills: 0, phoenixUsed: false, nextMoveFrame: 0, wantsLeave: false, weapon: 0, weaponKind: '', rage: false, boss: false, hist: [], gunCd: 0, lastCmd: '', lastCmdFrame: -999, backHold: 0, cmb: '', cmbFrame: -999 }) as Fighter;
+  ({ id: 0, charId, name: '', team: 0, slot: 0, controller: 'player', ai: null, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, facing: 1, hp: 1, hpMax: 1, ki: 0, superMeter: 0, guardMeter: 0, state: 'idle', stateFrame: 0, moveId: null, moveHits: [], multiLeft: 0, chainIndex: 0, freeze: 0, invuln: 0, armor: false, comboHits: 0, comboTimer: 0, comboDamage: 0, guardFrames: 0, lowGuard: false, prevInput: 0, bufferedInput: 0, bufferTimer: 0, tapTimer: 0, tapDir: 0, runFrames: 0, airJumps: 0, heavyCharge: 0, chargeBonus: 0, hitFrames: 0, lastHitBy: 0, koTimer: 0, revive: 0, lives: 0, stats: getChar(charId).stats, bonuses: [], status: { burn: 0, burnDps: 0, frozen: 0, poison: 0, slow: 0 }, color, level: 0, kills: 0, phoenixUsed: false, nextMoveFrame: 0, wantsLeave: false, weapon: 0, weaponKind: '', rage: false, boss: false, hist: [], gunCd: 0, lastCmd: '', lastCmdFrame: -999, backHold: 0, cmb: '', cmbFrame: -999, phase2: false, form: 0, kiCharge: 0, carry: '', holding: -1, heldBy: -1, holdFrames: 0 }) as Fighter;
 
 export function drawPortrait(canvas: HTMLCanvasElement, charId: string, color: number, time: number, locked = false): void {
   const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -199,11 +201,11 @@ export function howToHtml(charId: string): string {
       </table>
     </div>
   </div>
-  <h3 style="margin-top:18px">Commandes de combat (tous les héros)</h3>
+  <h3 style="margin-top:18px">Commandes de combat de ${esc(c.name)}</h3>
   <p class="small muted">Directions relatives à ton regard : → avant, ← arrière, ↓ vers l'écran, ↑ vers le fond. Les diagonales sont tolérées et tu peux finir la saisie jusqu'à ~9 images après avoir appuyé sur le bouton. Sur manette ou tactile, le raccourci <b>Spécial + direction</b> fait la même chose. Le mode Entraînement affiche tes entrées et le nom de la commande réussie.</p>
   <table class="moves">
     <tr><th>Coup</th><th>Saisie</th><th>Raccourci</th><th>Effet</th><th>Coût</th></tr>
-    ${COMMANDS.map((c) => `<tr><td><b>${esc(c.name)}</b></td><td><kbd>${esc(c.input)}</kbd></td><td class="small muted">${esc(c.assist)}</td><td class="small muted">${esc(c.note)}</td><td class="small">${esc(c.cost)}</td></tr>`).join('')}
+    ${COMMANDS.filter((c) => !!m[c.id]).map((c) => `<tr><td><b>${esc(m[c.id].name.replace(/ \(.*\)$/, '') || c.name)}</b></td><td><kbd>${esc(c.input)}</kbd></td><td class="small muted">${esc(c.assist)}</td><td class="small muted">${esc(c.note)}</td><td class="small">${esc(c.cost)}</td></tr>`).join('')}
   </table>
   <h3>Armes</h3>
   <p class="small muted">Ramasse-les au sol (halo doré) ou dans les caisses. Armes blanches : plus d'allonge, plus de dégâts et un effet propre, mais elles s'usent. Armes à feu : Attaque tire (maintenir pour la rafale). <b>Lourd</b> lance l'arme (sans direction) quand elle est lançable ; elle retombe au sol avec sa durabilité restante.</p>
@@ -239,7 +241,6 @@ export function optionsHtml(s: Settings, profile: Profile, pads: string[]): stri
       <h3>Tactile</h3>
       <label class="field">Taille des boutons <input type="range" min="0.75" max="1.5" step="0.05" value="${s.touchSize}" data-set="touchSize"></label>
       <label class="field">Opacité <input type="range" min="0.2" max="1" step="0.05" value="${s.touchOpacity}" data-set="touchOpacity"></label>
-      <label class="toggle"><input type="checkbox" data-set="touchCombos" ${s.touchCombos ? 'checked' : ''}> Boutons de combos (Boule de Ki, Dragon, Onde… en un appui)</label>
       <label class="toggle"><input type="checkbox" data-set="touchHaptics" ${s.touchHaptics ? 'checked' : ''}> Vibrations</label>
       <label class="toggle"><input type="checkbox" data-set="touchLeft" ${s.touchLeft ? 'checked' : ''}> Mode gaucher (boutons à gauche)</label>
       <h3>Profil</h3>
