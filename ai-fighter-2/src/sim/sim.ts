@@ -156,7 +156,7 @@ export function makeFighter(w: World, charId: string, name: string, team: number
     lives: C.LIVES,
     stats,
     bonuses: [],
-    status: { burn: 0, burnDps: 0, frozen: 0, poison: 0, slow: 0 },
+    status: { burn: 0, burnDps: 0, frozen: 0, poison: 0, slow: 0, wet: 0 },
     color,
     level,
     kills: 0,
@@ -552,7 +552,7 @@ function stepBossRage(w: World): void {
     f.ki = C.KI_MAX;
     f.ai.aggro = 1;
     f.invuln = Math.max(f.invuln, 40);
-    f.status = { burn: 0, burnDps: 0, frozen: 0, poison: 0, slow: 0 };
+    f.status = { burn: 0, burnDps: 0, frozen: 0, poison: 0, slow: 0, wet: 0 };
     if (f.state !== 'ko') setState(f, 'idle');
     w.events.push({ t: 'rage', id: f.id, x: f.x, y: f.y, z: f.z });
     w.events.push({ t: 'text', x: f.x, y: f.y + 150, z: f.z, text: 'FURIE !', color: '#ff5f5f' });
@@ -595,7 +595,7 @@ function startDuelRound(w: World, first: boolean): void {
     f.hp = f.hpMax;
     f.ki = 0;
     f.guardMeter = C.GUARD_MAX;
-    f.status = { burn: 0, burnDps: 0, frozen: 0, poison: 0, slow: 0 };
+    f.status = { burn: 0, burnDps: 0, frozen: 0, poison: 0, slow: 0, wet: 0 };
     const t = n <= 1 ? 0.5 : i / (n - 1);
     f.x = q(140 + t * (w.stage!.width - 280));
     f.z = n <= 2 ? 150 : 150 + (i % 2 === 0 ? -34 : 34);
@@ -633,7 +633,7 @@ function respawn(w: World, f: Fighter, x?: number): void {
   f.hp = f.hpMax;
   f.ki = 0;
   f.guardMeter = C.GUARD_MAX;
-  f.status = { burn: 0, burnDps: 0, frozen: 0, poison: 0, slow: 0 };
+  f.status = { burn: 0, burnDps: 0, frozen: 0, poison: 0, slow: 0, wet: 0 };
   f.x = x ?? (allies.length ? allies[0].x : w.camX + 200);
   f.y = 120;
   f.z = allies.length ? allies[0].z : 140;
@@ -957,6 +957,8 @@ function stepFighter(w: World, f: Fighter, inp: number, acting: boolean): void {
   }
 
   if (f.status.slow > 0) f.status.slow--;
+  if (f.status.wet > 0) f.status.wet--;
+  if (w.stage?.theme === 'abyss' && f.state !== 'ko') f.status.wet = Math.max(f.status.wet, 60); // sous l'eau, tout le monde est trempé
   if (f.form > 0 && f.state !== 'ko') {
     f.form--;
     if (f.form === 0) endTransform(w, f);
@@ -1013,7 +1015,7 @@ function stepFighter(w: World, f: Fighter, inp: number, acting: boolean): void {
           f.revive = 0;
           f.hp = Math.round(f.hpMax * 0.5);
           f.invuln = 90;
-          f.status = { burn: 0, burnDps: 0, frozen: 0, poison: 0, slow: 0 };
+          f.status = { burn: 0, burnDps: 0, frozen: 0, poison: 0, slow: 0, wet: 0 };
           setState(f, 'getup');
           w.events.push({ t: 'text', x: f.x, y: 130, z: f.z, text: `RÉANIMÉ (−${C.REVIVE_COST} 🪙)`, color: '#7cff9a' });
           w.events.push({ t: 'sound', id: 'revive' });
@@ -1033,7 +1035,7 @@ function stepFighter(w: World, f: Fighter, inp: number, acting: boolean): void {
             f.koTimer = 0;
             f.hp = Math.round(f.hpMax * 0.5);
             f.invuln = 90;
-            f.status = { burn: 0, burnDps: 0, frozen: 0, poison: 0, slow: 0 };
+            f.status = { burn: 0, burnDps: 0, frozen: 0, poison: 0, slow: 0, wet: 0 };
             setState(f, 'getup');
             setState(ally, 'idle');
             w.events.push({ t: 'text', x: f.x, y: 120, z: f.z, text: 'RÉANIMÉ !', color: '#7cff9a' });
@@ -1455,6 +1457,68 @@ function releaseHold(w: World, a: Fighter, push = 0): void {
 }
 
 /** Fin de prise par une projection : le tenu part en l'air (ragdoll). */
+type Elem = 'none' | 'fire' | 'ice' | 'shock' | 'poison';
+
+/** Élément principal d'un coup : projectile, effet du coup, arme, forme, passive du héros. */
+function elementOf(a: Fighter, m: MoveDef, proj: Projectile | undefined, mw: ReturnType<typeof meleeOf>): Elem {
+  if (proj) {
+    if (proj.kind === 'fire') return 'fire';
+    if (proj.kind === 'ice') return 'ice';
+    if (proj.kind === 'bolt') return 'shock';
+    if (proj.kind === 'poison') return 'poison';
+  }
+  if (m.burnTarget) return 'fire';
+  if (m.freezeTarget || m.slowTarget) return 'ice';
+  if (m.poisonTarget) return 'poison';
+  if (mw?.fx === 'reflect') return 'fire';
+  if (a.form > 0) { const e = FORMS[a.charId]?.elem; if (e && e !== 'none') return e; }
+  const pa = getChar(a.charId).passive;
+  return pa === 'ember' ? 'fire' : pa === 'chill' ? 'ice' : pa === 'ambush' ? 'poison' : 'none';
+}
+
+/** Applique la réaction et renvoie le multiplicateur de dégâts. */
+function elementReaction(w: World, a: Fighter, t: Fighter, elem: Elem, dir: number): number {
+  const st = t.status;
+  const say = (text: string, color: string) => w.events.push({ t: 'text', x: t.x, y: t.y + 150, z: t.z, text, color });
+  if (elem === 'fire') {
+    if (st.slow > 0 || st.frozen > 0 || t.state === 'frozen') {
+      st.slow = 0; st.frozen = 0; st.wet = 150;
+      if (t.state === 'frozen') setState(t, 'idle');
+      say('FONTE !', '#ff9a5a');
+      return 1.35;
+    }
+    if (st.poison > 0) {
+      st.poison = 0;
+      say('EXPLOSION TOXIQUE !', '#b6ff4a');
+      w.events.push({ t: 'boom', x: t.x, y: t.y + 40, z: t.z, elem: 'poison', r: 90 });
+      for (const o of w.fighters) if (o !== t && o.team !== a.team && alive(o) && Math.abs(o.x - t.x) < 90 && Math.abs(o.z - t.z) < 50) { damageRaw(w, o, Math.max(1, Math.round(12 * a.stats.power)), a.id); o.status.poison = Math.max(o.status.poison, 90); }
+      return 1.2;
+    }
+    if (st.wet > 0) { st.wet = 0; say('VAPEUR', '#dfe9f2'); return 0.85; }
+  } else if (elem === 'ice') {
+    if (st.burn > 0) { st.burn = 0; st.slow = Math.max(st.slow, 120); say('VAPEUR !', '#dfe9f2'); return 1.25; }
+    if (st.wet > 0) {
+      st.wet = 0; st.frozen = 70;
+      if (t.y <= 0 && t.state !== 'launch' && t.state !== 'down' && t.state !== 'ko') setState(t, 'frozen');
+      say('GEL TOTAL !', '#9ff');
+      return 1.2;
+    }
+  } else if (elem === 'shock') {
+    if (st.wet > 0) {
+      st.wet = 0;
+      say('ÉLECTROCUTION !', '#ffe14d');
+      w.events.push({ t: 'boom', x: t.x, y: t.y + 50, z: t.z, elem: 'shock', r: 70 });
+      t.hitFrames = Math.max(t.hitFrames, 0) + 25;
+      w.slowmo = Math.max(w.slowmo, 8);
+      return 1.8;
+    }
+  } else if (elem === 'poison') {
+    if (st.burn > 0) { say('MIASME !', '#9f6'); st.slow = Math.max(st.slow, 100); return 1.15; }
+  }
+  void dir;
+  return 1;
+}
+
 function throwHeld(w: World, a: Fighter, v: Fighter, vx: number, vy: number, dmg: number): void {
   const wasMount = (a.holdMode & 1) === 1;
   if (getChar(a.charId).passive === 'titan') dmg = Math.round(dmg * 1.5);
@@ -1847,6 +1911,9 @@ function resolveHit(w: World, a: Fighter, t: Fighter, m0: MoveDef, proj?: Projec
   if (pa === 'whiplash' && Math.abs(t.x - a.x) > 78) { dmg = Math.round(dmg * 1.3); }
   if (pa === 'ambush' && !proj && t.facing === a.facing) { dmg = Math.round(dmg * 1.5); w.events.push({ t: 'text', x: t.x, y: t.y + 150, z: t.z, text: 'DANS LE DOS !', color: '#b07cff' }); }
   if (pt === 'bulwark' && t.state === 'attack') dmg = Math.max(1, Math.round(dmg * 0.75));
+  // réactions élémentaires : l'élément du coup réagit avec l'état de la cible
+  const elem = elementOf(a, m, proj, mw);
+  if (elem !== 'none' && !guardOk) dmg = Math.round(dmg * elementReaction(w, a, t, elem, dir));
   if (proj?.wk === 'pistol' && rand(w) < 0.25) { dmg *= 2; w.events.push({ t: 'text', x: t.x, y: t.y + 150, z: t.z, text: 'TIR À LA TÊTE !', color: '#ff5f5f' }); }
   const crit = !proj && hasBonus(a, 'crit') && rand(w) < 0.15;
   if (crit) dmg = Math.round(dmg * 1.6);
@@ -2036,7 +2103,7 @@ function knockOut(w: World, t: Fighter, a: Fighter | null, dir: number, m: MoveD
   t.vx = dir * (m ? Math.max(6, m.kbx * 1.4) : 5);
   t.vy = m ? Math.max(6, m.kby + 5) : 6;
   t.y = Math.max(t.y, 0.1);
-  t.status = { burn: 0, burnDps: 0, frozen: 0, poison: 0, slow: 0 };
+  t.status = { burn: 0, burnDps: 0, frozen: 0, poison: 0, slow: 0, wet: 0 };
   w.events.push({ t: 'ko', x: t.x, y: t.y + 50, z: t.z, id: t.id });
   w.events.push({ t: 'sound', id: 'ko', x: t.x });
   w.events.push({ t: 'shake', power: 5 });

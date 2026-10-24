@@ -431,6 +431,15 @@ export class Renderer {
         ctx.fill();
       }
     }
+    if (f.status.wet > 0) {
+      for (let i = 0; i < 4; i++) {
+        const t = (this.time * 0.9 + i * 17 + f.id * 5) % 40;
+        ctx.beginPath();
+        ctx.ellipse(sx + (i - 1.5) * 9 * s, sy - (95 - t * 2) * s, 1.8 * s, 3.2 * s, 0, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(120,200,255,0.75)';
+        ctx.fill();
+      }
+    }
     if (f.state === 'frozen') {
       ctx.save();
       ctx.globalAlpha = 0.55;

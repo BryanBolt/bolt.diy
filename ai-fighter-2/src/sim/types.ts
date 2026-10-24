@@ -191,6 +191,7 @@ export interface StatusEffects {
   frozen: number;
   poison: number;
   slow: number;
+  wet: number; // trempé : la foudre fait très mal, la glace gèle net
 }
 
 export interface AiState {

@@ -91,7 +91,7 @@ export class Fx {
           this.shake = Math.max(this.shake, e.power);
           break;
         case 'boom': {
-          const col = e.elem === 'fire' ? '#ff8a3d' : e.elem === 'ice' ? '#bff3ff' : '#9aff6a';
+          const col = e.elem === 'fire' ? '#ff8a3d' : e.elem === 'ice' ? '#bff3ff' : e.elem === 'shock' ? '#ffe14d' : '#9aff6a';
           this.ring(e.x, e.y, e.z, '#ffffff', e.r * 1.6);
           this.ring(e.x, e.y, e.z, col, e.r * 1.1);
           this.burst(e.x, e.y, e.z, 34, col, 'spark', 5, 9);
