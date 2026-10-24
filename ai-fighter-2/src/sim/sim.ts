@@ -72,6 +72,7 @@ export function createWorld(config: SimConfig, seed: number): World {
     w.fighters.push(f);
   }
   w.grav = [1, 0.35, 0.08][clamp(config.gravity ?? 0, 0, 2)];
+  applyModifier(w);
   if (config.mode === 'duel') startDuelRound(w, true);
   else if (config.mode === 'training') startTraining(w);
   else startStage(w, config.mode === 'survival' ? SURVIVAL_STAGE : STAGES[clamp(config.stageIndex, 0, STAGES.length - 1)]);
@@ -245,6 +246,21 @@ function placePlayers(w: World, x0: number): void {
   });
 }
 
+/** Modificateurs du défi du jour. */
+function applyModifier(w: World): void {
+  const m = w.config.modifier;
+  if (!m) return;
+  for (const f of w.fighters) {
+    if (f.controller !== 'player') continue;
+    if (m === 'glass') { f.hpMax = Math.round(f.hpMax / 2); f.hp = f.hpMax; f.stats = { ...f.stats, power: f.stats.power * 1.7 }; }
+    if (m === 'boosted') {
+      const r = rng(w);
+      for (const id of rollBonuses(BONUSES, 2, 0, (lo, hi) => r.int(lo, hi))) applyBonus(w, f, id);
+      commitRng(w, r);
+    }
+  }
+}
+
 function startStage(w: World, stage: StageDef): void {
   w.grav = Math.min([1, 0.35, 0.08][clamp(w.config.gravity ?? 0, 0, 2)], stage.grav ?? 1);
   w.stage = stage;
@@ -324,11 +340,11 @@ function nextWave(w: World): void {
 }
 
 function survivalWave(w: World, idx: number): { kind: EnemyKind; level: number }[] {
-  const n = 2 + Math.floor(idx / 2);
+  const n = 2 + Math.floor(idx / 2) + (w.config.modifier === 'swarm' ? 3 : 0);
   const level = 1 + Math.floor(idx * 0.8);
   const kinds: EnemyKind[] = ['thug', 'thug', 'brute', 'ninja', 'gunner', 'mage', 'grappler', 'shaman', 'tank'];
   const out: { kind: EnemyKind; level: number }[] = [];
-  for (let i = 0; i < Math.min(n, 7); i++) out.push({ kind: kinds[randInt(w, 0, Math.min(kinds.length - 1, 1 + Math.floor(idx / 2)))], level });
+  for (let i = 0; i < Math.min(n, w.config.modifier === 'swarm' ? 10 : 7); i++) out.push({ kind: kinds[randInt(w, 0, Math.min(kinds.length - 1, 1 + Math.floor(idx / 2)))], level });
   if (idx > 0 && idx % 5 === 4) out.push({ kind: 'brute', level: level + 2 });
   return out;
 }

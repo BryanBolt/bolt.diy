@@ -18,6 +18,8 @@ import { DEFAULT_OPTIONS, normalizeRoomCode, decodeRle } from '../shared/protoco
 import type { ServerMsg } from '../shared/protocol';
 import * as S from './ui/screens';
 import type { LobbyCard } from './ui/screens';
+import { dailyHtml, dailyTableHtml, fetchDaily, submitDaily } from './ui/daily';
+import { dailyOf, todayUtc } from '../shared/daily';
 import type { HudInfo } from './render/hud';
 import type { InputDevice, KeyMap, PadMap } from './input/devices';
 import { KEYMAP_P1, KEYMAP_P2, PADMAP_DEFAULT, PAD_BUTTON_NAMES } from './input/devices';
@@ -104,6 +106,7 @@ function startDemo(): void {
 
 function goMenu(): void {
   state = 'menu';
+  localOptions.daily = false;
   voice.leave();
   touch.show(false);
   input.clear();
@@ -122,6 +125,7 @@ function goMenu(): void {
     else if (a === 'idea') openIdeaBox();
     else if (a === 'howto') goHowTo(settings().lastChar);
     else if (a === 'options') goOptions();
+    else if (a === 'daily') void goDaily();
   });
 }
 
@@ -353,6 +357,7 @@ function botTeam(count: number[]): number {
 }
 
 function buildConfig(cards: LobbyCard[], o: LobbyOptions): SimConfig {
+  const modifier = o.daily ? dailyOf(todayUtc()).mod.id : undefined;
   const duel = o.mode === 'duel';
   const players = cards.map((c, i) => ({ slot: c.slot, charId: c.charId, name: c.name, color: c.color, team: duel ? (o.teams ? (c.team ?? c.slot % 2) : i) : 0 }));
   const bots: SimConfig['bots'] = [];
@@ -370,7 +375,7 @@ function buildConfig(cards: LobbyCard[], o: LobbyOptions): SimConfig {
       bots.push({ charId: ch.id, name: `${ch.name} (IA)`, color: nextFreeColor([...cards, ...bots.map((b, k) => ({ slot: 9 + k, name: '', charId: b.charId, color: b.color, ready: true, isHost: false, local: false }))], ch.color), team: o.teams ? botTeam(teamCount) : idx, level: 2 + o.difficulty });
     }
   }
-  return { mode: o.mode, difficulty: o.difficulty, rounds: o.rounds, teams: o.teams, stageIndex: o.stage, gravity: o.gravity ?? 0, players, bots };
+  return { mode: o.mode, difficulty: o.difficulty, rounds: o.rounds, teams: o.teams, stageIndex: o.stage, gravity: o.gravity ?? 0, modifier, players, bots };
 }
 
 function startLocalGame(): void {
@@ -379,7 +384,26 @@ function startLocalGame(): void {
   saveSettings({ lastChar: first.charId, lastColor: first.color });
   const config = buildConfig(localCards, localOptions);
   const slots = localCards.map((c) => c.slot);
-  startGame(config, (Math.random() * 0xffffffff) >>> 0, slots, slots, 0, null);
+  startGame(config, localOptions.daily ? dailyOf(todayUtc()).seed : (Math.random() * 0xffffffff) >>> 0, slots, slots, 0, null);
+}
+
+async function goDaily(): Promise<void> {
+  const date = todayUtc();
+  const best = Number(localStorage.getItem('aif2.daily.' + date) ?? 0);
+  const el = S.show(dailyHtml(null, best), 'wide');
+  const board = el.querySelector('#daily-board');
+  el.addEventListener('click', (e) => {
+    const a = actionOf(e);
+    synth.unlock();
+    if (a === 'back') goMenu();
+    else if (a === 'daily-go') {
+      const d = dailyOf(todayUtc());
+      localOptions = { ...DEFAULT_OPTIONS, mode: 'survival', difficulty: 1, daily: true, gravity: d.mod.id === 'moon' ? 1 : 0 };
+      goLocalLobby();
+    }
+  });
+  const top = await fetchDaily(date);
+  if (board && state === 'menu') board.innerHTML = `<h3 style="margin:8px 0">🏆 Classement</h3>${dailyTableHtml(top, settings().name)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -891,6 +915,14 @@ function handleEvents(events: SimEvent[]): void {
           for (const c of ROSTER) if (c.unlock?.kind === 'stage' && c.unlock.value === reached) S.toast(`🔓 Nouveau combattant débloqué : ${c.name} !`, 5000);
         }
         if (w.stageIndex + 1 < STAGES.length) synth.startMusic(STAGES[w.stageIndex + 1].theme);
+      }
+      if ((e.phase === 'matchEnd' || e.phase === 'gameOver') && w.config.modifier && w.mode === 'survival' && session!.localSlots.length === 1) {
+        const date = todayUtc();
+        const key = 'aif2.daily.' + date;
+        const prev = Number(localStorage.getItem(key) ?? 0);
+        if (w.score > prev) { try { localStorage.setItem(key, String(w.score)); } catch { /* ignore */ } }
+        const me = w.fighters.find((f) => f.slot === session!.localSlots[0]);
+        void submitDaily(date, settings().name || 'Anonyme', w.score, w.survivalWave, me?.charId ?? '').then((r) => { if (r) S.toast(`📅 Défi du jour : ${w.score} pts · ${r.rank > 0 ? 'rang ' + r.rank : 'classé'}`, 6000); });
       }
       if (e.phase === 'matchEnd' || e.phase === 'gameOver') {
         const best = Math.max(profile.bestScore, w.score);

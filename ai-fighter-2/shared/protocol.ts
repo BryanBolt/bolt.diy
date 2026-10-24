@@ -30,6 +30,7 @@ export interface LobbyOptions {
   teams: boolean; // duel par équipes
   isPublic: boolean; // salon visible dans la liste (rejoignable sans code)
   gravity: 0 | 1 | 2; // 0 normale · 1 lunaire · 2 apesanteur
+  daily?: boolean; // local : défi du jour (graine et modificateur du jour)
 }
 
 /** Salon public affiché dans la liste. */

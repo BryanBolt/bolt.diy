@@ -132,12 +132,12 @@ export function lobbyHtml(v: LobbyView): string {
   const optBtn = (key: string, label: string, val: string, enabled = v.isHost) => `<div class="opt"><div class="lbl">${label}</div><div class="val">${enabled ? `<button class="btn sm" data-action="opt" data-key="${key}" data-dir="-1">◀</button>` : ''}<span>${val}</span>${enabled ? `<button class="btn sm" data-action="opt" data-key="${key}" data-dir="1">▶</button>` : ''}</div></div>`;
   const stageName = o.mode === 'duel' ? (STAGES[o.stage]?.name ?? 'Arène') : (STAGES[Math.min(o.stage, Math.max(0, Math.min(STAGES.length - 1, v.profile.stageReached)))]?.name ?? STAGES[0].name);
   const options = [
-    optBtn('mode', 'Mode', MODE_LABEL[o.mode]),
-    o.mode === 'campaign' || o.mode === 'survival' ? optBtn('difficulty', 'Difficulté', DIFF_LABEL[o.difficulty]) : '',
+    o.daily ? '<div class="opt"><div class="lbl">📅 Défi du jour</div><div class="val"><span>Survie · même partie pour tous</span></div></div>' : optBtn('mode', 'Mode', MODE_LABEL[o.mode]),
+    !o.daily && (o.mode === 'campaign' || o.mode === 'survival') ? optBtn('difficulty', 'Difficulté', DIFF_LABEL[o.difficulty]) : '',
     o.mode === 'duel' ? optBtn('rounds', 'Manches', `Meilleur des ${o.rounds}`) : '',
     o.mode === 'duel' ? optBtn('bots', 'Bots', String(o.bots)) : '',
     o.mode === 'duel' ? optBtn('teams', 'Équipes', o.teams ? '2 équipes' : 'Chacun pour soi') : '',
-    optBtn('gravity', 'Gravité', ['Normale', '🌙 Lunaire', '🚀 Apesanteur'][o.gravity ?? 0]),
+    o.daily ? '' : optBtn('gravity', 'Gravité', ['Normale', '🌙 Lunaire', '🚀 Apesanteur'][o.gravity ?? 0]),
     v.online ? optBtn('isPublic', 'Visibilité', o.isPublic ? '🌐 Public' : '🔒 Privé') : '',
     o.mode === 'campaign' || o.mode === 'duel' ? optBtn('stage', o.mode === 'duel' ? 'Arène' : 'Départ', `${o.stage + 1}. ${stageName}`) : '',
   ].join('');
@@ -280,6 +280,7 @@ export function menuHtml(profile: Profile, hasTouch: boolean, version: string, n
       <button class="btn menu-item big ${noNet ? '' : 'primary'}" data-action="solo-open"><span class="ico">🔗</span>Partie solo ouverte<span class="sub">${noNet ? 'Nécessite la version avec serveur' : 'Joue seul tout de suite : tes amis te rejoignent en cours de route avec un lien'}</span></button>
       <button class="btn menu-item big" data-action="local"><span class="ico">🎮</span>Jouer en local<span class="sub">Solo ou jusqu'à 4 sur cet écran : claviers, manettes${hasTouch ? ', tactile' : ''}</span></button>
       <button class="btn menu-item big ${noNet ? '' : 'primary'}" data-action="online"><span class="ico">📡</span>Jouer en ligne<span class="sub">${noNet ? 'Indisponible sur cette page hébergée : il faut la version avec serveur' : 'Chacun sur son téléphone / PC, avec un code de salon'}</span></button>
+      <button class="btn menu-item" data-action="daily"><span class="ico">📅</span>Défi du jour<span class="sub">Même partie pour tous, un modificateur par jour, classement en ligne</span></button>
       <button class="btn menu-item" data-action="howto"><span class="ico">📖</span>Comment jouer<span class="sub">Commandes, système de combat, liste des coups</span></button>
       <button class="btn menu-item" data-action="idea"><span class="ico">💡</span>Proposer une idée<span class="sub">Écris ou dicte une amélioration : elle sera lue pour la prochaine version</span></button>
       <button class="btn menu-item" data-action="options"><span class="ico">⚙️</span>Options<span class="sub">Son, commandes, tactile, profil</span></button>

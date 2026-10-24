@@ -429,6 +429,7 @@ export interface SimConfig {
   teams: boolean;
   stageIndex: number;
   gravity?: number; // 0 normale · 1 lunaire · 2 apesanteur
+  modifier?: string; // défi du jour : moon · glass · swarm · boosted
   players: { slot: number; charId: string; name: string; color: number; team: number }[];
   bots: { charId: string; name: string; color: number; team: number; level: number }[];
 }

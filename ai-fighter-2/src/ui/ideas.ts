@@ -8,7 +8,7 @@ const PENDING_KEY = 'aif2.ideas.pending';
 let ctxProvider: () => Record<string, unknown> = () => ({});
 export function setIdeaContext(fn: () => Record<string, unknown>): void { ctxProvider = fn; }
 
-function httpBase(): string {
+export function httpBase(): string {
   const ws = loadSettings().serverUrl;
   if (ws) return ws.replace(/^ws(s?):\/\//, 'http$1://').replace(/\/ws\/?$/, '');
   return location.origin;

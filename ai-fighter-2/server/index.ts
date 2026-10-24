@@ -12,6 +12,7 @@ import type { ClientMsg, ServerMsg, LobbyPlayer, LobbyOptions, LobbyState } from
 import type { CtlEvent, PublicRoom, IceServer } from '../shared/protocol';
 import { PROTOCOL_VERSION, MAX_PLAYERS, REJOIN_MARGIN, makeRoomCode, normalizeRoomCode, DEFAULT_OPTIONS, encodeRle } from '../shared/protocol';
 import { randomUUID } from 'node:crypto';
+import { todayUtc, isDateString, type DailyEntry } from '../shared/daily';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -470,9 +471,68 @@ async function handleIdeas(req: import('node:http').IncomingMessage, res: import
   return false;
 }
 
+// ---- Défi du jour : classement par date (UTC) ----
+// POST /api/daily {date, name, score, wave, charId} · GET /api/daily?date=YYYY-MM-DD → top 20. Persisté dans DAILY_FILE (JSONL).
+const DAILY_FILE = process.env.DAILY_FILE ?? join(resolve(__dirname, '..'), 'data', 'daily.jsonl');
+const dailyMem = new Map<string, Map<string, DailyEntry>>();
+const dailyRate = new Map<string, number[]>();
+
+function dailyPut(date: string, e: DailyEntry): boolean {
+  let day = dailyMem.get(date);
+  if (!day) { day = new Map(); dailyMem.set(date, day); }
+  const old = day.get(e.name);
+  if (old && old.score >= e.score) return false;
+  day.set(e.name, e);
+  return true;
+}
+function dailyTop(date: string): DailyEntry[] {
+  return [...(dailyMem.get(date)?.values() ?? [])].sort((a, b) => b.score - a.score).slice(0, 20);
+}
+void (async () => {
+  try {
+    const raw = await readFile(DAILY_FILE, 'utf8');
+    for (const line of raw.split('\n')) if (line.trim()) { try { const r = JSON.parse(line) as DailyEntry & { date: string }; dailyPut(r.date, r); } catch { /* ligne abîmée */ } }
+  } catch { /* pas encore de fichier */ }
+})();
+
+async function handleDaily(req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse, url: URL): Promise<boolean> {
+  if (url.pathname !== '/api/daily') return false;
+  const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type', 'access-control-allow-methods': 'POST, GET, OPTIONS', 'content-type': 'application/json' };
+  if (req.method === 'OPTIONS') { res.writeHead(204, cors); res.end(); return true; }
+  if (req.method === 'GET') {
+    const date = url.searchParams.get('date') ?? todayUtc();
+    if (!isDateString(date)) { res.writeHead(400, cors); res.end('{"ok":false}'); return true; }
+    res.writeHead(200, cors); res.end(JSON.stringify({ ok: true, date, top: dailyTop(date) }));
+    return true;
+  }
+  if (req.method === 'POST') {
+    const ip = String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim() || req.socket.remoteAddress || '?';
+    const now = Date.now();
+    const recent = (dailyRate.get(ip) ?? []).filter((t) => now - t < 60_000);
+    if (recent.length >= 8) { res.writeHead(429, cors); res.end('{"ok":false,"error":"trop de requêtes"}'); return true; }
+    try {
+      const b = JSON.parse(await readBody(req)) as Record<string, unknown>;
+      const today = todayUtc(), yesterday = todayUtc(new Date(now - 86_400_000));
+      const date = String(b.date ?? '');
+      const score = Math.floor(Number(b.score));
+      if (!isDateString(date) || (date !== today && date !== yesterday) || !Number.isFinite(score) || score < 0 || score > 5_000_000) { res.writeHead(400, cors); res.end('{"ok":false,"error":"score invalide"}'); return true; }
+      recent.push(now); dailyRate.set(ip, recent);
+      const e: DailyEntry = { name: cleanName(b.name, 'Anonyme'), score, wave: Math.max(0, Math.min(999, Math.floor(Number(b.wave)) || 0)), charId: String(b.charId ?? '').slice(0, 16), ts: now };
+      if (dailyPut(date, e)) {
+        try { await mkdir(dirname(DAILY_FILE), { recursive: true }); await appendFile(DAILY_FILE, JSON.stringify({ ...e, date }) + '\n'); } catch (err) { console.warn('écriture défi impossible', (err as Error).message); }
+      }
+      const top = dailyTop(date);
+      res.writeHead(200, cors); res.end(JSON.stringify({ ok: true, rank: top.findIndex((x) => x.name === e.name) + 1, top }));
+    } catch { res.writeHead(400, cors); res.end('{"ok":false,"error":"requête invalide"}'); }
+    return true;
+  }
+  return false;
+}
+
 const http = createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://x');
   if (await handleIdeas(req, res, url)) return;
+  if (await handleDaily(req, res, url)) return;
   if (url.pathname === '/health') {
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ ok: true, rooms: rooms.size, clients: clients.size }));
