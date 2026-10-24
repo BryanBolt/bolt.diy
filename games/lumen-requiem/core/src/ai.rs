@@ -53,7 +53,7 @@ pub fn opponents(b: &Battle, actor: &Unit) -> Vec<UnitId> {
     let mut v: Vec<(f32, UnitId)> = b
         .units
         .iter()
-        .filter(|u| u.team != actor.team && u.alive() && !u.statuses.has(StatusId::Specter))
+        .filter(|u| u.team != actor.team && u.alive() && !u.statuses.has(StatusId::Specter) && !u.statuses.has(StatusId::Crystal))
         .filter(|u| dist(actor, u) <= b.settings.engage_radius)
         .map(|u| (dist(actor, u), u.id))
         .collect();

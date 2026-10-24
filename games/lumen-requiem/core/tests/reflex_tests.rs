@@ -481,3 +481,15 @@ fn mirror_reflects_and_revers_inverts() {
     sim::apply(&mut s.b, s.lysa, s.nyra, A_SUTURE, 1.0, false);
     assert!(s.b.unit(s.nyra).hp < 200.0);
 }
+
+#[test]
+fn crystallized_units_are_not_targets() {
+    // Régression : une statue de cristal « vivante » bloquait « ennemi le plus proche ».
+    let mut s = setup();
+    s.b.unit_mut(s.nyra).statuses.apply(StatusId::Crystal, None);
+    s.b.unit_mut(s.nyra).pos.x = 250.0;
+    s.b.unit_mut(s.foe).pos.x = 400.0;
+    s.b.unit_mut(s.foe).book = book(&[(FoeNearest, A_ATTACK)]);
+    let p = decide(&s.b, s.foe, None).expect("l'ennemi doit viser une cible valide");
+    assert_ne!(p.target, s.nyra);
+}

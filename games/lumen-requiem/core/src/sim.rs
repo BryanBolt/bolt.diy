@@ -342,6 +342,22 @@ fn ai_control(b: &mut Battle, id: UnitId, dt: f32) {
             }
         }
     }
+    // Exploration : un meneur piloté par l'IA avance vers l'ennemi vivant le plus proche
+    // tant qu'aucun ennemi n'est à portée d'engagement (mouvement, pas une décision de combat).
+    if b.unit(id).job.is_none() && b.unit(id).team == Team::Ally && b.leader == Some(id) && b.unit(id).statuses.can_move() {
+        let me = b.unit(id).pos;
+        let reach = 560.0;
+        let near = b.foes().any(|f| f.alive() && (f.engaged || f.pos.dist(me) <= reach));
+        if !near {
+            if let Some(f) = b.foes().filter(|f| f.alive()).min_by(|x, y| x.pos.dist(me).partial_cmp(&y.pos.dist(me)).unwrap_or(std::cmp::Ordering::Equal)) {
+                let dx = f.pos.x - me.x;
+                let sp = move_speed(b, id);
+                let u = b.unit_mut(id);
+                u.move_x = dx.signum() * sp;
+                u.facing = dx.signum();
+            }
+        }
+    }
     // Sans action : les alliés suivent le meneur (déplacement, pas une action).
     if b.unit(id).job.is_none() && b.unit(id).team == Team::Ally {
         if let Some(l) = b.leader {

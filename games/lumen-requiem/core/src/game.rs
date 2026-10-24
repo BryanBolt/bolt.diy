@@ -853,7 +853,7 @@ impl Game {
                     r.guest = next >= 1;
                     for h in r.heroes.iter_mut() {
                         h.ko = false;
-                        h.hp_ratio = h.hp_ratio.max(0.6);
+                        h.hp_ratio = h.hp_ratio.max(0.85);
                         h.mp_ratio = 1.0;
                     }
                 }
@@ -997,7 +997,7 @@ impl Game {
         b.inventory = run.inventory.clone();
         b.inventory.reserved = [0; ITEM_COUNT];
         // Ennemis
-        let lvl = 1 + sector as u32 * 4 + layer as u32 / 2;
+        let lvl = 1 + sector as u32 * 7 / 2 + layer as u32 / 2;
         let pool: &[usize] = match sector {
             0 => &[F_SOLDIER, F_SOLDIER, F_HOUND, F_DRONE, F_BOMB],
             1 => &[F_WRAITH, F_JELLY, F_SPECIMEN_SMALL, F_DRONE, F_BOMB, F_SOLDIER],
@@ -1168,7 +1168,8 @@ impl Game {
             let leader_out = b.leader.map(|l| b.unit(l).pos.x > exit).unwrap_or(false);
             let all_humans_out = b.units.iter().filter(|u| u.is_human() && u.alive()).all(|u| u.pos.x > exit);
             let boss = run.room == Some(NodeKind::Boss);
-            if (leader_out || all_humans_out) && run.clear_t > 0.8 || (boss && run.clear_t > 3.0) {
+            // Casual : si personne n'atteint la sortie, l'équipe y va d'elle-même après 7 s.
+            if (leader_out || all_humans_out) && run.clear_t > 0.8 || (boss && run.clear_t > 3.0) || run.clear_t > 7.0 {
                 self.finish_room();
             }
         }

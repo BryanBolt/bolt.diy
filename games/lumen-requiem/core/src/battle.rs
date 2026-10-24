@@ -468,10 +468,10 @@ impl Battle {
         let id = self.make_unit(TplRef::Foe(foe), Team::Foe, level, x);
         // Les ennemis sont mis à l'échelle par un facteur de niveau simple.
         let u = self.unit_mut(id);
-        let k = 1.0 + (level.saturating_sub(1) as f32) * 0.12;
+        let k = 1.0 + (level.saturating_sub(1) as f32) * 0.08;
         u.stats.max_hp *= k;
-        u.stats.str_ *= 1.0 + (level.saturating_sub(1) as f32) * 0.06;
-        u.stats.mag *= 1.0 + (level.saturating_sub(1) as f32) * 0.06;
+        u.stats.str_ *= 1.0 + (level.saturating_sub(1) as f32) * 0.045;
+        u.stats.mag *= 1.0 + (level.saturating_sub(1) as f32) * 0.045;
         u.hp = u.stats.max_hp;
         u.gauge = 0.0;
         id

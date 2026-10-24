@@ -133,9 +133,9 @@ pub fn hero_book(hero: usize) -> ReflexBook {
                 (SelfMpBelow(10), A_SIPHON),
                 (FoeFlying, A_GIVRE),
                 (FoeLeaderTarget, A_ATTACK),
+                (AllyStatus(StatusId::Crystal), A_PURGE),
                 (AllyStatus(StatusId::Venom), A_I_ANTIVENIN),
                 (AllyAny, A_EGIDE),
-                (AllyStatus(StatusId::Mute), A_PURGE),
                 (AllyStatus(StatusId::Vertigo), A_EVEIL),
                 (FoeNearestVisible, A_ATTACK),
             ]);
