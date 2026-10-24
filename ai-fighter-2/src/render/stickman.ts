@@ -1,81 +1,123 @@
-// Rendu "encre" des combattants : squelette procédural, poses par état et par coup.
+// Rendu des combattants : silhouettes pleines (aplats, membres épais, bouts arrondis), sans contour ni visage.
 import type { Fighter } from '../sim/types';
 import { getChar, skeletonStyle, PALETTE } from '../sim/chars';
 import { lerp } from '../core/math';
 
-// Angles en degrés. Membres : 0 = vers le bas, positif = vers l'avant (sens du regard).
-// Torse : 0 = vertical, positif = penché en avant.
-export interface Pose {
-  lean: number;
-  head: number;
-  armL: [number, number];
-  armR: [number, number];
-  legL: [number, number];
-  legR: [number, number];
-  hipY: number;
-  hipX: number;
-  spin?: number; // rotation globale (roulade)
+// Conventions (degrés) : 0 = vers le bas, positif = vers l'avant (sens du regard).
+// Bras  [haut, flexion]  : avant-bras = haut + flexion (la main remonte vers l'avant).
+// Jambe [cuisse, flexion] : tibia = cuisse - flexion (le pied part vers l'arrière).
+// 'g' à la place de la flexion du genou : pied posé au sol, flexion calculée.
+type Knee = number | 'g';
+interface AuthPose {
+  lean: number; // torse : 0 vertical, + penché en avant
+  tilt: number; // tête relative au torse
+  aF: [number, number];
+  aB: [number, number];
+  lF: [number, Knee];
+  lB: [number, Knee];
+  h?: number; // hauteur de hanche
+  air?: boolean; // en l'air : la hanche se cale sur le pied le plus bas
+  ground?: boolean; // allongé
+  spin?: number;
 }
 
-const P = (lean: number, head: number, armL: [number, number], armR: [number, number], legL: [number, number], legR: [number, number], hipY = 0, hipX = 0): Pose => ({ lean, head, armL, armR, legL, legR, hipY, hipX });
+export interface Pose {
+  lean: number;
+  tilt: number;
+  aF: [number, number];
+  aB: [number, number];
+  lF: [number, number];
+  lB: [number, number];
+  h: number;
+  spin?: number;
+}
 
-export const POSES: Record<string, Pose> = {
-  idle: P(4, 2, [25, -45], [40, -75], [-12, 6], [14, -4]),
-  guard: P(-2, 0, [55, -105], [75, -125], [-20, 10], [22, -8]),
-  lowGuard: P(8, 0, [50, -100], [70, -120], [-55, 70], [50, 20], -22),
-  jump: P(6, -4, [-20, -30], [60, -90], [-35, 55], [35, 30]),
-  fall: P(-4, -8, [-40, -40], [-30, -60], [-20, 30], [25, 20]),
-  hit: P(-16, -14, [-25, -30], [-40, -20], [-10, 10], [20, 0]),
-  launch: P(-45, -30, [-60, -40], [-80, -30], [40, 20], [70, 10], 10),
-  down: P(90, 8, [75, 5], [88, 0], [-86, 4], [-78, 10], -44),
-  ko: P(90, 14, [70, 8], [100, -6], [-90, 0], [-70, 14], -45),
-  getup: P(50, 4, [60, -40], [75, -60], [-70, 80], [40, 50], -24),
-  stagger: P(-22, -20, [-30, -40], [30, -70], [-25, 15], [30, 0], 2),
-  parry: P(10, 0, [30, -60], [95, -20], [-25, 12], [25, -8]),
-  frozen: P(2, 0, [20, -40], [30, -60], [-10, 5], [12, -4]),
-  win: P(-6, -10, [-30, -20], [185, -5], [-10, 5], [10, -5]),
-  revive: P(28, 15, [70, -20], [80, -30], [-60, 100], [45, 60], -26),
-  crouch: P(12, 2, [30, -60], [45, -80], [-60, 75], [55, 25], -24),
-  shoot0: P(4, 0, [70, -10], [78, -8], [-14, 8], [18, -6]),
-  shoot1: P(0, 0, [88, 0], [92, 0], [-18, 10], [22, -8], 0, -3),
-  grab0: P(14, 4, [50, -20], [60, -20], [-14, 8], [22, -6]),
-  grab1: P(24, 6, [88, 4], [92, 4], [-22, 12], [30, -10], 0, 6),
+const L = { torso: 34, arm: 22, fore: 22, thigh: 26, shin: 26 };
+const DEG = Math.PI / 180;
+
+function resolve(p: AuthPose): Pose {
+  const full = L.thigh + L.shin;
+  let H = p.ground ? 12 : p.h ?? 50;
+  for (const l of [p.lF, p.lB]) if (l[1] === 'g') H = Math.min(H, full * Math.cos(l[0] * DEG) * 0.96);
+  const knee = (t: number, k: Knee): number => {
+    if (k !== 'g') return k;
+    const v = Math.max(-1, Math.min(1, (H - L.thigh * Math.cos(t * DEG)) / L.shin));
+    const a = Math.acos(v) / DEG;
+    const opts: number[] = [];
+    if (a <= t) opts.push(t - a);
+    if (-a <= t) opts.push(t + a);
+    return opts.length ? Math.min(...opts) : 0;
+  };
+  const lF: [number, number] = [p.lF[0], knee(p.lF[0], p.lF[1])];
+  const lB: [number, number] = [p.lB[0], knee(p.lB[0], p.lB[1])];
+  if (p.air) {
+    const depth = (l: [number, number]) => L.thigh * Math.cos(l[0] * DEG) + L.shin * Math.cos((l[0] - l[1]) * DEG);
+    H = Math.max(depth(lF), depth(lB));
+  }
+  return { lean: p.lean, tilt: p.tilt, aF: p.aF, aB: p.aB, lF, lB, h: H, spin: p.spin };
+}
+
+const A = (lean: number, tilt: number, aF: [number, number], aB: [number, number], lF: [number, Knee], lB: [number, Knee], h = 50, extra: Partial<AuthPose> = {}): AuthPose => ({ lean, tilt, aF, aB, lF, lB, h, ...extra });
+
+const AUTH: Record<string, AuthPose> = {
+  idle: A(3, 0, [12, 25], [-6, 18], [6, 'g'], [-8, 'g'], 51),
+  guard: A(6, 0, [48, 108], [34, 118], [22, 'g'], [-22, 'g'], 44),
+  lowGuard: A(10, 0, [50, 100], [34, 110], [40, 'g'], [-36, 'g'], 34),
+  jump: A(6, 0, [70, 60], [-30, 35], [30, 80], [64, 100], 38, { air: true }),
+  fall: A(-4, -8, [-40, 60], [-60, 70], [20, 30], [-10, 50], 40, { air: true }),
+  hit: A(-20, -12, [-45, 22], [-22, 42], [-18, 'g'], [14, 'g'], 48),
+  launch: A(-45, -20, [-70, 20], [-90, 20], [40, 30], [70, 40], 40, { air: true }),
+  down: A(-90, 0, [-80, 10], [-60, 14], [82, 8], [74, 22], 12, { ground: true }),
+  ko: A(-90, -6, [-110, 6], [-140, 10], [70, 10], [96, 14], 12, { ground: true }),
+  getup: A(30, 6, [40, 80], [20, 100], [60, 90], [-30, 'g'], 30),
+  stagger: A(-22, -14, [-30, 40], [30, 30], [-22, 'g'], [20, 'g'], 49),
+  parry: A(10, 0, [30, 80], [95, 20], [24, 'g'], [-20, 'g'], 46),
+  frozen: A(2, 0, [12, 25], [-6, 18], [6, 'g'], [-8, 'g'], 51),
+  win: A(-6, -10, [30, 40], [175, 5], [8, 'g'], [-8, 'g'], 51),
+  revive: A(28, 15, [70, 40], [80, 30], [50, 'g'], [-30, 'g'], 30),
+  crouch: A(12, 2, [30, 100], [44, 100], [40, 'g'], [-40, 'g'], 32),
+  shoot0: A(4, 0, [70, 20], [78, 15], [16, 'g'], [-16, 'g'], 48),
+  shoot1: A(0, 0, [88, 2], [92, 2], [18, 'g'], [-18, 'g'], 47),
+  grab0: A(14, 4, [50, 30], [60, 30], [22, 'g'], [-14, 'g'], 46),
+  grab1: A(24, 6, [88, 4], [92, 4], [30, 'g'], [-24, 'g'], 44),
   // coups : [préparation, frappe]
-  jab0: P(2, 0, [30, -60], [-25, -90], [-12, 6], [14, -4]),
-  jab1: P(10, 0, [20, -50], [98, -2], [-16, 8], [22, -6]),
-  cross0: P(-4, 0, [-20, -85], [45, -70], [-12, 6], [14, -4]),
-  cross1: P(16, 2, [105, 0], [20, -50], [-22, 10], [30, -8], 0, 4),
-  kick0: P(-6, 0, [30, -50], [-30, -60], [-14, 8], [-35, 45]),
-  kick1: P(-14, 0, [-30, -40], [-50, -60], [-25, 12], [98, 2], 2),
-  heavy0: P(-18, -6, [-60, -100], [-150, -40], [-15, 8], [10, 0], -4),
-  heavy1: P(30, 10, [40, -30], [70, 10], [-30, 15], [35, -10], -2, 6),
-  uppercut0: P(18, 6, [30, -40], [-20, -110], [-50, 60], [40, 20], -18),
-  uppercut1: P(-12, -10, [-20, -30], [175, -5], [-15, 5], [30, -20], 10, 4),
-  sweep0: P(14, 2, [40, -60], [-20, -70], [-60, 80], [-30, 40], -32),
-  sweep1: P(26, 4, [-30, -60], [60, -30], [-65, 85], [92, 0], -34, 4),
-  knee0: P(10, 0, [40, -70], [-30, -50], [-15, 8], [-20, 30]),
-  knee1: P(14, -2, [-40, -50], [-60, -30], [-25, 12], [95, -20], 4, 6),
-  airkick0: P(0, 0, [-20, -40], [40, -80], [-40, 60], [-20, 40]),
-  airkick1: P(-10, -4, [-50, -40], [-20, -60], [-40, 60], [85, 70]),
-  dive0: P(30, 0, [-40, -60], [-60, -60], [-20, 30], [20, 20]),
-  dive1: P(65, 10, [60, 0], [90, -10], [-40, 20], [-20, 30], 6),
-  special0: P(-8, 0, [-40, -110], [-50, -110], [-15, 8], [15, -4]),
-  special1: P(12, 2, [95, -5], [100, 0], [-25, 12], [30, -8], 0, 4),
-  rising0: P(20, 8, [20, -40], [-30, -120], [-55, 70], [45, 25], -20),
-  rising1: P(-18, -14, [-30, -20], [178, -8], [-10, 0], [25, -30], 14, 2),
-  super0: P(-10, 0, [-60, -100], [-70, -100], [-15, 8], [15, -4], -4),
-  super1: P(14, 4, [110, 0], [100, -5], [-28, 14], [34, -10], 0, 6),
-  charge0: P(20, 6, [-40, -70], [60, -90], [-20, 10], [20, -10]),
-  charge1: P(38, 10, [-60, -60], [80, -110], [-45, 30], [50, -20], 2, 8),
-  slam0: P(-16, -10, [-170, -10], [-175, -5], [-15, 8], [15, -4], 4),
-  slam1: P(40, 20, [80, 40], [85, 45], [-55, 70], [50, 30], -22, 4),
-  lasso0: P(-6, 0, [40, -70], [-120, -60], [-15, 8], [15, -4]),
-  lasso1: P(12, 2, [30, -60], [100, 0], [-25, 12], [30, -8], 0, 4),
-  backstab0: P(30, 8, [-50, -40], [-60, -50], [-30, 20], [35, -10], -6),
-  backstab1: P(-10, 0, [40, -40], [-110, -10], [-20, 10], [25, -5], 0, 2),
-  counter0: P(-4, 0, [60, -120], [80, -130], [-15, 8], [15, -4]),
-  counter1: P(18, 4, [-20, -40], [105, 0], [-25, 12], [32, -8], 0, 6),
+  jab0: A(6, 0, [30, 115], [34, 118], [22, 'g'], [-22, 'g'], 44),
+  jab1: A(12, 0, [88, 4], [14, 128], [-30, 'g'], [26, 'g'], 46),
+  cross0: A(-2, 0, [50, 108], [-10, 120], [22, 'g'], [-22, 'g'], 44),
+  cross1: A(16, 2, [40, 110], [90, 4], [24, 'g'], [-30, 'g'], 45),
+  kick0: A(-6, 0, [30, 115], [18, 125], [50, 95], [-4, 'g'], 52),
+  kick1: A(-14, -4, [30, 115], [18, 125], [86, 6], [-4, 'g'], 52),
+  heavy0: A(-16, -6, [-60, 60], [-150, 40], [-18, 'g'], [18, 'g'], 46),
+  heavy1: A(34, 8, [60, 40], [80, 10], [30, 'g'], [-38, 'g'], 42),
+  uppercut0: A(18, 0, [40, 100], [-10, 100], [26, 'g'], [-30, 'g'], 38),
+  uppercut1: A(-8, -8, [30, 115], [160, 10], [10, 'g'], [-14, 'g'], 50),
+  sweep0: A(14, 2, [40, 100], [20, 110], [40, 'g'], [-40, 'g'], 32),
+  sweep1: A(24, 4, [-30, 60], [40, 60], [58, 0], [-50, 'g'], 28),
+  knee0: A(8, 0, [30, 115], [20, 120], [40, 115], [-4, 'g'], 51),
+  knee1: A(8, -2, [30, 115], [20, 120], [80, 95], [-4, 'g'], 52),
+  airkick0: A(0, 0, [50, 70], [-30, 50], [40, 90], [10, 70], 38, { air: true }),
+  airkick1: A(-10, -4, [-40, 40], [-20, 50], [86, 4], [20, 110], 38, { air: true }),
+  dive0: A(30, 0, [-40, 40], [-60, 40], [-20, 60], [20, 70], 38, { air: true }),
+  dive1: A(-50, -6, [-60, 20], [-90, 20], [60, 5], [50, 30], 34, { air: true }),
+  special0: A(-8, 0, [-40, 60], [-60, 70], [-20, 'g'], [20, 'g'], 44),
+  special1: A(12, 2, [90, 0], [92, 0], [34, 'g'], [-34, 'g'], 42),
+  rising0: A(20, 0, [30, 100], [-20, 120], [40, 'g'], [-40, 'g'], 36),
+  rising1: A(-14, -10, [-10, 50], [172, 6], [40, 100], [0, 30], 40, { air: true }),
+  super0: A(-10, 0, [-60, 70], [-70, 70], [-24, 'g'], [24, 'g'], 46),
+  super1: A(14, 4, [96, 4], [100, 0], [34, 'g'], [-34, 'g'], 42),
+  charge0: A(20, 6, [-40, 70], [60, 50], [-20, 'g'], [20, 'g'], 42),
+  charge1: A(40, 10, [-60, 40], [80, 60], [50, 'g'], [-50, 'g'], 38),
+  slam0: A(-14, -8, [170, 10], [175, 5], [-14, 'g'], [14, 'g'], 50),
+  slam1: A(38, 18, [80, 40], [85, 45], [40, 'g'], [-40, 'g'], 34),
+  lasso0: A(-6, 0, [40, 70], [-120, 60], [-16, 'g'], [16, 'g'], 46),
+  lasso1: A(12, 2, [30, 60], [100, 0], [30, 'g'], [-30, 'g'], 44),
+  backstab0: A(30, 8, [-50, 40], [-60, 50], [30, 'g'], [-34, 'g'], 42),
+  backstab1: A(-10, 0, [40, 50], [-100, 10], [16, 'g'], [-20, 'g'], 48),
+  counter0: A(-4, 0, [60, 100], [80, 90], [22, 'g'], [-20, 'g'], 46),
+  counter1: A(18, 4, [-20, 40], [100, 0], [30, 'g'], [-30, 'g'], 44),
 };
+
+export const POSES: Record<string, Pose> = Object.fromEntries(Object.entries(AUTH).map(([k, v]) => [k, resolve(v)]));
 
 const ANIM_KEYS = ['shoot', 'grab', 'jab', 'cross', 'kick', 'heavy', 'uppercut', 'sweep', 'knee', 'airkick', 'dive', 'special', 'rising', 'super', 'charge', 'slam', 'lasso', 'backstab', 'counter'];
 
@@ -83,13 +125,12 @@ function lerpPose(a: Pose, b: Pose, t: number): Pose {
   const l = (x: number, y: number) => lerp(x, y, t);
   return {
     lean: l(a.lean, b.lean),
-    head: l(a.head, b.head),
-    armL: [l(a.armL[0], b.armL[0]), l(a.armL[1], b.armL[1])],
-    armR: [l(a.armR[0], b.armR[0]), l(a.armR[1], b.armR[1])],
-    legL: [l(a.legL[0], b.legL[0]), l(a.legL[1], b.legL[1])],
-    legR: [l(a.legR[0], b.legR[0]), l(a.legR[1], b.legR[1])],
-    hipY: l(a.hipY, b.hipY),
-    hipX: l(a.hipX, b.hipX),
+    tilt: l(a.tilt, b.tilt),
+    aF: [l(a.aF[0], b.aF[0]), l(a.aF[1], b.aF[1])],
+    aB: [l(a.aB[0], b.aB[0]), l(a.aB[1], b.aB[1])],
+    lF: [l(a.lF[0], b.lF[0]), l(a.lF[1], b.lF[1])],
+    lB: [l(a.lB[0], b.lB[0]), l(a.lB[1], b.lB[1])],
+    h: l(a.h, b.h),
     spin: l(a.spin ?? 0, b.spin ?? 0),
   };
 }
@@ -101,35 +142,43 @@ function easeIn(t: number): number {
   return t * t;
 }
 
+/** Cycle de marche / course : jambe qui avance = genou fléchi, jambe d'appui = pied au sol. */
+function cycle(f: Fighter, time: number, run: boolean): Pose {
+  const w = time * (run ? 0.42 : 0.26) + f.id;
+  const sw = Math.sin(w), cw = Math.cos(w);
+  const amp = run ? 42 : 24, flex = run ? 105 : 45, armAmp = run ? 46 : 22;
+  return resolve({
+    lean: run ? 20 : 5,
+    tilt: run ? 4 : 0,
+    aF: [-sw * armAmp, run ? 95 : 22],
+    aB: [sw * armAmp, run ? 90 : 28],
+    lF: [sw * amp, cw > 0.08 ? flex * cw : 'g'],
+    lB: [-sw * amp, cw < -0.08 ? -flex * cw : 'g'],
+    h: run ? 46 : 49,
+  });
+}
+
 /** Calcule la pose courante d'un combattant (rendu uniquement : Math.sin autorisé). */
 export function poseFor(f: Fighter, time: number): Pose {
   const s = f.state;
   const ph = time * 0.11 + f.id * 1.7;
-  const breathe = Math.sin(ph) * 1.2;
+  const breathe = Math.sin(ph);
   switch (s) {
     case 'idle': {
-      const p = { ...POSES.idle, hipY: breathe };
-      p.armL = [25 + Math.sin(ph) * 3, -45 + Math.sin(ph) * 2];
-      p.armR = [40 + Math.sin(ph + 1) * 3, -75];
-      return p;
+      const p = POSES.idle;
+      return { ...p, h: p.h + breathe * 0.7, aF: [p.aF[0] + breathe * 3, p.aF[1]], aB: [p.aB[0] - breathe * 2, p.aB[1]] };
     }
     case 'walk':
-    case 'run': {
-      const run = s === 'run';
-      const speed = run ? 0.42 : 0.26;
-      const w = time * speed + f.id;
-      const amp = run ? 48 : 26;
-      const sw = Math.sin(w);
-      const p = P(run ? 18 : 6, run ? 4 : 1, [25 - sw * (run ? 55 : 22), run ? -90 : -50], [25 + sw * (run ? 55 : 22), run ? -90 : -50], [sw * amp, Math.max(0, -sw) * (run ? 90 : 40)], [-sw * amp, Math.max(0, sw) * (run ? 90 : 40)], Math.abs(sw) * (run ? 5 : 2));
-      return p;
-    }
+      return cycle(f, time, false);
+    case 'run':
+      return cycle(f, time, true);
     case 'jump':
       return f.vy > 2 ? POSES.jump : f.vy < -2 ? POSES.fall : lerpPose(POSES.jump, POSES.fall, 0.5);
     case 'guard':
       return f.lowGuard ? POSES.lowGuard : POSES.guard;
     case 'block': {
       const p = f.lowGuard ? POSES.lowGuard : POSES.guard;
-      return { ...p, lean: p.lean - 8 + f.stateFrame * 0.5, hipX: -4 };
+      return { ...p, lean: p.lean - 8 + f.stateFrame * 0.5 };
     }
     case 'hit':
       return lerpPose(POSES.hit, POSES.idle, Math.min(1, f.stateFrame / Math.max(1, f.hitFrames)) * 0.5);
@@ -139,27 +188,26 @@ export function poseFor(f: Fighter, time: number): Pose {
       return POSES.down;
     case 'ko':
       return f.y > 0.5 ? { ...POSES.launch, lean: Math.max(-100, -60 - f.stateFrame * 2) } : POSES.ko;
-    case 'getup':
-      return lerpPose(POSES.getup, POSES.idle, easeOut(f.stateFrame / 14));
+    case 'getup': {
+      const t = easeOut(Math.min(1, f.stateFrame / 14));
+      return t < 0.5 ? lerpPose(POSES.down, POSES.getup, t * 2) : lerpPose(POSES.getup, POSES.idle, (t - 0.5) * 2);
+    }
     case 'stagger': {
-      const p = { ...POSES.stagger };
-      p.lean += Math.sin(f.stateFrame * 0.6) * 6;
-      return p;
+      const p = POSES.stagger;
+      return { ...p, lean: p.lean + Math.sin(f.stateFrame * 0.6) * 6 };
     }
     case 'parry':
       return lerpPose(POSES.parry, POSES.idle, easeIn(Math.min(1, f.stateFrame / 14)));
     case 'dodge': {
       const t = f.stateFrame / 20;
       const spin = (f.vx !== 0 ? 1 : 0) * t * 360 * (f.vx >= 0 === f.facing >= 0 ? 1 : -1);
-      return { ...POSES.crouch, spin, hipY: -20 + Math.sin(t * Math.PI) * 6 };
+      return { ...POSES.crouch, spin, h: 40 + Math.sin(t * Math.PI) * 6 };
     }
     case 'frozen':
       return POSES.frozen;
     case 'win': {
-      const p = { ...POSES.win };
-      p.armR = [185 + Math.sin(time * 0.3) * 10, -5];
-      p.hipY = Math.abs(Math.sin(time * 0.25)) * 6;
-      return p;
+      const p = POSES.win;
+      return { ...p, aB: [175 + Math.sin(time * 0.3) * 10, 5], h: p.h + Math.abs(Math.sin(time * 0.25)) * 5 };
     }
     case 'revive':
       return POSES.revive;
@@ -176,47 +224,35 @@ function attackPose(f: Fighter, time: number): Pose {
   if (!m) return POSES.idle;
   const fr = f.stateFrame;
   const activeEnd = m.startup + m.active;
-  if (m.id === 'shoot') return { ...POSES.shoot1, hipX: -Math.max(0, 3 - fr) };
-  if (m.anim === 'tatsu') {
-    const p = { ...POSES.airkick1 };
-    p.spin = (fr % 14) / 14 * 360 * (fr > 4 ? 1 : 0);
-    p.hipY = 8;
-    return p;
-  }
+  if (m.id === 'shoot') return POSES.shoot1;
+  if (m.anim === 'tatsu') return { ...POSES.airkick1, spin: ((fr % 14) / 14) * 360 * (fr > 4 ? 1 : 0), h: POSES.airkick1.h + 8 };
   if (m.anim === 'flurrykick') {
     const t = Math.floor(fr / 3) % 2;
-    const p = { ...POSES.kick1 };
-    p.legR = t ? [98, 2] : [-20, 20];
-    p.legL = t ? [-20, 20] : [96, 2];
-    p.lean = -10;
-    return p;
+    const p = POSES.kick1;
+    const out: [number, number] = [86, 6], tuck: [number, number] = [30, 90];
+    return { ...p, lean: -10, lF: t ? out : tuck, lB: t ? tuck : out };
   }
-  if (m.anim === 'flash') {
-    const p = { ...POSES.rising1 };
-    p.spin = -Math.min(360, Math.max(0, (fr - 4) * 30));
-    p.hipY = 14;
-    return p;
-  }
+  if (m.anim === 'flash') return { ...POSES.rising1, spin: -Math.min(360, Math.max(0, (fr - 4) * 30)), h: POSES.rising1.h + 14 };
   const key = ANIM_KEYS.includes(m.anim) ? m.anim : 'jab';
-  if (m.anim === 'jab' && m.multi) { const p = { ...POSES.jab1 }; p.armR = fr % 4 < 2 ? [98, -2] : [30, -50]; p.armL = fr % 4 < 2 ? [30, -50] : [98, -2]; if (fr > m.startup && fr <= m.startup + m.active) return p; }
+  if (m.anim === 'jab' && m.multi && fr > m.startup && fr <= activeEnd) {
+    const a = fr % 4 < 2;
+    return { ...POSES.jab1, aF: a ? [88, 4] : [30, 115], aB: a ? [30, 115] : [88, 4] };
+  }
   const p0 = POSES[key + '0'] ?? POSES.jab0;
   const p1 = POSES[key + '1'] ?? POSES.jab1;
   if (key === 'super') {
-    // alternance rapide pendant les frames actives
     if (fr <= m.startup) return lerpPose(POSES.idle, p0, easeOut(fr / Math.max(1, m.startup)));
-    if (fr <= activeEnd) return (Math.floor((fr - m.startup) / 4) % 2 === 0) ? p1 : POSES.cross1;
+    if (fr <= activeEnd) return Math.floor((fr - m.startup) / 4) % 2 === 0 ? p1 : POSES.cross1;
     return lerpPose(p1, POSES.idle, easeOut((fr - activeEnd) / Math.max(1, m.recovery)));
   }
   if (fr <= m.startup) {
     const t = fr / Math.max(1, m.startup);
-    // préparation : idle -> p0 (65 % du temps), puis p0 -> p1 très vite
     if (t < 0.65) return lerpPose(POSES.idle, p0, easeOut(t / 0.65));
     return lerpPose(p0, p1, easeIn((t - 0.65) / 0.35));
   }
   if (fr <= activeEnd) {
-    const p = { ...p1 };
-    if (m.multi) p.armR = [p1.armR[0] + Math.sin(time * 1.5) * 15, p1.armR[1]];
-    return p;
+    if (m.multi) return { ...p1, aF: [p1.aF[0] + Math.sin(time * 1.5) * 15, p1.aF[1]] };
+    return p1;
   }
   return lerpPose(p1, POSES.idle, easeOut((fr - activeEnd) / Math.max(1, m.recovery)));
 }
@@ -224,8 +260,6 @@ function attackPose(f: Fighter, time: number): Pose {
 // ---------------------------------------------------------------------------
 // Dessin
 // ---------------------------------------------------------------------------
-
-const DEG = Math.PI / 180;
 
 export interface DrawOpts {
   x: number; // position écran du centre des pieds
@@ -244,6 +278,16 @@ export function colorsFor(f: Fighter): { main: string; dark: string; glow: strin
   return pal;
 }
 
+function luma(hex: string): number {
+  const n = parseInt(hex.slice(1), 16);
+  return 0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255);
+}
+
+/** Couleur qui ressort sur le corps (bandeau, écharpe, visière). */
+function accent(main: string): string {
+  return luma(main) > 150 ? '#14161f' : '#ffffff';
+}
+
 export function drawStickman(ctx: CanvasRenderingContext2D, f: Fighter, pose: Pose, o: DrawOpts): void {
   drawBody(ctx, f, pose, o, false);
   if (o.flash && o.flash > 0) drawBody(ctx, f, pose, { ...o, alpha: (o.alpha ?? 1) * Math.min(0.85, o.flash) }, true);
@@ -255,7 +299,7 @@ function drawBody(ctx: CanvasRenderingContext2D, f: Fighter, pose: Pose, o: Draw
   const col = colorsFor(f);
   const S = o.scale * sk.scale;
   const fx = o.facing;
-  const thick = sk.thickness * S;
+  const thick = (sk.thickness * 1.5 + 1.5) * S;
   ctx.save();
   ctx.translate(o.x, o.y);
   ctx.globalAlpha = o.alpha ?? 1;
@@ -264,37 +308,36 @@ function drawBody(ctx: CanvasRenderingContext2D, f: Fighter, pose: Pose, o: Draw
     ctx.rotate(pose.spin * DEG * fx);
     ctx.translate(0, 50 * S);
   }
-  // squelette : hanche
-  const hipX = pose.hipX * fx * S;
-  const hipY = -(50 + pose.hipY) * S;
+  const hipX = 0;
+  const hipY = -pose.h * S;
   const lean = pose.lean * DEG;
-  const torsoLen = 34 * S;
-  const neckX = hipX + Math.sin(lean) * torsoLen * fx;
-  const neckY = hipY - Math.cos(lean) * torsoLen;
-  const headR = sk.headR * S;
-  const headAng = (pose.lean + pose.head) * DEG;
-  const headX = neckX + Math.sin(headAng) * (headR + 3 * S) * fx;
-  const headY = neckY - Math.cos(headAng) * (headR + 3 * S);
-  const shoulderX = hipX + Math.sin(lean) * torsoLen * 0.9 * fx;
-  const shoulderY = hipY - Math.cos(lean) * torsoLen * 0.9;
+  const neckX = hipX + Math.sin(lean) * L.torso * S * fx;
+  const neckY = hipY - Math.cos(lean) * L.torso * S;
+  const headR = sk.headR * 1.12 * S;
+  const headAng = (pose.lean + pose.tilt) * DEG;
+  const headX = neckX + Math.sin(headAng) * (headR + 2 * S) * fx;
+  const headY = neckY - Math.cos(headAng) * (headR + 2 * S);
+  const shX = hipX + Math.sin(lean) * L.torso * 0.9 * S * fx;
+  const shY = hipY - Math.cos(lean) * L.torso * 0.9 * S;
 
-  const limb = (ox: number, oy: number, a1: number, l1: number, a2: number, l2: number): [number, number, number, number] => {
-    const x1 = ox + Math.sin(a1 * DEG) * l1 * fx;
-    const y1 = oy + Math.cos(a1 * DEG) * l1;
-    const x2 = x1 + Math.sin(a2 * DEG) * l2 * fx;
-    const y2 = y1 + Math.cos(a2 * DEG) * l2;
-    return [x1, y1, x2, y2];
+  const joint = (ox: number, oy: number, a1: number, l1: number, a2: number, l2: number): number[] => {
+    const x1 = ox + Math.sin(a1 * DEG) * l1 * S * fx;
+    const y1 = oy + Math.cos(a1 * DEG) * l1 * S;
+    return [x1, y1, x1 + Math.sin(a2 * DEG) * l2 * S * fx, y1 + Math.cos(a2 * DEG) * l2 * S];
   };
-  const UA = 22 * S, FA = 22 * S, TH = 26 * S, SH = 26 * S;
-  const aL = limb(shoulderX, shoulderY, pose.armL[0], UA, pose.armL[0] + pose.armL[1], FA);
-  const aR = limb(shoulderX, shoulderY, pose.armR[0], UA, pose.armR[0] + pose.armR[1], FA);
-  const lL = limb(hipX, hipY, pose.legL[0], TH, pose.legL[0] + pose.legL[1], SH);
-  const lR = limb(hipX, hipY, pose.legR[0], TH, pose.legR[0] + pose.legR[1], SH);
+  const arm = (a: [number, number]) => joint(shX, shY, a[0], L.arm, a[0] + a[1], L.fore);
+  const leg = (l: [number, number]) => joint(hipX, hipY, l[0], L.thigh, l[0] - l[1], L.shin);
+  const aF = arm(pose.aF), aB = arm(pose.aB), lF = leg(pose.lF), lB = leg(pose.lB);
+  const footDir = (l: [number, number]): [number, number] => {
+    const s = (l[0] - l[1]) * DEG;
+    return [Math.cos(s) * fx, -Math.sin(s)];
+  };
 
-  const main = tint ? '#ffffff' : o.ghost ? col.glow : col.main;
-  const dark = tint ? '#ffffff' : (o.outline ?? (o.ghost ? col.main : f.rage ? '#4a0a0a' : f.boss ? '#3a2a00' : '#141622'));
+  const lum = luma(col.main);
+  const main = tint ? '#ffffff' : o.ghost ? '#aab1be' : col.main;
+  const back = tint || o.ghost ? main : lum < 70 ? shade(main, 0.22) : shade(main, -0.2);
 
-  const strokePath = (pts: number[][], width: number, color: string) => {
+  const stroke = (pts: number[][], width: number, color: string) => {
     ctx.beginPath();
     ctx.moveTo(pts[0][0], pts[0][1]);
     for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
@@ -304,68 +347,31 @@ function drawBody(ctx: CanvasRenderingContext2D, f: Fighter, pose: Pose, o: Draw
     ctx.lineJoin = 'round';
     ctx.stroke();
   };
+  const limbs = (a: number[], origin: number[], fd: [number, number] | null, color: string) => {
+    const pts = [origin, [a[0], a[1]], [a[2], a[3]]];
+    if (fd) pts.push([a[2] + fd[0] * 6 * S, a[3] + fd[1] * 6 * S]);
+    stroke(pts, thick, color);
+    if (!fd) {
+      ctx.beginPath();
+      ctx.arc(a[2], a[3], thick * 0.62, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+    }
+  };
 
-  // ordre : membre arrière, corps, membre avant
-  const back = [[[shoulderX, shoulderY], [aL[0], aL[1]], [aL[2], aL[3]]], [[hipX, hipY], [lL[0], lL[1]], [lL[2], lL[3]]]];
-  const front = [[[shoulderX, shoulderY], [aR[0], aR[1]], [aR[2], aR[3]]], [[hipX, hipY], [lR[0], lR[1]], [lR[2], lR[3]]]];
-  const body = [[hipX, hipY], [neckX, neckY]];
+  if (!tint) drawAccessoryBack(ctx, sk.accessory, neckX, neckY, shX, shY, fx, S, col, o.time, f);
 
-  // cape / accessoires arrière
-  if (!tint) drawAccessoryBack(ctx, sk.accessory, neckX, neckY, shoulderX, shoulderY, fx, S, col, o.time, f);
-
-  // contours
-  for (const pts of back) strokePath(pts, thick + 3.5 * S, dark);
-  strokePath(body, thick + 4.5 * S, dark);
-  for (const pts of front) strokePath(pts, thick + 3.5 * S, dark);
-  // remplissage couleur
-  const backColor = o.ghost || tint ? main : shade(main, -0.22);
-  for (const pts of back) strokePath(pts, thick, backColor);
-  strokePath(body, thick + 1.2 * S, main);
-  for (const pts of front) strokePath(pts, thick, main);
-  // mains / pieds
-  for (const [px, py] of [[aL[2], aL[3]], [aR[2], aR[3]], [lL[2], lL[3]], [lR[2], lR[3]]]) {
-    ctx.beginPath();
-    ctx.arc(px, py, thick * 0.55, 0, Math.PI * 2);
-    ctx.fillStyle = dark;
-    ctx.fill();
-  }
-  // arme tenue dans la main avant
-  if (f.weapon > 0 && f.weaponKind && !tint) drawHeldWeapon(ctx, f.weaponKind, aR[2], aR[3], (pose.armR[0] + pose.armR[1]) * DEG, fx, S, thick, o.time);
-  // tête
-  ctx.beginPath();
-  ctx.arc(headX, headY, headR + 2.2 * S, 0, Math.PI * 2);
-  ctx.fillStyle = dark;
-  ctx.fill();
+  limbs(aB, [shX, shY], null, back);
+  limbs(lB, [hipX, hipY], footDir(pose.lB), back);
+  stroke([[hipX, hipY], [neckX, neckY]], thick * 1.18, main);
+  limbs(lF, [hipX, hipY], footDir(pose.lF), main);
+  limbs(aF, [shX, shY], null, main);
+  if (f.weapon > 0 && f.weaponKind && !tint) drawHeldWeapon(ctx, f.weaponKind, aF[2], aF[3], (pose.aF[0] + pose.aF[1]) * DEG, fx, S, thick * 0.6, o.time);
   ctx.beginPath();
   ctx.arc(headX, headY, headR, 0, Math.PI * 2);
-  ctx.fillStyle = o.ghost || tint ? main : '#f3e9dc';
+  ctx.fillStyle = main;
   ctx.fill();
-  // yeux
-  const ko = f.state === 'ko';
   if (tint) { ctx.restore(); return; }
-  ctx.strokeStyle = '#141622';
-  ctx.lineWidth = 1.6 * S;
-  const ex = headX + fx * headR * 0.35;
-  const ey = headY - headR * 0.1;
-  if (ko) {
-    for (const dx of [-3, 3]) {
-      ctx.beginPath();
-      ctx.moveTo(ex + (dx - 2) * S, ey - 2 * S); ctx.lineTo(ex + (dx + 2) * S, ey + 2 * S);
-      ctx.moveTo(ex + (dx + 2) * S, ey - 2 * S); ctx.lineTo(ex + (dx - 2) * S, ey + 2 * S);
-      ctx.stroke();
-    }
-  } else {
-    ctx.fillStyle = '#141622';
-    ctx.beginPath();
-    ctx.arc(ex, ey, 1.6 * S, 0, Math.PI * 2);
-    ctx.fill();
-    // sourcil (expression)
-    const angry = f.state === 'attack' || f.comboHits > 2;
-    ctx.beginPath();
-    ctx.moveTo(ex - 4 * S, ey - (angry ? 3 : 5) * S);
-    ctx.lineTo(ex + 3 * S, ey - (angry ? 5.5 : 5) * S);
-    ctx.stroke();
-  }
   drawAccessoryFront(ctx, sk.accessory, headX, headY, headR, fx, S, col, o.time, f);
   ctx.restore();
 }
@@ -398,7 +404,7 @@ function drawAccessoryBack(ctx: CanvasRenderingContext2D, acc: string, nx: numbe
       const len = (acc === 'ponytail' ? 26 : 22) * S;
       ctx.quadraticCurveTo(base[0] - fx * (len * 0.6 + motion * 20 * S), base[1] + 4 * S + wave * (i + 1) * 0.5, base[0] - fx * (len + motion * 28 * S), base[1] + (8 + i * 8) * S + wave);
       ctx.lineWidth = (acc === 'ponytail' ? 4 : 3) * S;
-      ctx.strokeStyle = acc === 'ponytail' ? '#141622' : col.main;
+      ctx.strokeStyle = acc === 'ponytail' ? col.dark : accent(col.main);
       ctx.stroke();
     }
   }
@@ -412,7 +418,7 @@ function drawAccessoryFront(ctx: CanvasRenderingContext2D, acc: string, hx: numb
       ctx.moveTo(hx - r, hy - r * 0.35);
       ctx.lineTo(hx + r, hy - r * 0.35);
       ctx.lineWidth = 3.2 * S;
-      ctx.strokeStyle = col.main;
+      ctx.strokeStyle = accent(col.main);
       ctx.stroke();
       break;
     case 'horns':
@@ -421,7 +427,7 @@ function drawAccessoryFront(ctx: CanvasRenderingContext2D, acc: string, hx: numb
         ctx.moveTo(hx + d * r * 0.6, hy - r * 0.7);
         ctx.lineTo(hx + d * r * 1.1, hy - r * 1.7);
         ctx.lineWidth = 3.5 * S;
-        ctx.strokeStyle = '#141622';
+        ctx.strokeStyle = col.dark;
         ctx.stroke();
       }
       break;
@@ -456,7 +462,7 @@ function drawAccessoryFront(ctx: CanvasRenderingContext2D, acc: string, hx: numb
       ctx.moveTo(hx - r * 0.3, hy - r * 0.15);
       ctx.lineTo(hx + fx * r * 1.05, hy - r * 0.15);
       ctx.lineWidth = 4 * S;
-      ctx.strokeStyle = col.main;
+      ctx.strokeStyle = accent(col.main);
       ctx.stroke();
       break;
     case 'bands':
@@ -465,7 +471,7 @@ function drawAccessoryFront(ctx: CanvasRenderingContext2D, acc: string, hx: numb
       ctx.moveTo(hx - r, hy - r * 0.4);
       ctx.lineTo(hx + r, hy - r * 0.4);
       ctx.lineWidth = 2.6 * S;
-      ctx.strokeStyle = '#141622';
+      ctx.strokeStyle = accent(col.main);
       ctx.stroke();
       break;
     default:

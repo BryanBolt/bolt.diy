@@ -1,7 +1,7 @@
 // Écrans DOM : menus, options, aide, lobby. Le rendu du jeu lui-même reste sur le canvas.
 import { ROSTER, getChar, PALETTE, COMMANDS } from '../sim/chars';
 import { STAGES } from '../sim/stages';
-import { POSES, drawStickman } from '../render/stickman';
+import { poseFor, drawStickman } from '../render/stickman';
 import type { Fighter } from '../sim/types';
 import type { LobbyOptions, GameMode, PublicRoom } from '../../shared/protocol';
 import type { Profile, Settings } from '../core/storage';
@@ -62,8 +62,7 @@ export function drawPortrait(canvas: HTMLCanvasElement, charId: string, color: n
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
   const f = portraitFighter(charId, color);
-  const pose = { ...POSES.idle, hipY: Math.sin(time * 0.1) * 1.5 };
-  pose.armL = [25 + Math.sin(time * 0.1) * 3, -45];
+  const pose = poseFor(f, time);
   const scale = h / 125;
   ctx.globalAlpha = locked ? 0.35 : 1;
   drawStickman(ctx, f, pose, { x: w / 2, y: h - 6, scale, facing: 1, time });

@@ -325,5 +325,5 @@ export const PALETTE: { name: string; main: string; dark: string; glow: string }
   { name: 'Brun', main: '#c98a4b', dark: '#5c3a16', glow: '#ebc69c' },
   { name: 'Blanc', main: '#eef2ff', dark: '#6b7280', glow: '#ffffff' },
   { name: 'Jaune', main: '#ffe14d', dark: '#8a7400', glow: '#fff3a3' },
-  { name: 'Acier', main: '#9aa7b8', dark: '#3b4452', glow: '#d6dde8' },
+  { name: 'Noir', main: '#17171c', dark: '#0a0a0d', glow: '#8a8f9c' },
 ];

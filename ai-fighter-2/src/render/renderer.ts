@@ -109,12 +109,13 @@ export class Renderer {
     this.ghostTick++;
     for (const f of w.fighters) {
       const m = f.state === 'attack' && f.moveId ? getChar(f.charId).moves[f.moveId] : null;
+      const swing = m && f.stateFrame >= m.startup * 0.6 && f.stateFrame <= m.startup + m.active + 3;
       const fast = f.state === 'run' || f.state === 'dodge' || (m && (m.kind === 'special' || m.kind === 'special2' || m.kind === 'super' || m.kind === 'run'));
-      if (fast && this.ghostTick % 2 === 0) fx.addGhost(f, poseFor(f, this.time));
+      if (swing || (fast && this.ghostTick % 2 === 0)) fx.addGhost(f, poseFor(f, this.time));
     }
     for (const g of fx.ghosts) {
       const { sx, sy, s } = project(this.cam, g.x, g.y, g.z);
-      drawStickman(ctx, g.fighter, g.pose, { x: sx, y: sy, scale: s, facing: g.facing, alpha: (g.life / 14) * 0.35, ghost: true, time: this.time });
+      drawStickman(ctx, g.fighter, g.pose, { x: sx, y: sy, scale: s, facing: g.facing, alpha: (g.life / 14) * 0.45, ghost: true, time: this.time });
     }
 
     // entités triées par profondeur
