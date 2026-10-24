@@ -107,6 +107,29 @@ function startDemo(): void {
   demoTimer = 0;
 }
 
+// ---- Application installable (PWA) : bouton d'installation + indicateur hors ligne ----
+type InstallEvent = Event & { prompt(): Promise<void>; userChoice: Promise<{ outcome: string }> };
+let installEvt: InstallEvent | null = null;
+const standalone = window.matchMedia('(display-mode: standalone)').matches || (navigator as unknown as { standalone?: boolean }).standalone === true;
+const isIos = /iphone|ipad|ipod/i.test(navigator.userAgent) && !('MSStream' in window);
+function installKind(): 'prompt' | 'ios' | '' {
+  if (standalone) return '';
+  return installEvt ? 'prompt' : isIos ? 'ios' : '';
+}
+async function installApp(): Promise<void> {
+  if (installEvt) {
+    await installEvt.prompt();
+    const r = await installEvt.userChoice.catch(() => null);
+    installEvt = null;
+    if (r?.outcome === 'accepted') S.toast('Application installée !', 3000);
+    if (state === 'menu') goMenu();
+  } else S.toast('Sur iPhone / iPad : bouton Partager, puis « Sur l\'écran d\'accueil ».', 7000);
+}
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e as InstallEvent; if (state === 'menu') goMenu(); });
+window.addEventListener('appinstalled', () => { installEvt = null; if (state === 'menu') goMenu(); });
+window.addEventListener('offline', () => { S.toast('Hors ligne : le solo et le jeu local continuent de marcher.', 4000); if (state === 'menu') goMenu(); });
+window.addEventListener('online', () => { S.toast('Connexion rétablie.', 2500); if (state === 'menu') goMenu(); });
+
 function goMenu(): void {
   state = 'menu';
   localOptions.daily = false;
@@ -116,7 +139,7 @@ function goMenu(): void {
   synth.startMusic('menu');
   const onlineResume = noNet ? null : loadOnlineResume();
   const localSave = loadLocalGame();
-  const el = S.show(S.menuHtml(loadProfile(), hasTouch, VERSION, noNet, { online: onlineResume?.code, local: localSave ? localSave.label : undefined }));
+  const el = S.show(S.menuHtml(loadProfile(), hasTouch, VERSION, noNet, { online: onlineResume?.code, local: localSave ? localSave.label : undefined }, { install: installKind(), offline: !navigator.onLine }));
   el.addEventListener('click', (e) => {
     const a = actionOf(e);
     synth.unlock();
@@ -129,6 +152,7 @@ function goMenu(): void {
     else if (a === 'howto') goHowTo(settings().lastChar);
     else if (a === 'options') goOptions();
     else if (a === 'daily') void goDaily();
+    else if (a === 'install') void installApp();
   });
 }
 

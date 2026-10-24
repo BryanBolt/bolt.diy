@@ -282,10 +282,10 @@ function labelFor(k: string): string {
   return L[k] ?? k;
 }
 
-export function menuHtml(profile: Profile, hasTouch: boolean, version: string, noNet = false, resume: { online?: string; local?: string } = {}): string {
+export function menuHtml(profile: Profile, hasTouch: boolean, version: string, noNet = false, resume: { online?: string; local?: string } = {}, pwa: { install?: 'prompt' | 'ios' | ''; offline?: boolean; standalone?: boolean } = {}): string {
   return `<div class="row between" style="align-items:flex-end">
       <h1 class="logo">AI <span>FIGHTER</span> 2<small>BEAT'EM UP · 1 À 4 JOUEURS</small></h1>
-      <div class="small muted" style="text-align:right">Stages : ${profile.stageReached}/${STAGES.length}<br>Record : ${profile.bestScore} pts</div>
+      <div class="small muted" style="text-align:right">${pwa.offline ? '<b style="color:#ffb84d">⚡ Hors ligne</b> · solo et local seulement<br>' : ''}Stages : ${profile.stageReached}/${STAGES.length}<br>Record : ${profile.bestScore} pts</div>
     </div>
     ${resume.online || resume.local ? `<div class="resume">${resume.online ? `<button class="btn primary big" data-action="resume-online">↩ Reprendre la partie en ligne <span class="sub">salon ${esc(resume.online)} · tes coéquipiers t'attendent, une IA joue à ta place</span></button>` : ''}${resume.local ? `<button class="btn primary big" data-action="resume-local">↩ Reprendre la partie locale <span class="sub">${esc(resume.local)} · reprise là où tu t'étais arrêté</span></button>` : ''}</div>` : ''}
     <div class="grid menu" style="margin-top:18px">
@@ -295,6 +295,7 @@ export function menuHtml(profile: Profile, hasTouch: boolean, version: string, n
       <button class="btn menu-item" data-action="daily"><span class="ico">📅</span>Défi du jour<span class="sub">Même partie pour tous, un modificateur par jour, classement en ligne</span></button>
       <button class="btn menu-item" data-action="howto"><span class="ico">📖</span>Comment jouer<span class="sub">Commandes, système de combat, liste des coups</span></button>
       <button class="btn menu-item" data-action="idea"><span class="ico">💡</span>Proposer une idée<span class="sub">Écris ou dicte une amélioration : elle sera lue pour la prochaine version</span></button>
+      ${pwa.install ? `<button class="btn menu-item" data-action="install"><span class="ico">📲</span>Installer l'application<span class="sub">${pwa.install === 'ios' ? 'Sur iPhone / iPad : Partager ⎋ puis « Sur l\'écran d\'accueil »' : 'Icône sur ton écran d\'accueil, plein écran, et jeu hors ligne'}</span></button>` : ''}
       <button class="btn menu-item" data-action="options"><span class="ico">⚙️</span>Options<span class="sub">Son, commandes, tactile, profil</span></button>
     </div>
     <p class="small muted" style="margin:14px 0 0">v${version} · Les parties se jouent en lockstep déterministe : aucune triche possible par l'hôte, tout le monde voit la même chose.</p>`;
