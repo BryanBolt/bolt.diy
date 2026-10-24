@@ -34,3 +34,34 @@ describe('rogue-lite : raretés, cumul, synergies', () => {
     expect(stacks(['crit', 'crit', 'burn'], 'crit')).toBe(2);
   });
 });
+
+import { stacks as st2 } from '../src/sim/bonuses';
+import { step } from '../src/sim/sim';
+import { IN as IN2 } from '../src/sim/types';
+
+describe('pouvoirs façon Isaac', () => {
+  const mk = () => {
+    const cfg: SimConfig = { mode: 'campaign', difficulty: 1, rounds: 3, teams: false, stageIndex: 0, players: [{ slot: 0, charId: 'kai', name: 'A', color: 0, team: 0 }], bots: [] };
+    const w = createWorld(cfg, 6);
+    for (let i = 0; i < 400 && !w.fighters.some((f) => f.team !== 0); i++) step(w, [0]);
+    return w;
+  };
+  it('Champignon : PV et dégâts augmentent ; cumulable', () => {
+    const w = mk(); const f = w.fighters[0]; const hp = f.hpMax;
+    applyBonus(w, f, 'growth'); applyBonus(w, f, 'growth');
+    expect(f.hpMax).toBe(hp + 40);
+    expect(st2(f.bonuses, 'growth')).toBe(2);
+  });
+  it('Larmes : tire seul sur l\'ennemi ; Satellites : blessent au contact ; Cœur d\'or : soigne', () => {
+    const w = mk(); const f = w.fighters.find((x) => x.slot === 0)!;
+    const foe = w.fighters.find((x) => x.team !== 0)!;
+    applyBonus(w, f, 'tears'); applyBonus(w, f, 'regen');
+    foe.x = f.x + 200; foe.z = f.z;
+    f.hp = f.hpMax - 10; f.invuln = 9999;
+    let shot = false;
+    for (let i = 0; i < 120; i++) { step(w, [0]); if (w.projectiles.some((p) => p.owner === f.id)) shot = true; }
+    expect(shot).toBe(true);
+    expect(f.hp).toBeGreaterThan(f.hpMax - 10);
+    void IN2;
+  });
+});

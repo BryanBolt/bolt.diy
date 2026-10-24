@@ -368,7 +368,7 @@ function startBonusPhase(w: World): void {
   for (const f of players(w)) {
     const pool = BONUSES.filter((b) => !f.bonuses.includes(b.id) || STACKABLE.has(b.id));
     const r = rng(w);
-    const options = rollBonuses(pool, 3, w.waveIndex, (lo, hi) => r.int(lo, hi));
+    const options = rollBonuses(pool, 3, w.waveIndex + (w.mode === 'survival' && w.waveIndex % 5 === 4 ? 8 : 0), (lo, hi) => r.int(lo, hi));
     commitRng(w, r);
     w.bonusChoices.push({ slot: f.slot, options, cursor: 0, chosen: f.controller === 'ai' ? 0 : -1 });
   }
@@ -400,6 +400,7 @@ export function applyBonus(w: World, f: Fighter, b: BonusId): void {
     case 'power': f.stats.power *= 1.15; break;
     case 'speed': f.stats.speed *= 1.12; break;
     case 'vitality': f.hpMax += 30; f.hp = f.hpMax; break;
+    case 'growth': f.hpMax += 20; f.hp = Math.min(f.hpMax, f.hp + 20); f.stats.power *= 1.1; break;
     case 'armor': f.stats.defense *= 1.15; break;
     default: break;
   }
@@ -1168,6 +1169,38 @@ export function setState(f: Fighter, s: FState): void {
   if (s === 'idle' || s === 'walk') f.chainIndex = 0;
 }
 
+/** Pouvoirs passifs façon Isaac : orbes satellites, tir automatique, régénération. */
+export function orbitPos(f: Fighter, frame: number, i: number, n: number): { x: number; z: number } {
+  const a = frame * 0.09 + (i / n) * Math.PI * 2;
+  return { x: f.x + Math.cos(a) * 62, z: f.z + Math.sin(a) * 28 };
+}
+
+function stepItemPowers(w: World, f: Fighter): void {
+  const orbs = stacks(f.bonuses, 'orbital');
+  if (orbs && w.frame % 12 === 0) {
+    for (let i = 0; i < orbs; i++) {
+      const p = orbitPos(f, w.frame, i, orbs);
+      for (const e of w.fighters) {
+        if (e.team === f.team || !alive(e) || e.invuln > 0 || Math.abs(e.x - p.x) > 30 || Math.abs(e.z - p.z) > 34 || e.y > 90) continue;
+        damageRaw(w, e, Math.max(1, Math.round(4 * f.stats.power / e.stats.defense)), f.id);
+        if (hasSyn(f, 'cosmos')) { e.status.burn = Math.max(e.status.burn, 80); e.status.burnDps = Math.max(e.status.burnDps, 1); }
+        w.events.push({ t: 'hit', x: e.x, y: e.y + 60, z: e.z, power: 0.5, blocked: false, crit: false, dir: e.x >= f.x ? 1 : -1, attacker: f.id, target: e.id });
+      }
+    }
+  }
+  const tears = stacks(f.bonuses, 'tears');
+  if (tears && w.frame % Math.max(18, 56 - tears * 9) === 0 && f.state !== 'down' && f.state !== 'held') {
+    let best: Fighter | null = null, bd = 520;
+    for (const e of w.fighters) if (e.team !== f.team && alive(e)) { const d = Math.abs(e.x - f.x) + Math.abs(e.z - f.z) * 0.5; if (d < bd) { bd = d; best = e; } }
+    if (best) {
+      const dir = best.x >= f.x ? 1 : -1;
+      w.projectiles.push({ id: w.nextId++, kind: 'fire', x: f.x + dir * 24, y: f.y + 70, z: f.z, vx: dir * 9, vy: 0, owner: f.id, team: f.team, damage: Math.max(1, Math.round(5 * f.stats.power)), life: 55, radius: 9, pierce: false, hits: [], gravity: 0, homing: 0.04 });
+    }
+  }
+  const rg = stacks(f.bonuses, 'regen');
+  if (rg && w.frame % 90 === 0 && f.hp < f.hpMax && f.hp > 0) f.hp = Math.min(f.hpMax, f.hp + rg);
+}
+
 function hasSyn(f: Fighter, id: string): boolean {
   return f.bonuses.length > 1 && activeSynergies(f.bonuses).some((sy) => sy.id === id);
 }
@@ -1208,6 +1241,7 @@ function stepFighter(w: World, f: Fighter, inp: number, acting: boolean): void {
     }
   }
 
+  if (f.bonuses.length && f.state !== 'ko' && f.team === 0) stepItemPowers(w, f);
   if (f.status.slow > 0) f.status.slow--;
   if (f.status.wet > 0) f.status.wet--;
   if (w.stage?.theme === 'abyss' && f.state !== 'ko') f.status.wet = Math.max(f.status.wet, 60); // sous l'eau, tout le monde est trempé

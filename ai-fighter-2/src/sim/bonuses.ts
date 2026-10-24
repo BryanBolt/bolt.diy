@@ -34,13 +34,17 @@ export const BONUSES: BonusDef[] = [
   { id: 'superflow', name: 'Overdrive', desc: 'La jauge de Super monte 2× plus vite', icon: '🌟', rarity: 'common' },
   { id: 'frost', name: 'Cryogénie', desc: 'Les coups lourds gèlent l\'ennemi', icon: '🧊', rarity: 'rare' },
   { id: 'berserk', name: 'Berserk', desc: 'Dégâts +50 % sous 35 % de PV', icon: '😤', rarity: 'epic' },
+  { id: 'orbital', name: 'Satellites', desc: 'Des orbes tournent autour de toi et frappent les ennemis (+1 orbe par prise)', icon: '🪐', rarity: 'rare' },
+  { id: 'tears', name: 'Larmes de feu', desc: 'Tu tires seul vers l\'ennemi le plus proche (cadence + à chaque prise)', icon: '💧', rarity: 'rare' },
+  { id: 'growth', name: 'Champignon géant', desc: 'Tu grandis : PV +20, dégâts +10 %, taille bien visible', icon: '🍄', rarity: 'common' },
+  { id: 'regen', name: 'Cœur d\'or', desc: 'Regain de vie en continu (+ à chaque prise)', icon: '💛', rarity: 'common' },
   { id: 'phoenix', name: 'Phénix', desc: 'Une fois par stage : on se relève à 50 % de vie', icon: '🔆', rarity: 'legendary' },
 ];
 
 export const BONUS_BY_ID: Record<string, BonusDef> = Object.fromEntries(BONUSES.map((b) => [b.id, b]));
 
 /** Bonus cumulables : reprendre le même augmente son effet. */
-export const STACKABLE = new Set<string>(['power', 'speed', 'vitality', 'crit', 'lifesteal', 'thorns', 'kiflow', 'superflow']);
+export const STACKABLE = new Set<string>(['power', 'speed', 'vitality', 'crit', 'lifesteal', 'thorns', 'kiflow', 'superflow', 'orbital', 'tears', 'growth', 'regen', 'armor', 'guard']);
 
 export interface Synergy { id: string; name: string; needs: [BonusId, BonusId]; desc: string }
 export const SYNERGIES: Synergy[] = [
@@ -48,6 +52,7 @@ export const SYNERGIES: Synergy[] = [
   { id: 'bloodlust', name: 'Soif de sang', needs: ['lifesteal', 'berserk'], desc: 'Berserk dès 60 % de PV' },
   { id: 'chain', name: 'Réaction en chaîne', needs: ['explode', 'shockwave'], desc: 'Explosions de KO +50 %' },
   { id: 'fortress', name: 'Forteresse', needs: ['armor', 'guard'], desc: '-15 % de dégâts subis' },
+  { id: 'cosmos', name: 'Système solaire', needs: ['orbital', 'burn'], desc: 'Les orbes enflamment' },
   { id: 'jackpot', name: 'Jackpot', needs: ['midas', 'crit'], desc: 'Les critiques font jaillir des pièces' },
 ];
 

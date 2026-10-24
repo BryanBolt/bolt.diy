@@ -183,7 +183,11 @@ export type BonusId =
   | 'superflow'
   | 'frost'
   | 'berserk'
-  | 'phoenix';
+  | 'phoenix'
+  | 'orbital'
+  | 'tears'
+  | 'growth'
+  | 'regen';
 
 export interface StatusEffects {
   burn: number; // frames restantes

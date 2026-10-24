@@ -1,4 +1,7 @@
 // Rendu principal : canvas 960x540 virtuel mis à l'échelle, ordre de profondeur, ombres, projectiles, objets.
+import { growthScale, drawItemsBack, drawItemsFront, drawOrbs } from './itemfx';
+import { stacks } from '../sim/bonuses';
+import { orbitPos } from '../sim/sim';
 import { drawAura } from './cosmetics';
 import type { World, Fighter, Projectile, Item } from '../sim/types';
 import { VIEW_W, VIEW_H, HURT_HW, HURT_H, REVIVE_FRAMES, REVIVE_COST } from '../sim/constants';
@@ -464,7 +467,7 @@ export class Renderer {
       }
       ctx.restore();
     }
-    const bs = f.boss ? 1.28 : 1;
+    const bs = (f.boss ? 1.28 : 1) * growthScale(f);
     this.drawPower(f, sx, sy, s * bs, col);
     if (f.state === 'guard' || f.state === 'block') this.drawShield(f, sx, sy, s * bs);
     if (f.carry && f.state !== 'ko') { ctx.save(); ctx.translate(sx, sy - 150 * s * bs + Math.sin(this.time * 0.2) * 1.5); drawCrate(ctx, f.carry, s * bs * 0.8, this.time, false); ctx.restore(); }
@@ -480,6 +483,7 @@ export class Renderer {
       rig = cloneRig(sim);
       for (const k of ['hip', ...RIG_KEYS] as const) { (rig[k] as P).x -= sx; (rig[k] as P).y -= sy; }
     }
+    if (f.state !== 'ko') drawItemsBack(ctx, f, sx, sy, s * bs, this.time);
     if (f.aura && f.state !== 'ko') drawAura(ctx, f.aura, sx, sy, s * bs, this.time, f.id * 1.7, Math.abs(f.vx));
     if (w.mode === 'duel' && w.config.teams && f.state !== 'ko') {
       // anneau d'équipe sous les pieds : bleu / rouge
@@ -491,6 +495,11 @@ export class Renderer {
       ctx.restore();
     }
     drawStickman(ctx, f, rig ? { ...pose, spin: 0 } : pose, { x: sx, y: sy, scale: s * bs, facing: f.facing, alpha, flash: this.fx.flash.get(f.id) ?? 0, time: this.time, rig, lite: this.lite });
+    if (f.state !== 'ko') {
+      drawItemsFront(ctx, f, sx, sy, s * bs, this.time);
+      const orbs = stacks(f.bonuses, 'orbital');
+      if (orbs) drawOrbs(ctx, Array.from({ length: orbs }, (_, i) => { const p = orbitPos(f, w.frame, i, orbs); const q = project(this.cam, p.x, f.y + 70, p.z); return q; }), this.time, f.bonuses.includes('burn'));
+    }
     if (f.boss && f.state !== 'ko') this.drawBossMarks(f, sx, sy, s * bs);
     if (f.ai?.kind === 'boss' && w.bossWeak > 0 && f.state !== 'ko') this.drawWeakPoint(sx, sy, s * bs, w.bossWeak);
     if (f.controller === 'player' && f.state !== 'ko' && f.state !== 'down') {
