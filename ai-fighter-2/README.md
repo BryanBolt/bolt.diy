@@ -80,6 +80,38 @@ Toutes les touches sont remappables dans **Options**.
 - **Ki** : se remplit en frappant ; **Super** : jauge pleine = coup imparable, invincible au départ.
 - **Coop** : réanimation des alliés, soins / Ki / pièces dans les caisses, **bonus roguelite** à choisir entre chaque vague (18 bonus avec effets réels : brûlure, gel, ondes de choc, vampirisme, Phénix…).
 
+### Armes, commandes de combat, réanimation
+
+- **Armes** : batte et nunchaku renforcent et allongent les coups légers ; pistolet et kalachnikov tirent avec Attaque (maintenir pour la rafale, munitions affichées à côté de la jauge de Super) ; Lourd lance l'arme. On en trouve au sol (halo doré), dans les caisses et à la boutique ; une kalachnikov est posée avant chaque boss.
+- **Commandes de combat** (tous les héros ; pavé numérique relatif au regard, diagonales tolérées, saisie terminable jusqu'à 9 images après le bouton). Sur manette et tactile, **Spécial + direction** fait la même chose pour les trois premières. Le mode Entraînement affiche tes entrées et le nom de la commande réussie.
+
+| Coup | Saisie | Raccourci |
+| --- | --- | --- |
+| Boule de Ki | ↓ ↘ → + Attaque | Spécial + avant |
+| Grande boule de Ki | ↓ ↘ → ↓ ↘ → + Attaque (50 Super) | |
+| Dragon montant (anti-aérien invincible) | → ↓ ↘ + Attaque | Spécial + haut |
+| Tourbillon (4 coups) | ↓ ↙ ← + Lourd | Spécial + arrière |
+| Cent pieds | ↓ ↘ → + Lourd | |
+| Onde basse | ← → + Attaque | |
+| Salto éclair | ↓ ↑ + Lourd | |
+| Saisie (imparable) | Attaque + Lourd | |
+| Piledriver | tour complet + Attaque (30 Super) | |
+| Poing d'un pouce (brise-garde) | ↘ + Attaque | |
+| Poing éclair (lanceur) | → N ↓ ↘ + Attaque | |
+| Coup-sauté (frappe haute) | ↘ + Lourd | |
+| Coup latéral | → + Attaque | |
+| Rafale du dragon | Attaque ×4 | |
+| Coup volant | en l'air : → + Attaque | |
+
+  Reculer ne retourne pas le personnage quand un ennemi est devant (pas arrière), ce qui rend possibles les quarts de cercle arrière.
+- **Réanimation** : un allié KO se réanime en maintenant Attaque près de lui ; un joueur KO peut aussi se réanimer seul pour 40 pièces communes en appuyant sur Attaque, ou revient avec une vie après quelques secondes. Des consignes lisibles s'affichent sur le corps.
+
+### En ligne : salons publics, voix, reprise
+
+- **Salons publics, sans code** : l'écran « Jouer en ligne » propose **⚡ Partie rapide** (rejoint le salon public le plus rempli, ou en ouvre un si aucun n'est libre) et la liste des **salons publics** (hôte, mode, difficulté, joueurs, actualisation toutes les 3 s) avec un bouton Rejoindre. Un salon créé est privé par défaut (code, lien ou QR code) ; la case « Public » à la création ou le bouton Visibilité de l'hôte dans le salon le rend visible ou invisible. Un salon complet ou en partie n'est jamais proposé.
+- **Chat vocal** : bouton 🎙️ sur le bord droit de l'écran (salon et partie en ligne). Un premier appui rejoint la conversation (le navigateur demande l'autorisation du micro). **Par défaut c'est appuyer-parler : le micro est coupé et n'émet que pendant que tu maintiens le bouton, la touche `V` ou le bouton Select d'une manette.** Le petit bouton « Appuyer-parler / Micro ouvert » change de mode (le choix est mémorisé) ; en micro ouvert, un appui sur le bouton ou sur `V` coupe / réactive le micro. Le ✕ quitte la conversation. Les voix passent directement entre les joueurs (WebRTC), le serveur ne relaie que la mise en relation. Rien ne démarre sans action du joueur ; si le micro est refusé, on peut quand même écouter. Un 🔊 s'affiche à côté du joueur qui parle. Le micro exige une adresse **https** (Render) ou `localhost` ; sur des réseaux très stricts la connexion directe peut échouer. Casque conseillé.
+- **Reprise de partie** : en ligne, le serveur garde ta place 20 minutes. Si ton téléphone se coupe, le jeu se reconnecte tout seul ; si tu recharges la page ou rouvres l'appli, le menu propose « Reprendre la partie en ligne ». Ton combattant est joué par une IA pendant l'absence, puis tu reprends la main au même instant pour tout le monde. En local, la partie est sauvegardée toutes les 5 secondes : « Reprendre la partie locale » la reconstruit et démarre en pause.
+
 ## Les héros
 
 Kai (karaté équilibré), Tora (muay-thaï, armure, brise-garde), Zed (ninja, kunaïs, téléportation), Vex (fouet à longue allonge, lasso),
