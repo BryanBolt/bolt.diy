@@ -144,6 +144,7 @@ export class Renderer {
       ctx.fillRect(-900, VIEW_H - bar - this.exY, VIEW_W + 1800, 900 + bar + this.exY);
     }
 
+    this.drawCurrent(w);
     // dangers en fond (train, drone)
     for (const h of w.hazards) if (h.kind === 'train' || h.kind === 'drone' || h.kind === 'wind') this.drawHazard(h, w);
     // ombres + anneaux
@@ -176,6 +177,7 @@ export class Renderer {
     for (const f of sorted) drawables.push({ z: f.z, draw: () => this.drawFighter(f, w, info) });
     for (const p of w.projectiles) drawables.push({ z: p.z, draw: () => this.drawProjectile(p) });
     for (const it of w.items) drawables.push({ z: it.z, draw: () => this.drawItem(it) });
+    for (const x of w.fixtures) if (x.kind !== 'current') drawables.push({ z: x.kind === 'rail' ? -999 : x.z - 1, draw: () => this.drawFixture(x, w) });
     for (const h of w.hazards) if (h.kind === 'barrel' || h.kind === 'laser') drawables.push({ z: h.kind === 'laser' ? 999 : h.z, draw: () => this.drawHazard(h, w) });
     drawables.sort((a, b) => a.z - b.z);
     for (const d of drawables) d.draw();
@@ -206,6 +208,77 @@ export class Renderer {
     ctx.fillStyle = vg;
     ctx.fillRect(0, 0, view.w, view.h);
     drawHud(ctx, w, fx, { ...this.cam, x: this.cam.x - this.exX, shakeY: this.cam.shakeY + this.exY }, info, this.time);
+  }
+
+  /** Courant sous-marin : traînées horizontales pendant la poussée. */
+  private drawCurrent(w: World): void {
+    if (!w.fixtures.some((x) => x.kind === 'current') || w.frame % 720 >= 150) return;
+    const ctx = this.ctx;
+    const dir = Math.floor(w.frame / 720) % 2 === 0 ? 1 : -1;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(160,240,255,0.28)';
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 14; i++) {
+      const y = 60 + ((i * 53) % (VIEW_H - 120));
+      const x = ((this.time * 9 * dir + i * 137) % (VIEW_W + 200) + VIEW_W + 200) % (VIEW_W + 200) - 100;
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - dir * (50 + (i % 3) * 30), y); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  private drawFixture(x: { kind: string; x: number; z: number; used: boolean; cd: number }, _w: World): void {
+    const ctx = this.ctx;
+    const t = this.time;
+    const { sx, sy, s } = project(this.cam, x.x, 0, x.z);
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.scale(s, s);
+    const dim = x.cd > 0;
+    switch (x.kind) {
+      case 'paper': {
+        ctx.fillStyle = '#5a3a22'; ctx.fillRect(-36, -128, 8, 128); ctx.fillRect(28, -128, 8, 128); ctx.fillRect(-36, -132, 72, 8); ctx.fillRect(-36, -66, 72, 5);
+        if (!x.used) { ctx.fillStyle = 'rgba(255,244,222,0.92)'; ctx.fillRect(-28, -124, 56, 124); ctx.strokeStyle = '#b89a78'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, -124); ctx.lineTo(0, 0); ctx.stroke(); }
+        else { ctx.fillStyle = 'rgba(255,244,222,0.9)'; ctx.beginPath(); ctx.moveTo(-28, -124); ctx.lineTo(-10, -104); ctx.lineTo(-24, -80); ctx.lineTo(-28, -60); ctx.closePath(); ctx.fill(); }
+        break;
+      }
+      case 'sign': {
+        ctx.fillStyle = '#1b2230'; ctx.fillRect(-4, -150, 8, 150);
+        const on = !dim && Math.floor(t / 6) % 7 !== 0;
+        ctx.fillStyle = on ? '#ff3fa8' : '#4a1636'; ctx.fillRect(-34, -150, 68, 26);
+        ctx.fillStyle = on ? '#3fe6ff' : '#14394a'; ctx.fillRect(-28, -144, 56, 14);
+        if (dim) { ctx.strokeStyle = '#ffe14d'; ctx.lineWidth = 2; ctx.beginPath(); const a = Math.sin(t) * 10; ctx.moveTo(-10, -124); ctx.lineTo(-4 + a, -100); ctx.lineTo(6, -84); ctx.stroke(); }
+        break;
+      }
+      case 'stall': {
+        if (!x.used) {
+          ctx.fillStyle = '#6b4224'; ctx.fillRect(-40, -40, 80, 40);
+          for (let i = 0; i < 5; i++) { ctx.fillStyle = i % 2 ? '#fff3dc' : '#d93a3a'; ctx.fillRect(-42 + i * 17, -96, 17, 26); }
+          ctx.fillStyle = '#4a2c16'; ctx.fillRect(-40, -70, 5, 70); ctx.fillRect(35, -70, 5, 70);
+          ctx.fillStyle = '#ffd36b'; ctx.beginPath(); ctx.arc(-14, -46, 7, 0, 7); ctx.arc(8, -46, 7, 0, 7); ctx.fill();
+        } else { ctx.fillStyle = '#6b4224'; ctx.fillRect(-44, -12, 88, 12); ctx.fillStyle = '#d93a3a'; ctx.fillRect(-20, -22, 36, 10); }
+        break;
+      }
+      case 'rail': {
+        ctx.fillStyle = '#2a3340'; ctx.fillRect(-90, -8, 180, 10);
+        for (let i = -90; i < 90; i += 18) { ctx.fillStyle = (i / 18) % 2 ? '#ffd23a' : '#222'; ctx.fillRect(i, -8, 18, 4); }
+        if (!dim) { ctx.strokeStyle = `rgba(120,220,255,${0.4 + Math.sin(t * 0.8) * 0.3})`; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-90, -4); for (let i = -90; i <= 90; i += 18) ctx.lineTo(i, -4 + ((i * 7 + Math.floor(t / 3)) % 5) - 2); ctx.stroke(); }
+        break;
+      }
+      case 'window': {
+        ctx.fillStyle = '#0d1a2b'; ctx.fillRect(-42, -150, 84, 150);
+        if (!x.used) { const g = ctx.createLinearGradient(-36, -144, 36, -6); g.addColorStop(0, 'rgba(160,220,255,0.75)'); g.addColorStop(1, 'rgba(60,110,170,0.55)'); ctx.fillStyle = g; ctx.fillRect(-36, -144, 72, 138); ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.beginPath(); ctx.moveTo(-20, -130); ctx.lineTo(10, -90); ctx.stroke(); }
+        else { ctx.fillStyle = 'rgba(160,220,255,0.7)'; ctx.beginPath(); ctx.moveTo(-36, -144); ctx.lineTo(-14, -120); ctx.lineTo(-30, -96); ctx.closePath(); ctx.fill(); ctx.beginPath(); ctx.moveTo(36, -144); ctx.lineTo(18, -118); ctx.lineTo(34, -88); ctx.closePath(); ctx.fill(); }
+        break;
+      }
+      case 'pylon': {
+        ctx.fillStyle = '#2b3447'; ctx.beginPath(); ctx.moveTo(-14, 0); ctx.lineTo(-6, -120); ctx.lineTo(6, -120); ctx.lineTo(14, 0); ctx.closePath(); ctx.fill();
+        const r = 14 + (dim ? 0 : Math.sin(t * 0.3) * 3);
+        ctx.fillStyle = dim ? '#3a4a66' : '#ffe14d'; ctx.beginPath(); ctx.arc(0, -132, r, 0, 7); ctx.fill();
+        if (!dim) { ctx.strokeStyle = 'rgba(255,240,120,0.6)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, -132); ctx.lineTo(Math.sin(t) * 40, -150); ctx.stroke(); }
+        break;
+      }
+    }
+    ctx.restore();
   }
 
   private drawHazard(h: Hazard, w: World): void {

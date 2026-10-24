@@ -332,6 +332,7 @@ export type SimEvent =
   | { t: 'phase'; phase: Phase }
   | { t: 'pickup'; kind: Item['kind']; x: number; y: number; z: number; v?: string }
   | { t: 'boom'; x: number; y: number; z: number; elem: string; r: number }
+  | { t: 'fixture'; kind: FixtureKind; x: number; z: number }
   | { t: 'special'; id: number; x: number; y: number; z: number; kind: string }
   | { t: 'bonus'; slot: number; bonus: BonusId }
   | { t: 'hazard'; kind: HazardKind; state: 'warn' | 'active' | 'end'; x: number; z: number }
@@ -367,8 +368,20 @@ export interface StageDef {
   waves: WaveSpec[];
   boss: { charId: string; level: number; name: string; line: string; rageLine: string; minions?: EnemyKind };
   hazard?: HazardKind;
+  fixture?: FixtureKind; // décor interactif du stage
   grav?: number; // gravité propre au stage (multiplicateur, 1 = normale)
   music?: string;
+}
+
+/** Éléments de décor interactifs : on y projette les combattants (shoji, enseigne, étal, rail, baie vitrée, pylône) ; courant : poussée périodique. */
+export type FixtureKind = 'paper' | 'sign' | 'stall' | 'rail' | 'window' | 'pylon' | 'current';
+export interface Fixture {
+  id: number;
+  kind: FixtureKind;
+  x: number;
+  z: number;
+  used: boolean; // détruit (usage unique)
+  cd: number; // recharge (frames) pour les éléments réutilisables
 }
 
 export interface Hazard {
@@ -466,6 +479,7 @@ export interface World {
   bonusChoices: BonusChoice[];
   shopChoices: ShopChoice[];
   hazards: Hazard[];
+  fixtures: Fixture[];
   events: SimEvent[];
   survivalWave: number;
   winnerTeam: number;

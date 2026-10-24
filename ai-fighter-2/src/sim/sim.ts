@@ -53,6 +53,7 @@ export function createWorld(config: SimConfig, seed: number): World {
     bonusChoices: [],
     shopChoices: [],
     hazards: [],
+    fixtures: [],
     events: [],
     survivalWave: 0,
     winnerTeam: -1,
@@ -269,6 +270,7 @@ function startStage(w: World, stage: StageDef): void {
   w.projectiles = [];
   w.items = [];
   w.hazards = [];
+  w.fixtures = [];
   for (const f of players(w)) {
     if (f.state === 'ko') {
       f.lives = Math.max(f.lives, 1);
@@ -326,6 +328,7 @@ function nextWave(w: World): void {
   }
   // danger de stage
   w.hazards = [];
+  placeFixtures(w, stage);
   if (stage.hazard) w.hazards.push({ id: w.nextId++, kind: stage.hazard, state: 'idle', timer: randInt(w, 240, 420), x: 0, z: 140, vx: 0, dir: -1, hits: [] });
   // armes au sol (kalachnikov garantie avant un boss)
   if (isBoss) w.items.push(makeWeaponItem(w, 'ak', w.arenaL + 160 + rand(w) * 640));
@@ -524,6 +527,99 @@ function stepHazards(w: World): void {
   w.hazards = keep;
 }
 
+/** Pose les éléments interactifs du stage près des bords de l'arène (là où l'on envoie les ennemis). */
+function placeFixtures(w: World, stage: StageDef): void {
+  w.fixtures = [];
+  const kind = stage.fixture;
+  if (!kind) return;
+  const add = (x: number, z: number) => w.fixtures.push({ id: w.nextId++, kind, x: q(x), z: q(z), used: false, cd: 0 });
+  if (kind === 'current') { add(w.arenaL + C.VIEW_W / 2, 140); return; }
+  if (kind === 'rail') { add(w.arenaL + 150 + rand(w) * 200, C.Z_MAX - 30); add(w.arenaR - 150 - rand(w) * 200, C.Z_MIN + 40); return; }
+  add(w.arenaL + 55 + rand(w) * 40, randInt(w, C.Z_MIN + 30, C.Z_MAX - 30));
+  add(w.arenaR - 55 - rand(w) * 40, randInt(w, C.Z_MIN + 30, C.Z_MAX - 30));
+}
+
+const FIXTURE_NAME: Record<string, string> = { paper: 'CLOISON !', sign: 'ENSEIGNE !', stall: 'ÉTAL RENVERSÉ !', rail: 'RAIL SOUS TENSION !', window: 'DÉFENESTRATION !', pylon: 'PYLÔNE !' };
+
+function fixtureHit(w: World, f: Fighter, dmg: number, text: string, color: string): void {
+  const real = Math.max(1, Math.round(dmg / f.stats.defense));
+  damageRaw(w, f, real, f.lastHitBy);
+  w.events.push({ t: 'hit', x: f.x, y: f.y + 50, z: f.z, power: 1.4, blocked: false, crit: false, dir: f.vx >= 0 ? 1 : -1, attacker: -1, target: f.id });
+  w.events.push({ t: 'text', x: f.x, y: f.y + 150, z: f.z, text, color });
+  w.events.push({ t: 'sound', id: 'hitheavy', x: f.x });
+  w.events.push({ t: 'shake', power: 5 });
+  f.freeze = Math.max(f.freeze, 8);
+}
+
+function stepFixtures(w: World): void {
+  for (const x of w.fixtures) {
+    if (x.cd > 0) x.cd--;
+    if (x.kind === 'current') {
+      // courant sous-marin : toutes les 12 s, une poussée de 2,5 s (le sens alterne)
+      const t = w.frame % 720;
+      if (t === 0) w.events.push({ t: 'text', x: w.arenaL + C.VIEW_W / 2, y: 260, z: 140, text: '🌊 COURANT !', color: '#7de8ff' });
+      if (t < 150) {
+        const dir = Math.floor(w.frame / 720) % 2 === 0 ? 1 : -1;
+        for (const f of w.fighters) {
+          if (f.state === 'ko' || f.state === 'held' || f.state === 'hold') continue;
+          f.x = clamp(f.x + dir * 1.1, w.arenaL + 24, w.arenaR - 24);
+        }
+        w.events.push({ t: 'fixture', kind: 'current', x: dir, z: 0 });
+      }
+      continue;
+    }
+    if (x.used || x.cd > 0) continue;
+    for (const f of w.fighters) {
+      if (f.state !== 'launch' || Math.abs(f.vx) < 3 || Math.abs(f.x - x.x) > 36 || Math.abs(f.z - x.z) > 70) continue;
+      const dir = f.vx >= 0 ? 1 : -1;
+      w.events.push({ t: 'fixture', kind: x.kind, x: x.x, z: x.z });
+      switch (x.kind) {
+        case 'paper':
+          x.used = true;
+          fixtureHit(w, f, 14, FIXTURE_NAME.paper, '#ffd8a8');
+          break;
+        case 'sign':
+          x.cd = 360;
+          fixtureHit(w, f, 20, 'ENSEIGNE ! ⚡', '#ffe14d');
+          f.freeze = 40;
+          w.events.push({ t: 'boom', x: x.x, y: 120, z: x.z, elem: 'shock', r: 70 });
+          break;
+        case 'stall':
+          x.used = true;
+          fixtureHit(w, f, 12, FIXTURE_NAME.stall, '#ffb870');
+          for (let i = 0; i < 3; i++) w.items.push({ id: w.nextId++, kind: 'coin', x: x.x + (i - 1) * 26, y: 40, z: x.z, vy: 6, vx: (i - 1) * 2, life: 900 });
+          w.items.push({ id: w.nextId++, kind: 'heal', x: x.x, y: 40, z: x.z + 10, vy: 7, life: 900 });
+          break;
+        case 'rail':
+          x.cd = 300;
+          fixtureHit(w, f, 18, FIXTURE_NAME.rail, '#8fd8ff');
+          f.freeze = 36;
+          w.events.push({ t: 'boom', x: f.x, y: 20, z: f.z, elem: 'shock', r: 60 });
+          break;
+        case 'window': {
+          x.used = true;
+          const boss = f.ai?.kind === 'boss' || f.boss;
+          if (!boss && f.team !== 0) {
+            fixtureHit(w, f, 9999, FIXTURE_NAME.window, '#aeeaff');
+            w.coins += 15; w.score += 200;
+            w.slowmo = Math.max(w.slowmo, 35);
+          } else fixtureHit(w, f, boss ? 30 : 16, FIXTURE_NAME.window, '#aeeaff');
+          w.events.push({ t: 'sound', id: 'cratebreak', x: x.x });
+          break;
+        }
+        case 'pylon':
+          x.cd = 420;
+          fixtureHit(w, f, 10, FIXTURE_NAME.pylon, '#ffe14d');
+          w.events.push({ t: 'boom', x: x.x, y: 100, z: x.z, elem: 'shock', r: 150 });
+          for (const o of w.fighters) if (o !== f && o.team !== f.team && alive(o) && Math.abs(o.x - x.x) < 160 && Math.abs(o.z - x.z) < 90) fixtureHit(w, o, 14, 'ARC ⚡', '#ffe14d');
+          break;
+      }
+      void dir;
+      break;
+    }
+  }
+}
+
 function hazardHit(w: World, f: Fighter, dmg: number, dir: number, kbx: number, kby: number): void {
   if ((f.state === 'guard' || f.state === 'block') && sign(dir) === -f.facing) {
     dmg = Math.round(dmg * 0.3);
@@ -711,7 +807,7 @@ export function step(w: World, inputs: number[]): void {
   separate(w);
   stepShamans(w);
   // --- dangers, boss ---
-  if (canAct && w.mode !== 'duel') { stepHazards(w); stepBossRage(w); }
+  if (canAct && w.mode !== 'duel') { stepHazards(w); stepBossRage(w); stepFixtures(w); }
   // --- projectiles / objets ---
   stepProjectiles(w);
   stepItems(w);

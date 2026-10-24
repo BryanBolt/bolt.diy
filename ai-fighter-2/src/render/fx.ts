@@ -163,6 +163,13 @@ export class Fx {
           if (e.state === 'active' && e.kind === 'train') this.shake = Math.max(this.shake, 4);
           break;
         }
+        case 'fixture': {
+          if (e.kind === 'current') break;
+          const col: Record<string, string> = { paper: '#fff4de', sign: '#ffe14d', stall: '#ffb870', rail: '#8fd8ff', window: '#bfeaff', pylon: '#ffe14d' };
+          this.burst(e.x, 70, e.z, e.kind === 'window' ? 46 : 26, col[e.kind] ?? '#fff', 'spark', 6, 8);
+          this.punch = Math.max(this.punch, 0.06);
+          break;
+        }
         case 'spawn':
           break;
         default:
