@@ -10,6 +10,8 @@ export interface Settings {
   touchLeft: boolean; // gaucher : boutons à gauche, joystick à droite
   touchHaptics: boolean;
   touchCombos: boolean; // boutons de combos (quarts de cercle en un appui)
+  touchGestures: boolean; // gestes : toucher, glisser, appui long, deux doigts
+  touchOneHand: boolean; // mode une main : un seul doigt fait tout
   showHitboxes: boolean;
   name: string;
   keymap1?: KeyMap;
@@ -49,6 +51,8 @@ const DEFAULT_SETTINGS: Settings = {
   touchLeft: false,
   touchHaptics: true,
   touchCombos: true,
+  touchGestures: true,
+  touchOneHand: false,
   showHitboxes: false,
   name: '',
   reduceFx: false,

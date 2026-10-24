@@ -258,6 +258,8 @@ export function optionsHtml(s: Settings, profile: Profile, pads: string[]): stri
       <label class="field">Taille des boutons <input type="range" min="0.75" max="1.5" step="0.05" value="${s.touchSize}" data-set="touchSize"></label>
       <label class="field">Opacité <input type="range" min="0.2" max="1" step="0.05" value="${s.touchOpacity}" data-set="touchOpacity"></label>
       <label class="toggle"><input type="checkbox" data-set="touchHaptics" ${s.touchHaptics ? 'checked' : ''}> Vibrations</label>
+      <label class="toggle"><input type="checkbox" data-set="touchGestures" ${s.touchGestures ? 'checked' : ''}> Gestes (toucher = attaque · glisser ↑ saut, ↓ garde, ↔ lourd · appui long = Ki · 2 doigts = Super)</label>
+      <label class="toggle"><input type="checkbox" data-set="touchOneHand" ${s.touchOneHand ? 'checked' : ''}> Mode une main (un doigt : glisser = bouger, tap = attaque, flick = saut / garde / lourd, rester appuyé = Ki)</label>
       <label class="toggle"><input type="checkbox" data-set="touchLeft" ${s.touchLeft ? 'checked' : ''}> Mode gaucher (boutons à gauche)</label>
       <h3>Profil</h3>
       <label class="field">Ton pseudo <input type="text" maxlength="14" value="${esc(s.name)}" data-set="name" placeholder="Joueur"></label>
