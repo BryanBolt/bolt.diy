@@ -493,3 +493,29 @@ fn crystallized_units_are_not_targets() {
     let p = decide(&s.b, s.foe, None).expect("l'ennemi doit viser une cible valide");
     assert_ne!(p.target, s.nyra);
 }
+
+#[test]
+fn perfect_parry_and_dodge() {
+    let mut s = setup();
+    // Parade : fenêtre ouverte + garde face à l'attaquant => 0 dégât, attaquant déséquilibré.
+    s.b.unit_mut(s.kael).guard = true;
+    s.b.unit_mut(s.kael).parry_t = 0.2;
+    s.b.unit_mut(s.kael).facing = 1.0;
+    s.b.unit_mut(s.foe).pos.x = 150.0;
+    let hp = s.b.unit(s.kael).hp;
+    sim::hurt(&mut s.b, s.foe, s.kael, 80.0, true, false, false, None, A_ATTACK);
+    assert_eq!(s.b.unit(s.kael).hp, hp);
+    assert!(s.b.unit(s.foe).hitstun > 0.4);
+    assert!(s.b.unit(s.kael).surcharge >= 14.0);
+    // Garde simple : 75 % de dégâts en moins.
+    s.b.unit_mut(s.kael).parry_t = 0.0;
+    s.b.unit_mut(s.kael).invuln = 0.0;
+    sim::hurt(&mut s.b, s.foe, s.kael, 80.0, true, false, false, None, A_ATTACK);
+    assert!((hp - s.b.unit(s.kael).hp - 20.0).abs() < 0.01);
+    // Esquive : invulnérabilité.
+    s.b.unit_mut(s.kael).guard = false;
+    s.b.unit_mut(s.kael).invuln = 0.3;
+    let hp2 = s.b.unit(s.kael).hp;
+    sim::hurt(&mut s.b, s.foe, s.kael, 80.0, true, false, false, None, A_ATTACK);
+    assert_eq!(s.b.unit(s.kael).hp, hp2);
+}

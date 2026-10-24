@@ -23,7 +23,7 @@ cargo test -p lumen_core        # 28 tests (dont les 20 du cahier des charges)
 | Saut (double saut) | A | Espace, Entrée | ⤒ |
 | Attaque (combo ×3) | X | J | ⚔ |
 | Arte neutre / ↑ / ↓ | B (+ direction) | K | ✦ |
-| Garde | LB | L | ⛨ |
+| Esquive (+direction) / parade parfaite / garde | LB | L | ⛨ |
 | Changer de cible | RB | I | ◎ |
 | Arcane ultime (Surcharge pleine) | RT | O | ✸ |
 | Changer de personnage | LT | U | « Perso » |

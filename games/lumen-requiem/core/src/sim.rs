@@ -203,6 +203,7 @@ fn update_unit(b: &mut Battle, id: UnitId, dt: f32, inputs: &[HumanInput]) {
         u.move_x = 0.0;
         u.hit_flash = (u.hit_flash - dt).max(0.0);
         u.invuln = (u.invuln - dt).max(0.0);
+        u.parry_t = (u.parry_t - dt).max(0.0);
         u.special_cd = (u.special_cd - dt).max(0.0);
         u.combo_window = (u.combo_window - dt).max(0.0);
         u.anim_t += dt;
@@ -873,7 +874,8 @@ pub fn calc_damage(b: &mut Battle, src: UnitId, tgt: UnitId, act: ActionId, mult
         weak = m > 1.0;
         d *= m;
     }
-    d *= mult * b.rng.range(0.92, 1.08);
+    let combo_bonus = if s.team == Team::Ally && src != tgt { 1.0 + b.combo_count.min(30) as f32 * 0.01 } else { 1.0 };
+    d *= mult * combo_bonus * b.rng.range(0.92, 1.08);
     let mut crit = false;
     if physical && a.kind != ActionKind::Item && b.rng.chance(0.06 + s.bonus_crit) {
         crit = true;
@@ -912,15 +914,37 @@ pub fn hurt(b: &mut Battle, src: UnitId, tgt: UnitId, amount: f32, physical: boo
         return;
     }
     let mut amount = amount.max(0.0);
+    if src != tgt && b.unit(tgt).invuln > 0.0 {
+        b.events.push(Ev::Dodge { unit: tgt });
+        return;
+    }
     let src_pos = b.unit(src).pos;
     // Garde : un joueur qui garde face à l'attaquant encaisse beaucoup moins.
     let guarding = {
         let t = b.unit(tgt);
         t.guard && ((src_pos.x - t.pos.x) * t.facing >= -10.0 || src == tgt)
     };
-    if guarding {
+    if guarding && b.unit(tgt).parry_t > 0.0 && src != tgt {
+        // Parade parfaite : aucun dégât, l'attaquant est déséquilibré, la Surcharge monte.
+        b.events.push(Ev::Parry { unit: tgt });
+        b.hitstop = b.hitstop.max(0.1);
+        let boss = b.unit(src).boss;
+        let t = b.unit_mut(tgt);
+        t.surcharge = (t.surcharge + 14.0).min(100.0);
+        t.invuln = t.invuln.max(0.25);
+        if !boss {
+            let a = b.unit_mut(src);
+            a.hitstun = a.hitstun.max(0.6);
+            a.job = None;
+            a.gauge = 0.0;
+        }
+        return;
+    } else if guarding {
         amount *= 0.25;
         b.events.push(Ev::Guarded { unit: tgt });
+    }
+    if b.unit(tgt).team == Team::Ally {
+        b.damage_taken += amount;
     }
     let a = action(act);
     {
@@ -936,6 +960,7 @@ pub fn hurt(b: &mut Battle, src: UnitId, tgt: UnitId, amount: f32, physical: boo
     // Surcharge et combo.
     if b.unit(src).team == Team::Ally && src != tgt {
         b.combo_count += 1;
+        b.max_combo = b.max_combo.max(b.combo_count);
         b.combo_timer = 1.6;
         let u = b.unit_mut(src);
         u.surcharge = (u.surcharge + if a.kind == ActionKind::Technique { 4.0 } else { 2.2 }).min(100.0);
@@ -1003,6 +1028,20 @@ pub fn kill(b: &mut Battle, id: UnitId, _by: Option<UnitId>) {
         (u.team, u.tpl.tpl(), u.level, u.name.clone(), u.boss)
     };
     if team == Team::Foe {
+        // Élan de victoire : chaque ennemi vaincu redonne un peu de souffle à l'équipe.
+        let ids: Vec<UnitId> = b.units.iter().filter(|u| u.team == Team::Ally && u.alive()).map(|u| u.id).collect();
+        for a in ids {
+            let u = b.unit_mut(a);
+            let heal = (u.max_hp() * 0.03).min(u.max_hp() - u.hp);
+            u.hp += heal;
+            u.mp = (u.mp + u.stats.max_mp * 0.05).min(u.stats.max_mp);
+            if u.is_human() {
+                u.surcharge = (u.surcharge + 5.0).min(100.0);
+            }
+            if heal > 1.0 && u.is_human() {
+                b.events.push(Ev::Heal { unit: a, amount: heal });
+            }
+        }
         b.xp += tpl.xp * (1 + level / 3);
         b.lumens += tpl.lumens;
         b.log(format!("{} est vaincu.", name));
@@ -1027,9 +1066,24 @@ fn human_control(b: &mut Battle, id: UnitId, inp: HumanInput) {
     let busy = job.map(|j| !matches!(j.phase, Phase::Recover)).unwrap_or(false);
     let after_hit = job.map(|j| j.source == Source::Direct && matches!(j.phase, Phase::Execute { hit_done: true } | Phase::Recover)).unwrap_or(true);
     let on_ground = u.on_ground;
-    let guard = held & btn::LB != 0 && on_ground && !busy;
-    b.unit_mut(id).guard = guard;
     let dir = (if held & btn::RIGHT != 0 { 1.0 } else { 0.0 }) - (if held & btn::LEFT != 0 { 1.0 } else { 0.0 });
+    // LB : appui + direction = esquive (brève invulnérabilité) ; appui sur place = parade parfaite
+    // pendant 0,2 s puis garde tant que le bouton reste enfoncé.
+    if pressed & btn::LB != 0 && on_ground && can_move && b.unit(id).hitstun <= 0.0 && (!busy || job.map(|j| j.source == Source::Direct && matches!(j.phase, Phase::Recover)).unwrap_or(false)) {
+        let u = b.unit_mut(id);
+        if dir != 0.0 {
+            u.job = None;
+            u.vel.x = dir * 820.0;
+            u.invuln = u.invuln.max(0.32);
+            u.facing = dir;
+            b.events.push(Ev::Dodge { unit: id });
+        } else {
+            u.parry_t = 0.2;
+        }
+    }
+    let busy = b.unit(id).job.map(|j| !matches!(j.phase, Phase::Recover)).unwrap_or(false);
+    let guard = held & btn::LB != 0 && on_ground && !busy && b.unit(id).invuln <= 0.0 || (held & btn::LB != 0 && b.unit(id).parry_t > 0.0);
+    b.unit_mut(id).guard = guard;
     if can_move && !guard && (!busy || !on_ground) {
         let u = b.unit_mut(id);
         u.move_x = dir * speed;

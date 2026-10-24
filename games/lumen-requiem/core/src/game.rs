@@ -304,6 +304,7 @@ pub struct Run {
     pub kills: u32,
     pub echoes: Vec<Echo>,
     pub time: f32,
+    pub last_rank: u8,
 }
 
 #[derive(Clone, Debug)]
@@ -759,6 +760,7 @@ impl Game {
             kills: 0,
             echoes: Vec::new(),
             time: 0.0,
+            last_rank: 0,
         });
         self.meta.runs += 1;
         self.meta_dirty = true;
@@ -1158,6 +1160,26 @@ impl Game {
         if cleared {
             if run.clear_t == 0.0 {
                 let boss = run.room == Some(NodeKind::Boss);
+                // Rang de salle : vitesse, dégâts évités, combo.
+                let foes = b.units.iter().filter(|u| u.team == Team::Foe).count() as f32;
+                let par = foes * 14.0 + if boss { 40.0 } else { 0.0 };
+                let team_hp: f32 = b.units.iter().filter(|u| u.team == Team::Ally && !u.guest).map(|u| u.stats.max_hp).sum();
+                let taken = b.damage_taken / team_hp.max(1.0);
+                let mut pts = 0u8;
+                pts += if b.time <= par { 2 } else if b.time <= par * 1.6 { 1 } else { 0 };
+                pts += if taken < 0.12 { 2 } else if taken < 0.35 { 1 } else { 0 };
+                pts += if b.max_combo >= 20 { 2 } else if b.max_combo >= 10 { 1 } else { 0 };
+                let (rank, name, bonus, col) = match pts {
+                    5..=6 => (3u8, "S", 120u32, 0xffd25a),
+                    4 => (2, "A", 70, 0x7dffb0),
+                    2..=3 => (1, "B", 30, 0x7ad7ff),
+                    _ => (0, "C", 0, 0xaab4c8),
+                };
+                let sector = run.sector as u32;
+                let sub = if rank == 3 { format!("+{} Lumens · 4 récompenses au choix !", bonus * (1 + sector)) } else if bonus > 0 { format!("+{} Lumens", bonus * (1 + sector)) } else { "Plus vite, plus propre, plus de combos…".to_string() };
+                run.last_rank = rank;
+                run.lumens += bonus * (1 + sector);
+                self.fx.banner(&format!("RANG {}", name), &format!("{} · combo max {}", sub, b.max_combo), col, 3.2);
                 self.fx.banner(if boss { "GARDIEN VAINCU" } else { "ZONE SÉCURISÉE" }, "Avancez vers la sortie →", 0x7dffb0, 2.6);
                 self.sound(snd::WIN);
             }
@@ -1227,7 +1249,8 @@ impl Game {
                 if kind == NodeKind::Elite {
                     self.run.as_mut().unwrap().lumens += 80;
                 }
-                let choices = self.roll_echoes(3);
+                let n = if self.run.as_ref().map(|r| r.last_rank).unwrap_or(0) >= 3 { 4 } else { 3 };
+                let choices = self.roll_echoes(n);
                 self.goto(Scene::Reward { choices });
             }
         }
@@ -2332,6 +2355,25 @@ impl Game {
                 self.sound(snd::GUARD);
             }
             Ev::Jump { .. } => self.sound(snd::JUMP),
+            Ev::Parry { unit } => {
+                let p = up(unit);
+                let u = b.unit(unit);
+                let q = Vec2::new(u.pos.x + u.facing * 30.0, u.pos.y + 55.0);
+                self.fx.ring(q, 0xffffff, 130.0, 0.35);
+                self.fx.burst(q, 0x9fe8ff, 28, 620.0, 6.0);
+                self.fx.text(Vec2::new(p.x, p.y + 30.0), "PARADE !".into(), 0x9fe8ff, true);
+                self.fx.flash = self.fx.flash.max(0.2);
+                self.fx.flash_color = 0x9fe8ff;
+                self.fx.shake = (self.fx.shake + 0.25).min(1.0);
+                self.sound(snd::CRIT);
+            }
+            Ev::Dodge { unit } => {
+                let u = b.unit(unit);
+                let p = Vec2::new(u.pos.x, u.pos.y + 50.0);
+                self.fx.burst(p, 0xcfeaff, 8, 260.0, 4.0);
+                self.fx.ring(p, 0xcfeaff, 60.0, 0.25);
+                self.sound(snd::JUMP);
+            }
         }
     }
 

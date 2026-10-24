@@ -135,6 +135,8 @@ pub struct Unit {
     /// Vitesse horizontale désirée ce tick (contrôle / navigation).
     pub move_x: f32,
     pub approach_t: f32,
+    /// Fenêtre de parade parfaite (s) ouverte à l'appui sur la garde.
+    pub parry_t: f32,
 }
 
 impl Unit {
@@ -300,6 +302,8 @@ pub enum Ev {
     Cancelled { unit: UnitId, reason: &'static str },
     Guarded { unit: UnitId },
     Jump { unit: UnitId },
+    Parry { unit: UnitId },
+    Dodge { unit: UnitId },
 }
 
 #[derive(Clone, Debug)]
@@ -343,6 +347,8 @@ pub struct Battle {
     pub cinematic_unit: Option<UnitId>,
     pub combo_count: u32,
     pub combo_timer: f32,
+    pub max_combo: u32,
+    pub damage_taken: f32,
 }
 
 impl Battle {
@@ -365,6 +371,8 @@ impl Battle {
             cinematic_unit: None,
             combo_count: 0,
             combo_timer: 0.0,
+            max_combo: 0,
+            damage_taken: 0.0,
         }
     }
 
@@ -456,6 +464,7 @@ impl Battle {
             lifesteal: 0.0,
             move_x: 0.0,
             approach_t: 0.0,
+            parry_t: 0.0,
         });
         id
     }
