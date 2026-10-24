@@ -7,6 +7,9 @@ export interface Settings {
   shake: boolean;
   touchSize: number; // 0.8..1.4
   touchOpacity: number;
+  touchLeft: boolean; // gaucher : boutons à gauche, joystick à droite
+  touchHaptics: boolean;
+  touchCombos: boolean; // boutons de combos (quarts de cercle en un appui)
   showHitboxes: boolean;
   name: string;
   keymap1?: KeyMap;
@@ -41,6 +44,9 @@ const DEFAULT_SETTINGS: Settings = {
   shake: true,
   touchSize: 1,
   touchOpacity: 0.55,
+  touchLeft: false,
+  touchHaptics: true,
+  touchCombos: true,
   showHitboxes: false,
   name: '',
   reduceFx: false,

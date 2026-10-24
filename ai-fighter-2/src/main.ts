@@ -1,4 +1,5 @@
 // Point d'entrée : écrans, sessions (local / en ligne), boucle de jeu.
+import { drawLowPolyBackdrop } from './render/lowpoly';
 import './style.css';
 import { InputManager } from './input/manager';
 import { Renderer } from './render/renderer';
@@ -30,6 +31,15 @@ type AppState = 'menu' | 'local-lobby' | 'online' | 'online-lobby' | 'options' |
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const input = new InputManager();
 const renderer = new Renderer(canvas);
+const menuBg = document.getElementById('menubg') as HTMLCanvasElement;
+const menuBgCtx = menuBg.getContext('2d')!;
+function drawMenuBg(on: boolean, t: number): void {
+  document.body.classList.toggle('menu-open', on);
+  if (!on) return;
+  const w = Math.round(window.innerWidth / 2), h = Math.round(window.innerHeight / 2);
+  if (menuBg.width !== w || menuBg.height !== h) { menuBg.width = w; menuBg.height = h; }
+  drawLowPolyBackdrop(menuBgCtx, w, h, t);
+}
 const synth = new Synth();
 const touch = new TouchOverlay(input.touch);
 const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
@@ -867,6 +877,7 @@ function loop(now: number): void {
     lastMenuBits = bits;
     if (pressed & IN.CONFIRM) (S.ui.querySelector('[data-action="local"]') as HTMLButtonElement | null)?.focus();
   }
+  drawMenuBg(state !== 'game' || !session, now / 16.7);
   if (state !== 'game' || !session) {
     // démo d'arrière-plan
     if (!demo || demo.world.phase === 'matchEnd' || demoTimer > 60 * 90) startDemo();
@@ -881,6 +892,7 @@ function loop(now: number): void {
     return;
   }
   const w = session.world;
+  { const ts = session.localSlots.find((sl) => input.deviceFor(sl)?.kind === 'touch'); const tf = ts !== undefined ? w.fighters.find((f) => f.slot === ts) : undefined; if (tf) input.touch.facing = tf.facing; }
   session.timeScale = w.slowmo > 0 ? 0.35 : 1;
   const steps = session.update(now);
   if (session.events.length) { handleEvents(session.events); session.events = []; }

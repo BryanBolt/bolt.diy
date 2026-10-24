@@ -35,6 +35,12 @@ export class TouchOverlay {
         <div class="t-btn t-special" data-bit="${IN.SPECIAL}"><span>Ki</span><small>Spécial</small></div>
         <div class="t-btn t-super" data-bit="${IN.SUPER}"><span>★</span><small>Super</small></div>
       </div>
+      <div class="t-combos">
+        <div class="t-chip" data-macro="qcf-L"><b>🔥</b><small>Boule</small></div>
+        <div class="t-chip" data-macro="dp-L"><b>⬆</b><small>Dragon</small></div>
+        <div class="t-chip" data-macro="qcb-L"><b>🌊</b><small>Onde</small></div>
+        <div class="t-chip" data-macro="qcb-H"><b>🌀</b><small>Tourbillon</small></div>
+      </div>
       <button class="t-pause" aria-label="Pause">❚❚</button>`;
     this.stick = this.root.querySelector('.t-stick') as HTMLDivElement;
     this.knob = this.root.querySelector('.t-knob') as HTMLDivElement;
@@ -54,6 +60,25 @@ export class TouchOverlay {
     const s = loadSettings();
     this.root.style.setProperty('--tsize', String(s.touchSize));
     this.root.style.setProperty('--topacity', String(s.touchOpacity));
+    this.root.classList.toggle('lefty', !!s.touchLeft);
+    this.root.classList.toggle('no-combos', s.touchCombos === false);
+  }
+
+  private buzz(ms: number): void {
+    if (loadSettings().touchHaptics === false) return;
+    try { navigator.vibrate?.(ms); } catch { /* ignore */ }
+  }
+
+  /** Quarts de cercle en un appui, relatifs au sens du regard. Chaque étape dure 4 frames. */
+  private macroFrames(kind: string): number[] {
+    const F = this.device.facing >= 0 ? IN.RIGHT : IN.LEFT;
+    const B = this.device.facing >= 0 ? IN.LEFT : IN.RIGHT;
+    const [motion, btn] = kind.split('-');
+    const button = btn === 'H' ? IN.HEAVY : IN.LIGHT;
+    const steps: number[] = motion === 'qcf' ? [IN.DOWN, IN.DOWN | F, F, F | button, F | button]
+      : motion === 'qcb' ? [IN.DOWN, IN.DOWN | B, B, B | button, B | button]
+      : [F, IN.DOWN, IN.DOWN | F, (IN.DOWN | F) | button, (IN.DOWN | F) | button]; // dp
+    return steps.flatMap((b) => [b, b, b, b]);
   }
 
   show(on: boolean): void {
@@ -68,21 +93,38 @@ export class TouchOverlay {
 
   private bind(): void {
     const root = this.root;
-    const left = (x: number) => x < window.innerWidth * 0.5;
     root.addEventListener('pointerdown', (e) => {
       if (!this.visible) return;
       this.device.active = true;
       const target = e.target as HTMLElement;
       if (target.closest('.t-pause')) return;
       e.preventDefault();
-      const btn = this.buttons.find((b) => b.el === target || b.el.contains(target));
+      const chip = target.closest('.t-chip') as HTMLElement | null;
+      if (chip) {
+        this.device.playMacro(this.macroFrames(chip.dataset.macro || 'qcf-L'));
+        chip.classList.add('on');
+        setTimeout(() => chip.classList.remove('on'), 220);
+        this.buzz(14);
+        return;
+      }
+      let btn = this.buttons.find((b) => b.el === target || b.el.contains(target));
+      if (!btn && !this.onStickSide(e.clientX)) {
+        // zone tolérante : le bouton le plus proche du doigt (dans 1,2 rayon)
+        let best = 1e9;
+        for (const b of this.buttons) {
+          const r = b.el.getBoundingClientRect();
+          const d = Math.hypot(e.clientX - (r.left + r.width / 2), e.clientY - (r.top + r.height / 2));
+          if (d < best && d < r.width * 0.85) { best = d; btn = b; }
+        }
+      }
       if (btn) {
+        this.buzz(7);
         btn.pointers.add(e.pointerId);
         btn.el.classList.add('on');
         this.sync();
         return;
       }
-      if (left(e.clientX) && this.stickPointer < 0) {
+      if (this.onStickSide(e.clientX) && this.stickPointer < 0) {
         this.stickPointer = e.pointerId;
         this.stickOrigin = { x: e.clientX, y: e.clientY };
         this.stick.style.left = `${e.clientX}px`;
@@ -108,19 +150,19 @@ export class TouchOverlay {
       e.preventDefault();
       const dx = e.clientX - this.stickOrigin.x;
       const dy = e.clientY - this.stickOrigin.y;
-      const size = 44 * Number(loadSettings().touchSize || 1);
+      const size = 50 * Number(loadSettings().touchSize || 1);
       const len = Math.hypot(dx, dy);
       const k = Math.min(1, len / size);
       const nx = len ? (dx / len) * k : 0;
       const ny = len ? (dy / len) * k : 0;
       this.knob.style.transform = `translate(${nx * size}px, ${ny * size}px)`;
       let d = 0;
-      const dead = 0.28;
+      const dead = 0.2;
       if (nx < -dead) d |= IN.LEFT;
       if (nx > dead) d |= IN.RIGHT;
       if (ny < -dead) d |= IN.UP;
       if (ny > dead) d |= IN.DOWN;
-      this.running = k > 0.92 && Math.abs(nx) > 0.6;
+      this.running = k > 0.9 && Math.abs(nx) > 0.55;
       this.dir = d;
       this.sync();
     };
@@ -130,6 +172,8 @@ export class TouchOverlay {
         this.dir = 0;
         this.running = false;
         this.stick.classList.remove('on');
+        this.stick.style.left = '';
+        this.stick.style.top = '';
         this.knob.style.transform = 'translate(0,0)';
       }
       for (const b of this.buttons) {
@@ -146,6 +190,11 @@ export class TouchOverlay {
       e.preventDefault();
       this.onPause?.();
     });
+  }
+
+  private onStickSide(x: number): boolean {
+    const lefty = this.root.classList.contains('lefty');
+    return lefty ? x >= window.innerWidth * 0.5 : x < window.innerWidth * 0.5;
   }
 
   private sync(): void {

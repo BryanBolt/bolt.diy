@@ -2,6 +2,7 @@
 import { VIEW_W, VIEW_H } from '../sim/constants';
 import { FLOOR_TOP, FLOOR_BOTTOM } from './camera';
 import { Rng } from '../core/math';
+import { drawLowPolyRidge } from './lowpoly';
 
 interface Theme {
   sky: [string, string];
@@ -71,6 +72,13 @@ export function drawStage(ctx: CanvasRenderingContext2D, themeId: string, camX: 
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, VIEW_W, FLOOR_TOP + 2);
   const props = propsFor(themeId, width);
+  // montagnes low poly en fond (parallaxe lente)
+  if (t.kind !== 'metro') {
+    ctx.save();
+    ctx.translate(-camX * 0.1, 0);
+    drawLowPolyRidge(ctx, hashSeed(themeId), FLOOR_TOP + 4, width * 0.4 + VIEW_W + 200, t.kind === 'tower' ? 190 : 140, t.far + 'aa', t.mid + '88');
+    ctx.restore();
+  }
   // couche lointaine (parallaxe 0.25)
   ctx.save();
   ctx.translate(-camX * 0.25, 0);

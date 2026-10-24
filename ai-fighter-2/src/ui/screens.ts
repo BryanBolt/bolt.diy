@@ -234,6 +234,9 @@ export function optionsHtml(s: Settings, profile: Profile, pads: string[]): stri
       <h3>Tactile</h3>
       <label class="field">Taille des boutons <input type="range" min="0.75" max="1.5" step="0.05" value="${s.touchSize}" data-set="touchSize"></label>
       <label class="field">Opacité <input type="range" min="0.2" max="1" step="0.05" value="${s.touchOpacity}" data-set="touchOpacity"></label>
+      <label class="toggle"><input type="checkbox" data-set="touchCombos" ${s.touchCombos ? 'checked' : ''}> Boutons de combos (Boule de Ki, Dragon, Onde… en un appui)</label>
+      <label class="toggle"><input type="checkbox" data-set="touchHaptics" ${s.touchHaptics ? 'checked' : ''}> Vibrations</label>
+      <label class="toggle"><input type="checkbox" data-set="touchLeft" ${s.touchLeft ? 'checked' : ''}> Mode gaucher (boutons à gauche)</label>
       <h3>Profil</h3>
       <label class="field">Ton pseudo <input type="text" maxlength="14" value="${esc(s.name)}" data-set="name" placeholder="Joueur"></label>
       <p class="small muted">Stages terminés : ${profile.stageReached}/6 · Duels gagnés : ${profile.duelWins} · Meilleure survie : vague ${profile.bestSurvival} · Record : ${profile.bestScore} pts · KO : ${profile.totalKo}</p>

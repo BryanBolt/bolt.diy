@@ -62,7 +62,7 @@ export class Renderer {
     const fx = this.fx;
     // caméra : suit la sim, zoom cinématique sur KO/super
     const targetZoom = w.slowmo > 0 ? 1.08 : fx.superFocus > 0.5 ? 1.05 : 1;
-    this.cam.zoom += (targetZoom - this.cam.zoom) * 0.1;
+    this.cam.zoom += (targetZoom + fx.punch - this.cam.zoom) * 0.22;
     this.cam.x = w.camX;
     this.cam.shakeX = fx.shakeX;
     this.cam.shakeY = fx.shakeY;
@@ -96,6 +96,21 @@ export class Renderer {
     if (fx.superFocus > 0) {
       ctx.fillStyle = `rgba(5,5,20,${0.55 * fx.superFocus})`;
       ctx.fillRect(-200, -200, VIEW_W + 400, VIEW_H + 400);
+      // lignes de vitesse radiales + bandes de cinéma
+      ctx.save();
+      ctx.translate(VIEW_W / 2, VIEW_H / 2);
+      ctx.strokeStyle = `rgba(190,241,255,${0.35 * fx.superFocus})`;
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 34; i++) {
+        const a = i * 0.37 + Math.floor(this.time / 2) * 0.9;
+        const r0 = 170 + ((i * 53 + this.time * 14) % 140), r1 = r0 + 90 + (i % 5) * 30;
+        ctx.beginPath(); ctx.moveTo(Math.cos(a) * r0, Math.sin(a) * r0 * 0.7); ctx.lineTo(Math.cos(a) * r1, Math.sin(a) * r1 * 0.7); ctx.stroke();
+      }
+      ctx.restore();
+      ctx.fillStyle = '#000';
+      const bar = 34 * fx.superFocus;
+      ctx.fillRect(-200, -200, VIEW_W + 400, 200 + bar);
+      ctx.fillRect(-200, VIEW_H - bar, VIEW_W + 400, 200 + bar);
     }
 
     // dangers en fond (train, drone)
@@ -321,6 +336,18 @@ export class Renderer {
     const bs = f.boss ? 1.28 : 1;
     drawStickman(ctx, f, pose, { x: sx, y: sy, scale: s * bs, facing: f.facing, alpha, flash: this.fx.flash.get(f.id) ?? 0, time: this.time });
     if (f.boss && f.state !== 'ko') this.drawBossMarks(f, sx, sy, s * bs);
+    if (f.controller === 'player' && f.state !== 'ko' && f.state !== 'down') {
+      // repère de joueur au-dessus de la tête : flèche + pastille, toujours lisible
+      const my = sy - 128 * s + Math.sin(this.time * 0.15 + f.id) * 3;
+      ctx.save();
+      ctx.translate(sx, my);
+      ctx.beginPath(); ctx.moveTo(-8, -6); ctx.lineTo(8, -6); ctx.lineTo(0, 6); ctx.closePath();
+      ctx.fillStyle = col.glow; ctx.strokeStyle = '#06101e'; ctx.lineWidth = 2.5; ctx.stroke(); ctx.fill();
+      ctx.font = '800 11px system-ui, sans-serif'; ctx.textAlign = 'center';
+      ctx.lineWidth = 3; ctx.strokeStyle = '#06101e'; ctx.strokeText('P' + (f.slot + 1), 0, -12);
+      ctx.fillStyle = '#fff'; ctx.fillText('P' + (f.slot + 1), 0, -12);
+      ctx.restore();
+    }
     // statuts
     if (f.status.burn > 0) {
       for (let i = 0; i < 3; i++) {

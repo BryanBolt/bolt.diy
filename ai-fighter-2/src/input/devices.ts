@@ -221,10 +221,21 @@ export class TouchDevice implements InputDevice {
   private prevBits = 0;
   private lastBits = 0;
   active = false;
+  facing = 1; // sens du regard du combattant tactile (pour les combos)
+  private macro: number[] = [];
+  /** Lance une suite d'entrées (une par frame) : quarts de cercle en un appui. */
+  playMacro(frames: number[]): void {
+    this.macro = frames.slice();
+  }
   poll(): number {
     this.prevBits = this.lastBits;
-    this.lastBits = this.bits;
-    return this.bits;
+    let b = this.bits;
+    if (this.macro.length) {
+      const step = this.macro.shift() as number;
+      b = (b & ~(IN.LEFT | IN.RIGHT | IN.UP | IN.DOWN | IN.LIGHT | IN.HEAVY)) | step;
+    }
+    this.lastBits = b;
+    return b;
   }
   justPressedAction(): boolean {
     const act = IN.LIGHT | IN.HEAVY | IN.JUMP | IN.CONFIRM;

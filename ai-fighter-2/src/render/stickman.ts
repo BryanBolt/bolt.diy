@@ -271,6 +271,7 @@ export interface DrawOpts {
   outline?: string;
   ghost?: boolean;
   time: number;
+  rim?: boolean; // passe de contour de lisibilité (interne)
 }
 
 export function colorsFor(f: Fighter): { main: string; dark: string; glow: string } {
@@ -289,6 +290,7 @@ function accent(main: string): string {
 }
 
 export function drawStickman(ctx: CanvasRenderingContext2D, f: Fighter, pose: Pose, o: DrawOpts): void {
+  if (!o.ghost && f.state !== 'ko') drawBody(ctx, f, pose, { ...o, rim: true, alpha: (o.alpha ?? 1) * 0.9 }, false);
   drawBody(ctx, f, pose, o, false);
   if (o.flash && o.flash > 0) drawBody(ctx, f, pose, { ...o, alpha: (o.alpha ?? 1) * Math.min(0.85, o.flash) }, true);
 }
@@ -297,12 +299,18 @@ function drawBody(ctx: CanvasRenderingContext2D, f: Fighter, pose: Pose, o: Draw
   const c = getChar(f.charId);
   const sk = skeletonStyle(c);
   const col = colorsFor(f);
-  const S = o.scale * sk.scale;
+  const S = o.scale * sk.scale * 1.1;
   const fx = o.facing;
-  const thick = (sk.thickness * 1.5 + 1.5) * S;
+  const rim = !!o.rim;
+  const thick = (sk.thickness * 1.5 + 1.5) * S + (rim ? 4.2 * S : 0);
   ctx.save();
   ctx.translate(o.x, o.y);
   ctx.globalAlpha = o.alpha ?? 1;
+  // étirement / écrasement selon la vitesse verticale (rendu seulement)
+  if (!o.ghost && f.state !== 'ko' && f.state !== 'down') {
+    const st = Math.max(-0.14, Math.min(0.16, Math.abs(f.vy) * 0.012 - (f.y <= 0.5 && f.state === 'jump' ? 0.12 : 0)));
+    ctx.scale(1 - st * 0.55, 1 + st);
+  }
   if (pose.spin) {
     ctx.translate(0, -50 * S);
     ctx.rotate(pose.spin * DEG * fx);
@@ -334,8 +342,9 @@ function drawBody(ctx: CanvasRenderingContext2D, f: Fighter, pose: Pose, o: Draw
   };
 
   const lum = luma(col.main);
-  const main = tint ? '#ffffff' : o.ghost ? '#aab1be' : col.main;
-  const back = tint || o.ghost ? main : lum < 70 ? shade(main, 0.22) : shade(main, -0.2);
+  const rimColor = lum < 120 ? '#eaf2ff' : '#0a0c16';
+  const main = rim ? rimColor : tint ? '#ffffff' : o.ghost ? '#aab1be' : col.main;
+  const back = rim || tint || o.ghost ? main : lum < 70 ? shade(main, 0.22) : shade(main, -0.2);
 
   const stroke = (pts: number[][], width: number, color: string) => {
     ctx.beginPath();
@@ -359,19 +368,19 @@ function drawBody(ctx: CanvasRenderingContext2D, f: Fighter, pose: Pose, o: Draw
     }
   };
 
-  if (!tint) drawAccessoryBack(ctx, sk.accessory, neckX, neckY, shX, shY, fx, S, col, o.time, f);
+  if (!tint && !rim) drawAccessoryBack(ctx, sk.accessory, neckX, neckY, shX, shY, fx, S, col, o.time, f);
 
   limbs(aB, [shX, shY], null, back);
   limbs(lB, [hipX, hipY], footDir(pose.lB), back);
   stroke([[hipX, hipY], [neckX, neckY]], thick * 1.18, main);
   limbs(lF, [hipX, hipY], footDir(pose.lF), main);
   limbs(aF, [shX, shY], null, main);
-  if (f.weapon > 0 && f.weaponKind && !tint) drawHeldWeapon(ctx, f.weaponKind, aF[2], aF[3], (pose.aF[0] + pose.aF[1]) * DEG, fx, S, thick * 0.6, o.time);
+  if (f.weapon > 0 && f.weaponKind && !tint && !rim) drawHeldWeapon(ctx, f.weaponKind, aF[2], aF[3], (pose.aF[0] + pose.aF[1]) * DEG, fx, S, thick * 0.6, o.time);
   ctx.beginPath();
-  ctx.arc(headX, headY, headR, 0, Math.PI * 2);
+  ctx.arc(headX, headY, headR + (rim ? 2.4 * S : 0), 0, Math.PI * 2);
   ctx.fillStyle = main;
   ctx.fill();
-  if (tint) { ctx.restore(); return; }
+  if (tint || rim) { ctx.restore(); return; }
   drawAccessoryFront(ctx, sk.accessory, headX, headY, headR, fx, S, col, o.time, f);
   ctx.restore();
 }

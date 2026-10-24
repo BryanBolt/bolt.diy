@@ -39,6 +39,8 @@ export class Fx {
   flash = new Map<number, number>(); // id -> intensité
   superFocus = 0; // assombrissement pendant un super
   superOwner = -1;
+  punch = 0; // à-coup de zoom sur les gros impacts
+  impacts: { x: number; y: number; z: number; life: number; ang: number; color: string; size: number }[] = [];
   reduce = false;
   enabledShake = true;
   banner: { text: string; sub?: string; life: number; max: number; color: string } | null = null;
@@ -62,6 +64,8 @@ export class Fx {
             this.burst(e.x, e.y, e.z, 3, '#ff8a3d', 'star', 6 + e.power * 4, 1);
             this.flash.set(e.target, 0.9);
             if (e.power > 0.8) this.ring(e.x, e.y, e.z, '#ffffff', 30 + e.power * 30);
+            if (e.power > 0.45) this.impacts.push({ x: e.x, y: e.y, z: e.z, life: 10, ang: e.dir > 0 ? 0 : Math.PI, color: e.crit ? '#ffe14d' : '#ffffff', size: 26 + e.power * 44 });
+            if (e.power > 0.8) this.punch = Math.max(this.punch, 0.035 + e.power * 0.02);
           }
           const a = world.fighters.find((f) => f.id === e.attacker);
           if (a && !e.blocked && a.comboHits >= 2) this.comboPops.set(a.id, { hits: a.comboHits, life: 60 });
@@ -210,6 +214,9 @@ export class Fx {
         p.rot += 0.2;
       }
       this.particles = this.particles.filter((p) => p.life < p.max);
+      for (const im of this.impacts) im.life--;
+      this.impacts = this.impacts.filter((im) => im.life > 0);
+      this.punch *= 0.86;
       for (const t of this.texts) { t.life--; t.y += 0.7; }
       this.texts = this.texts.filter((t) => t.life > 0);
       for (const g of this.ghosts) g.life--;
@@ -285,7 +292,32 @@ export class Fx {
     }
   }
 
+  /** Cadre d'impact « manga » : rayons qui explosent, étoile à 8 branches, vite effacés. */
+  drawImpacts(ctx: CanvasRenderingContext2D, cam: Camera): void {
+    for (const im of this.impacts) {
+      const { sx, sy, s } = project(cam, im.x, im.y, im.z);
+      const t = 1 - im.life / 10;
+      const R = im.size * s * (0.4 + t * 0.9);
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.globalAlpha = Math.min(1, im.life / 5);
+      ctx.fillStyle = im.color;
+      ctx.beginPath();
+      const n = 8;
+      for (let i = 0; i < n * 2; i++) {
+        const a = (i / (n * 2)) * Math.PI * 2 + im.ang * 0.2;
+        const r = i % 2 ? R * 0.18 : R * (i % 4 === 0 ? 1 : 0.62);
+        ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+  }
+
   drawParticles(ctx: CanvasRenderingContext2D, cam: Camera): void {
+    this.drawImpacts(ctx, cam);
     for (const p of this.particles) {
       const { sx, sy, s } = project(cam, p.x, p.y, p.z);
       const t = p.life / p.max;
