@@ -24,6 +24,7 @@ interface Client {
   name: string;
   charId: string;
   color: number;
+  team: number; // -1 : automatique (slot % 2)
   ready: boolean;
   rtt: number;
   lastFrame: number;
@@ -76,7 +77,7 @@ function lobbyState(room: Room): LobbyState {
   const players: LobbyPlayer[] = room.clients
     .slice()
     .sort((a, b) => a.slot - b.slot)
-    .map((c, i) => ({ slot: c.slot, name: c.name, charId: c.charId, color: c.color, ready: c.ready, isHost: i === 0, connected: true }));
+    .map((c, i) => ({ slot: c.slot, name: c.name, charId: c.charId, color: c.color, ready: c.ready, isHost: i === 0, connected: true, team: c.team >= 0 ? c.team : c.slot % 2 }));
   return { code: room.code, players, options: room.options, inGame: room.inGame };
 }
 function host(room: Room): Client | undefined {
@@ -287,6 +288,7 @@ function handle(c: Client, msg: ClientMsg): void {
       if (msg.charId !== undefined) c.charId = String(msg.charId).slice(0, 16);
       if (msg.color !== undefined) c.color = Number(msg.color) | 0;
       if (msg.ready !== undefined) c.ready = !!msg.ready;
+      if (msg.team !== undefined) c.team = Number(msg.team) === 1 ? 1 : 0;
       if (msg.name !== undefined) c.name = cleanName(msg.name, c.name);
       broadcast(room, { t: 'lobby', state: lobbyState(room) });
       return;
@@ -504,7 +506,7 @@ const http = createServer(async (req, res) => {
 const wss = new WebSocketServer({ server: http, path: '/ws', maxPayload: 8 * 1024 });
 wss.on('connection', (ws, req) => {
   const fwd = String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim();
-  const c: Client = { ip: fwd || req.socket.remoteAddress || '', lastActive: Date.now(), afk: false, ws, room: null, slot: -1, name: '', charId: 'kai', color: 0, ready: false, rtt: 0, lastFrame: -1, alive: true, token: randomUUID() };
+  const c: Client = { ip: fwd || req.socket.remoteAddress || '', lastActive: Date.now(), afk: false, ws, room: null, slot: -1, name: '', charId: 'kai', color: 0, team: -1, ready: false, rtt: 0, lastFrame: -1, alive: true, token: randomUUID() };
   clients.add(c);
   ws.on('message', (data) => {
     let msg: ClientMsg;

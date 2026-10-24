@@ -405,6 +405,15 @@ export class Renderer {
       rig = cloneRig(sim);
       for (const k of ['hip', ...RIG_KEYS] as const) { (rig[k] as P).x -= sx; (rig[k] as P).y -= sy; }
     }
+    if (w.mode === 'duel' && w.config.teams && f.state !== 'ko') {
+      // anneau d'équipe sous les pieds : bleu / rouge
+      ctx.save();
+      ctx.strokeStyle = f.team === 0 ? '#4aa3ff' : '#ff5a4a';
+      ctx.fillStyle = f.team === 0 ? 'rgba(74,163,255,0.18)' : 'rgba(255,90,74,0.18)';
+      ctx.lineWidth = 3 * s;
+      ctx.beginPath(); ctx.ellipse(sx, sy + 2, 34 * s * bs, 11 * s * bs, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.restore();
+    }
     drawStickman(ctx, f, rig ? { ...pose, spin: 0 } : pose, { x: sx, y: sy, scale: s * bs, facing: f.facing, alpha, flash: this.fx.flash.get(f.id) ?? 0, time: this.time, rig, lite: this.lite });
     if (f.boss && f.state !== 'ko') this.drawBossMarks(f, sx, sy, s * bs);
     if (f.controller === 'player' && f.state !== 'ko' && f.state !== 'down') {

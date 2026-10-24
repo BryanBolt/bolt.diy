@@ -287,6 +287,7 @@ function renderLocalLobby(): void {
     else if (a === 'prev-char' && card) { cycleChar(card, -1); renderLocalLobby(); }
     else if (a === 'next-char' && card) { cycleChar(card, 1); renderLocalLobby(); }
     else if (a === 'color' && card) { card.color = Number(d.color); renderLocalLobby(); }
+    else if (a === 'team' && card) { card.team = Number(d.team) === 1 ? 1 : 0; renderLocalLobby(); }
     else if (a === 'ready' && card) { if (S.isUnlocked(card.charId, loadProfile())) { card.ready = !card.ready; synth.play('confirm'); renderLocalLobby(); } }
     else if (a === 'leave' && card) { e.preventDefault(); input.unassign(slot); localCards = localCards.filter((c) => c !== card); localCards.forEach((c, i) => (c.isHost = i === 0)); renderLocalLobby(); }
     else if (a === 'opt') { changeOption(localOptions, d.key ?? '', Number(d.dir)); renderLocalLobby(); }
@@ -345,18 +346,28 @@ function tickLocalLobby(): void {
   renderer.time += 1;
 }
 
+function botTeam(count: number[]): number {
+  const t = count[1] < count[0] ? 1 : 0;
+  count[t]++;
+  return t;
+}
+
 function buildConfig(cards: LobbyCard[], o: LobbyOptions): SimConfig {
   const duel = o.mode === 'duel';
-  const players = cards.map((c, i) => ({ slot: c.slot, charId: c.charId, name: c.name, color: c.color, team: duel ? (o.teams ? i % 2 : i) : 0 }));
+  const players = cards.map((c, i) => ({ slot: c.slot, charId: c.charId, name: c.name, color: c.color, team: duel ? (o.teams ? (c.team ?? c.slot % 2) : i) : 0 }));
   const bots: SimConfig['bots'] = [];
   if (duel) {
     const used = new Set(players.map((p) => p.charId));
-    for (let i = 0; i < o.bots && players.length + bots.length < 4; i++) {
+    // en équipes, les IA complètent d'abord le camp le plus faible (jusqu'à 2 contre 2)
+    const teamCount = [0, 0];
+    if (o.teams) for (const p of players) teamCount[p.team]++;
+    const want = o.teams ? Math.max(o.bots, 4 - players.length) : o.bots;
+    for (let i = 0; i < want && players.length + bots.length < 4; i++) {
       const pool = ROSTER.filter((r) => !used.has(r.id) && !r.unlock);
       const ch = pool[(i * 3 + cards.length) % pool.length] ?? ROSTER[0];
       used.add(ch.id);
       const idx = players.length + i;
-      bots.push({ charId: ch.id, name: `${ch.name} (IA)`, color: nextFreeColor([...cards, ...bots.map((b, k) => ({ slot: 9 + k, name: '', charId: b.charId, color: b.color, ready: true, isHost: false, local: false }))], ch.color), team: o.teams ? idx % 2 : idx, level: 2 + o.difficulty });
+      bots.push({ charId: ch.id, name: `${ch.name} (IA)`, color: nextFreeColor([...cards, ...bots.map((b, k) => ({ slot: 9 + k, name: '', charId: b.charId, color: b.color, ready: true, isHost: false, local: false }))], ch.color), team: o.teams ? botTeam(teamCount) : idx, level: 2 + o.difficulty });
     }
   }
   return { mode: o.mode, difficulty: o.difficulty, rounds: o.rounds, teams: o.teams, stageIndex: o.stage, gravity: o.gravity ?? 0, players, bots };
@@ -701,6 +712,7 @@ function renderOnlineLobby(): void {
     else if (a === 'prev-char' && mine) net?.send({ t: 'lobby', charId: cycleId(me.charId, -1), ready: false });
     else if (a === 'next-char' && mine) net?.send({ t: 'lobby', charId: cycleId(me.charId, 1), ready: false });
     else if (a === 'color' && mine) net?.send({ t: 'lobby', color: Number(d.color) });
+    else if (a === 'team' && mine) net?.send({ t: 'lobby', team: Number(d.team) === 1 ? 1 : 0 });
     else if (a === 'ready' && mine) { if (S.isUnlocked(me.charId, loadProfile())) { saveSettings({ lastChar: me.charId, lastColor: me.color }); net?.send({ t: 'lobby', ready: !me.ready }); } }
     else if (a === 'opt' && me?.isHost) { const o = { ...lobby!.options }; changeOption(o, d.key ?? '', Number(d.dir)); net?.send({ t: 'options', options: o }); }
     else if (a === 'start' && me?.isHost) net?.send({ t: 'start', seed: (Math.random() * 0xffffffff) >>> 0 });

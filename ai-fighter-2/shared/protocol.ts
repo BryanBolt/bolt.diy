@@ -18,6 +18,7 @@ export interface LobbyPlayer {
   ready: boolean;
   isHost: boolean;
   connected: boolean;
+  team?: number; // duel par équipes : 0 bleue · 1 rouge
 }
 
 export interface LobbyOptions {
@@ -63,7 +64,7 @@ export type ClientMsg =
   | { t: 'kick'; slot: number } // l'hôte expulse un joueur
   | { t: 'rtc'; to: number; data: string } // signalisation du chat vocal (relayée telle quelle au joueur `to`)
   | { t: 'resync' } // demande à reconstruire la partie depuis le journal du serveur (après une désynchronisation)
-  | { t: 'lobby'; charId?: string; color?: number; ready?: boolean; name?: string }
+  | { t: 'lobby'; charId?: string; color?: number; ready?: boolean; name?: string; team?: number }
   | { t: 'options'; options: Partial<LobbyOptions> }
   | { t: 'start'; seed: number }
   | { t: 'input'; f: number; bits: number[] } // bits[i] = entrée de la frame f+i (redondance anti-perte)

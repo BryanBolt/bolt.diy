@@ -29,6 +29,17 @@ beforeAll(async () => {
 afterAll(() => { server?.kill(); });
 
 describe('salons publics', () => {
+  it('choix d\'équipe : relayé dans le salon, équipe par défaut = slot % 2', async () => {
+    const a = await client();
+    const j = waitFor(a, 'joined');
+    a.send({ t: 'create', name: 'Chef', charId: 'kai', color: 0 });
+    await j;
+    const got = new Promise<number | undefined>((res) => { a.on('lobby', (m) => { if ((m as Extract<ServerMsg, { t: 'lobby' }>).state.players[0].team === 1) res(1); }); setTimeout(() => res(undefined), 3000); });
+    a.send({ t: 'lobby', team: 1 });
+    expect(await got).toBe(1);
+    a.close();
+  });
+
   it('un salon privé n\'apparaît pas dans la liste', async () => {
     const a = await client();
     const j = waitFor(a, 'joined');

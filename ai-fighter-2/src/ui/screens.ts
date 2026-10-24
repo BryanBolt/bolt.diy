@@ -84,6 +84,7 @@ export interface LobbyCard {
   name: string;
   charId: string;
   color: number;
+  team?: number;
   ready: boolean;
   isHost: boolean;
   local: boolean;
@@ -121,6 +122,7 @@ export function lobbyHtml(v: LobbyView): string {
       <div class="ctitle">${esc(ch.title)}</div>
       ${locked ? `<div class="lock">🔒 ${esc(unlockHint(ch.id))}</div>` : ''}
       ${canEdit ? `<div class="nav"><button class="btn sm" data-action="prev-char" data-slot="${s}">◀</button><button class="btn sm ${c.ready ? '' : 'primary'}" data-action="ready" data-slot="${s}" ${locked ? 'disabled' : ''}>${c.ready ? 'Prêt ✔' : 'Prêt ?'}</button><button class="btn sm" data-action="next-char" data-slot="${s}">▶</button></div>
+      ${v.options.mode === 'duel' && v.options.teams ? `<div class="teamsel">${[0, 1].map((t) => `<button class="btn sm ${(c.team ?? s % 2) === t ? 'primary' : ''}" ${canEdit ? `data-action="team" data-slot="${s}" data-team="${t}"` : 'disabled'} style="${(c.team ?? s % 2) === t ? `background:${t ? '#c0392b' : '#2471c8'}` : ''}">${t ? '🔴 Rouge' : '🔵 Bleue'}</button>`).join('')}</div>` : ''}
       <div class="colors">${PALETTE.slice(0, 12).map((p, i) => `<span class="dot ${i === c.color ? 'sel' : ''}" style="background:${p.main}" data-action="color" data-slot="${s}" data-color="${i}" title="${p.name}"></span>`).join('')}</div>
       <div class="dev">${esc(c.deviceLabel ?? '')}${c.local && !v.online ? ' · <a href="#" data-action="leave" data-slot="' + s + '" style="color:var(--danger)">quitter</a>' : ''}</div>`
       : `<div class="dev">${c.ready ? '✔ prêt' : 'choisit son combattant…'}</div>`}
