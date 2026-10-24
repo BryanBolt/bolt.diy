@@ -190,4 +190,31 @@ describe('reprise de partie en ligne', () => {
     expect(hashWorld(A.world)).toBe(hashWorld(B.world));
     a.close(); b.close();
   }, 60000);
+
+  it('réseau lent chez un joueur : le délai d\'entrée s\'adapte et la partie avance sans désynchronisation', async () => {
+    const url = `ws://localhost:${PORT}/ws`;
+    const a = new NetClient(); const b = new NetClient();
+    await a.connect(url); await b.connect(url);
+    const jA = waitFor(a, 'joined'); a.send({ t: 'create', name: 'A', charId: 'kai', color: 0 });
+    const ja = await jA;
+    const jB = waitFor(b, 'joined'); b.send({ t: 'join', code: ja.code, name: 'B', charId: 'tora', color: 1 });
+    await jB;
+    const stA = waitFor(a, 'start'); const stB = waitFor(b, 'start');
+    a.send({ t: 'start', seed: 99 });
+    const [sa] = await Promise.all([stA, stB]);
+    // B a ~150 ms de latence à l'envoi
+    const realSend = b.send.bind(b);
+    (b as unknown as { send: (m: unknown) => void }).send = (m: unknown) => { setTimeout(() => realSend(m as Parameters<typeof realSend>[0]), 150); };
+    const inA = new FakeInput(); const inB = new FakeInput();
+    const mk = (net: NetClient, slot: number, inp: FakeInput) => new Session({ config: config(), seed: sa.seed, localSlots: [slot], allSlots: [0, 1], delay: sa.delay, input: inp as unknown as InputManager, net });
+    const A = mk(a, 0, inA); const B = mk(b, 1, inB);
+    let now = 0;
+    for (let i = 0; i < 900; i++) { now += 16.7; inA.tick++; inB.tick++; A.update(now); B.update(now); await sleep(3); }
+    expect(A.delay).toBeGreaterThan(sa.delay);
+    expect(B.delay).toBeGreaterThan(sa.delay);
+    expect(A.simFrame).toBeGreaterThan(300);
+    expect(A.desync).toBe(false);
+    expect(B.desync).toBe(false);
+    a.close(); b.close();
+  }, 60000);
 });

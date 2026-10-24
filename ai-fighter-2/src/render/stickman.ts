@@ -309,6 +309,7 @@ export interface DrawOpts {
   outline?: string;
   ghost?: boolean;
   time: number;
+  lite?: boolean; // appareil lent : on saute le contour de lisibilité
   rim?: boolean; // passe de contour de lisibilité (interne)
   rig?: Rig; // squelette simulé (ragdoll), coordonnées relatives aux pieds
 }
@@ -360,7 +361,7 @@ export function computeRig(f: Fighter, pose: Pose, S: number, fx: number): Rig {
 }
 
 export function drawStickman(ctx: CanvasRenderingContext2D, f: Fighter, pose: Pose, o: DrawOpts): void {
-  if (!o.ghost && f.state !== 'ko') drawBody(ctx, f, pose, { ...o, rim: true, alpha: (o.alpha ?? 1) * 0.9 }, false);
+  if (!o.ghost && !o.lite && f.state !== 'ko') drawBody(ctx, f, pose, { ...o, rim: true, alpha: (o.alpha ?? 1) * 0.9 }, false);
   drawBody(ctx, f, pose, o, false);
   if (o.flash && o.flash > 0) drawBody(ctx, f, pose, { ...o, alpha: (o.alpha ?? 1) * Math.min(0.85, o.flash) }, true);
 }

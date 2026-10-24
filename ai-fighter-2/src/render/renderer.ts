@@ -30,6 +30,7 @@ export class Renderer {
   private fpsAcc = 0;
   private fpsCount = 0;
   fps = 60;
+  private lite = false; // qualité réduite automatique sur les appareils lents
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -72,7 +73,7 @@ export class Renderer {
     if (Math.floor(this.time) % 120 === 0) this.ragdolls.forget(new Set(w.fighters.map((f) => f.id)));
     this.fpsAcc += dtMs;
     this.fpsCount++;
-    if (this.fpsAcc >= 500) { this.fps = Math.round((this.fpsCount * 1000) / this.fpsAcc); this.fpsAcc = 0; this.fpsCount = 0; }
+    if (this.fpsAcc >= 500) { this.fps = Math.round((this.fpsCount * 1000) / this.fpsAcc); this.fpsAcc = 0; this.fpsCount = 0; if (this.fps < 42) this.lite = true; else if (this.fps > 56) this.lite = false; }
     info.fps = this.fps;
     const ctx = this.ctx;
     const fx = this.fx;
@@ -392,7 +393,7 @@ export class Renderer {
       rig = cloneRig(sim);
       for (const k of ['hip', ...RIG_KEYS] as const) { (rig[k] as P).x -= sx; (rig[k] as P).y -= sy; }
     }
-    drawStickman(ctx, f, rig ? { ...pose, spin: 0 } : pose, { x: sx, y: sy, scale: s * bs, facing: f.facing, alpha, flash: this.fx.flash.get(f.id) ?? 0, time: this.time, rig });
+    drawStickman(ctx, f, rig ? { ...pose, spin: 0 } : pose, { x: sx, y: sy, scale: s * bs, facing: f.facing, alpha, flash: this.fx.flash.get(f.id) ?? 0, time: this.time, rig, lite: this.lite });
     if (f.boss && f.state !== 'ko') this.drawBossMarks(f, sx, sy, s * bs);
     if (f.controller === 'player' && f.state !== 'ko' && f.state !== 'down') {
       // repère de joueur au-dessus de la tête : flèche + pastille, toujours lisible

@@ -47,7 +47,12 @@ export class Session {
   sendFrame: number;
   readonly localSlots: number[];
   allSlots: number[];
-  readonly delay: number;
+  /** délai d'entrée (frames) : s'adapte en ligne selon les ralentissements (réseau lent d'un joueur) */
+  delay: number;
+  private baseDelay: number;
+  private stallWindow = 0;
+  private calmMs = 0;
+  private adaptCool = 0;
   private inputs = new Map<number, number[]>(); // slot -> bits par frame
   private ctl: CtlEvent[] = [];
   private acc = 0;
@@ -86,6 +91,7 @@ export class Session {
     if (o.replay) for (const e of o.replay.events) if (e.join) this.addSlot(e.slot);
     o = { ...o, allSlots: this.allSlots };
     this.delay = o.delay;
+    this.baseDelay = o.delay;
     this.input = o.input;
     this.net = o.net;
     this.sendFrame = o.delay;
@@ -237,9 +243,10 @@ export class Session {
     }
     this.acc += dt * this.timeScale;
     let steps = 0;
+    let stalledNow = false;
     while (this.acc >= FRAME_MS && steps < MAX_STEPS_PER_UPDATE) {
       // 1) entrées locales pour la frame d'envoi
-      if (this.sendFrame <= this.simFrame + this.delay) {
+      while (this.sendFrame <= this.simFrame + this.delay) {
         const f = this.sendFrame;
         for (const slot of this.localSlots) {
           let bits = this.input.bitsFor(slot);
@@ -259,6 +266,7 @@ export class Session {
       }
       // 2) simulation si toutes les entrées de la frame sont connues
       if (!this.tryStep(true)) {
+        stalledNow = true;
         this.stalledMs += FRAME_MS;
         this.acc = Math.min(this.acc, FRAME_MS * 2);
         break;
@@ -268,6 +276,14 @@ export class Session {
       steps++;
     }
     if (steps === MAX_STEPS_PER_UPDATE) this.acc = 0;
+    // délai adaptatif : si on attend souvent les entrées d'un joueur lent, on prend plus de marge (puis on la rend quand tout va bien)
+    if (this.net) {
+      this.adaptCool = Math.max(0, this.adaptCool - dt);
+      if (stalledNow) { this.stallWindow += FRAME_MS; this.calmMs = 0; }
+      else { this.calmMs += dt; this.stallWindow = Math.max(0, this.stallWindow - dt * 0.3); }
+      if (this.stallWindow > 60 && this.adaptCool <= 0 && this.delay < 14) { this.delay = Math.min(14, this.delay + 2); this.stallWindow = 0; this.adaptCool = 350; }
+      else if (this.calmMs > 10000 && this.delay > this.baseDelay && this.adaptCool <= 0) { this.delay--; this.calmMs = 0; this.adaptCool = 4000; }
+    }
     return steps;
   }
 
