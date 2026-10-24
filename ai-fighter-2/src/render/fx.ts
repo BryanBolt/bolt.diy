@@ -163,6 +163,18 @@ export class Fx {
           if (e.state === 'active' && e.kind === 'train') this.shake = Math.max(this.shake, 4);
           break;
         }
+        case 'chest': {
+          const col = ['#ffd9a0', '#d8ecff', '#ffd75a', '#d9a0ff'][Math.min(3, e.tier)];
+          if (e.phase === 'burst') {
+            this.ring(e.x, 40, e.z, '#ffffff', 90);
+            this.ring(e.x, 40, e.z, col, 60);
+            this.burst(e.x, 50, e.z, 50, col, 'star', 8, 11);
+            this.burst(e.x, 40, e.z, 30, '#ffe14d', 'spark', 6, 9);
+            this.punch = Math.max(this.punch, 0.1);
+            this.lightFlash = Math.max(this.lightFlash, 0.8);
+          } else if (e.phase === 'spawn') { this.burst(e.x, 30, e.z, 18, col, 'spark', 4, 6); }
+          break;
+        }
         case 'zone': {
           if (e.phase === 'warn') break;
           const col = e.elem === 'fire' ? '#ff8a3d' : e.elem === 'ice' ? '#bff3ff' : e.elem === 'shock' ? '#ffe14d' : e.elem === 'poison' ? '#9aff6a' : '#ff6a4a';

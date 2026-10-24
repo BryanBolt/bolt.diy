@@ -339,6 +339,7 @@ export type SimEvent =
   | { t: 'pickup'; kind: Item['kind']; x: number; y: number; z: number; v?: string }
   | { t: 'boom'; x: number; y: number; z: number; elem: string; r: number }
   | { t: 'fixture'; kind: FixtureKind; x: number; z: number }
+  | { t: 'chest'; phase: 'spawn' | 'open' | 'burst'; x: number; z: number; tier: number }
   | { t: 'zone'; phase: 'warn' | 'boom'; x: number; z: number; rx: number; elem: string }
   | { t: 'special'; id: number; x: number; y: number; z: number; kind: string }
   | { t: 'bonus'; slot: number; bonus: BonusId }
@@ -353,7 +354,9 @@ export type Phase =
   | 'intro'
   | 'fight'
   | 'waveClear'
+  | 'chest'
   | 'bonus'
+  | 'rooms'
   | 'mini'
   | 'shop'
   | 'stageClear'
@@ -455,6 +458,18 @@ export const WEAPONS: Record<WeaponKind, WeaponDef> = {
   shotgun: { name: 'Fusil à pompe', uses: 8, icon: '💥', gun: true, reach: 0, dmg: 1, throwable: true, fx: 'blast', desc: 'À bout portant : dégâts presque doublés et projection' },
 };
 
+/** Coffre de fin de vague (façon Lost Castle) : on va l'ouvrir ; le contenu dépend de sa rareté. */
+export interface Chest { x: number; z: number; tier: number; opening: number; wait: number }
+export type RoomId = 'heal' | 'forge' | 'treasure' | 'gold' | 'challenge';
+export interface RoomsState { options: RoomId[]; cursors: { slot: number; cursor: number }[] }
+export const ROOMS: Record<RoomId, { name: string; icon: string; desc: string }> = {
+  heal: { name: 'Fontaine de vie', icon: '⛲', desc: 'Soigne 70 % des PV de tous et donne +1 vie' },
+  forge: { name: 'Forge', icon: '⚒️', desc: 'Chacun améliore un objet qu\'il possède (+1 niveau)' },
+  treasure: { name: 'Salle au trésor', icon: '💎', desc: 'Un coffre bien plus rare t\'attend' },
+  gold: { name: 'Cache d\'or', icon: '💰', desc: '+45 pièces pour l\'échoppe' },
+  challenge: { name: 'Salle de défi', icon: '☠️', desc: 'Vague plus dure, mais coffre légendaire en récompense' },
+};
+
 export interface BonusChoice {
   slot: number;
   options: BonusId[];
@@ -508,6 +523,11 @@ export interface World {
   hazards: Hazard[];
   fixtures: Fixture[];
   zones: Zone[];
+  chest: Chest | null;
+  rooms: RoomsState | null;
+  chestBonus: number; // rareté ajoutée au prochain coffre (salle au trésor, défi)
+  challenge: boolean;
+  afterChest: 'rooms' | 'fight';
   mini: MiniState | null;
   bossCd: number; // frames avant la prochaine attaque de zone
   bossWeak: number; // fenêtre de point faible (dégâts ×1,8) restante

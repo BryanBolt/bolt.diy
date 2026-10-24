@@ -14,7 +14,7 @@ import { IN } from './types';
 import { SHOP_ITEMS, WEAPONS } from './types';
 import { readCommand, dirMaskOf, pushHistory } from './commands';
 import { FORMS, FORM_FRAMES } from './forms';
-import type { World, Fighter, SimConfig, MoveDef, Projectile, Item, BonusId, EnemyKind, StageDef, AiState, CharDef, SimEvent, Phase, FState, Hazard, ProjectileDef, WeaponKind, MiniKind, MiniPlayer } from './types';
+import type { World, Fighter, SimConfig, MoveDef, Projectile, Item, BonusId, EnemyKind, StageDef, AiState, CharDef, SimEvent, Phase, FState, Hazard, ProjectileDef, WeaponKind, MiniKind, MiniPlayer, RoomId } from './types';
 
 // ---------------------------------------------------------------------------
 // Création
@@ -56,6 +56,11 @@ export function createWorld(config: SimConfig, seed: number): World {
     fixtures: [],
     zones: [],
     mini: null,
+    chest: null,
+    rooms: null,
+    chestBonus: 0,
+    challenge: false,
+    afterChest: 'rooms',
     bossCd: 0,
     bossWeak: 0,
     events: [],
@@ -316,6 +321,7 @@ function nextWave(w: World): void {
   const extra = isBoss ? 0 : Math.round((nPlayers - 1) * 0.6 * spec.length);
   const all: { kind: EnemyKind; charId?: string; level: number }[] = [...spec];
   for (let i = 0; i < extra; i++) all.push(spec[i % spec.length]);
+  if (w.challenge && !isBoss) { for (let i = 0; i < 3; i++) all.push({ kind: 'brute', level: spec[0].level + 1 }); w.challenge = false; w.events.push({ t: 'text', x: w.arenaL + C.VIEW_W / 2, y: 300, z: 140, text: '☠ SALLE DE DÉFI !', color: '#ff5f5f' }); }
   all.forEach((e, i) => {
     const enemy = e.kind === 'boss' ? makeEnemy(w, 'boss', e.level, e.charId, stage.boss.name) : makeEnemy(w, e.kind, e.level + (w.mode === 'survival' ? 0 : 0), e.charId);
     const side = i % 2 === 0 ? 1 : -1;
@@ -363,12 +369,123 @@ function survivalWave(w: World, idx: number): { kind: EnemyKind; level: number }
   return out;
 }
 
-function startBonusPhase(w: World): void {
+
+function startChest(w: World, afterChest: 'rooms' | 'fight'): void {
+  const r = rng(w);
+  let tier = Math.min(2, Math.floor(Math.max(0, w.waveIndex) / 3)) + (w.mode === 'survival' && w.waveIndex % 5 === 4 ? 1 : 0) + w.chestBonus;
+  if (r.int(0, 99) < 18) tier++;
+  commitRng(w, r);
+  w.chestBonus = 0;
+  tier = clamp(tier, 0, 3);
+  w.afterChest = afterChest;
+  w.chest = { x: q(w.arenaL + C.VIEW_W / 2), z: 140, tier, opening: 0, wait: 0 };
+  setPhase(w, 'chest', 40 * C.FPS);
+  w.events.push({ t: 'chest', phase: 'spawn', x: w.chest.x, z: w.chest.z, tier });
+  w.events.push({ t: 'sound', id: 'shop' });
+}
+
+function stepChest(w: World, inputs: number[]): void {
+  const c = w.chest;
+  if (!c) { startBonusPhase(w); return; }
+  const ps = players(w);
+  if (c.opening === 0) {
+    c.wait++;
+    const humans = ps.filter((f) => f.controller === 'player' && alive(f));
+    let go = c.wait > 90 && humans.length === 0;
+    if (c.wait > 20 * C.FPS) go = true;
+    for (const f of humans) {
+      const pressed = (inputs[f.slot] ?? 0) & ~f.prevInput & (IN.LIGHT | IN.CONFIRM);
+      if (pressed && Math.abs(f.x - c.x) < 80 && Math.abs(f.z - c.z) < 70) go = true;
+    }
+    if (go) { c.opening = 1; w.events.push({ t: 'chest', phase: 'open', x: c.x, z: c.z, tier: c.tier }); }
+  } else {
+    c.opening++;
+    if (c.opening === 56) {
+      w.events.push({ t: 'chest', phase: 'burst', x: c.x, z: c.z, tier: c.tier });
+      w.coins += 6 + c.tier * 8;
+      w.slowmo = Math.max(w.slowmo, 20);
+    }
+    if (c.opening > 90) startBonusPhase(w, c.tier);
+  }
+}
+
+function startRooms(w: World): void {
+  const r = rng(w);
+  const all: RoomId[] = ['heal', 'forge', 'treasure', 'gold', 'challenge'];
+  const options: RoomId[] = [];
+  while (options.length < 3) options.push(all.splice(r.int(0, all.length - 1), 1)[0]);
+  commitRng(w, r);
+  w.rooms = { options, cursors: players(w).map((f) => ({ slot: f.slot, cursor: 0 })) };
+  setPhase(w, 'rooms', 25 * C.FPS);
+}
+
+function resumeFight(w: World): void {
+  w.locked = false;
+  setPhase(w, 'fight', 0);
+  w.events.push({ t: 'sound', id: 'go' });
+}
+
+function applyRoom(w: World, id: RoomId): void {
+  const ps = players(w);
+  const say = (f: Fighter, text: string, color: string) => w.events.push({ t: 'text', x: f.x, y: f.y + 160, z: f.z, text, color });
+  w.events.push({ t: 'sound', id: 'confirm' });
+  switch (id) {
+    case 'heal':
+      for (const f of ps) { f.hp = Math.min(f.hpMax, f.hp + Math.round(f.hpMax * 0.7)); f.lives = Math.min(5, f.lives + 1); if (f.state === 'ko') respawn(w, f, 60); say(f, '+1 VIE', '#ff8aa8'); }
+      break;
+    case 'forge':
+      for (const f of ps) {
+        const own = f.bonuses.filter((b) => STACKABLE.has(b));
+        const r = rng(w);
+        const b: BonusId = own.length ? own[r.int(0, own.length - 1)] : 'power';
+        commitRng(w, r);
+        applyBonus(w, f, b);
+        say(f, `FORGE : ${BONUSES.find((x) => x.id === b)?.name ?? ''}`, '#ffb830');
+      }
+      break;
+    case 'gold': w.coins += 45; w.score += 200; break;
+    case 'treasure': w.chestBonus = 2; break;
+    case 'challenge': w.challenge = true; w.chestBonus = 2; break;
+  }
+}
+
+function stepRooms(w: World, inputs: number[]): void {
+  const rm = w.rooms;
+  if (!rm) { resumeFight(w); return; }
+  let pick = -1;
+  const humans = players(w).filter((f) => f.controller === 'player');
+  for (const cu of rm.cursors) {
+    const f = w.fighters.find((x) => x.slot === cu.slot && x.team === 0);
+    if (!f || f.controller !== 'player') continue;
+    const inp = inputs[cu.slot] ?? 0;
+    const pressed = w.frame - w.phaseFrame < MENU_LOCK ? 0 : inp & ~f.prevInput;
+    if (pressed & IN.LEFT) { cu.cursor = (cu.cursor + 2) % 3; w.events.push({ t: 'sound', id: 'ui' }); }
+    if (pressed & IN.RIGHT) { cu.cursor = (cu.cursor + 1) % 3; w.events.push({ t: 'sound', id: 'ui' }); }
+    if (pressed & (IN.LIGHT | IN.CONFIRM) && pick < 0) pick = cu.cursor;
+    f.prevInput = inp;
+  }
+  if (pick < 0 && (w.phaseTimer === 0 || (humans.length === 0 && w.frame - w.phaseFrame > 90))) {
+    const hurt = players(w).some((f) => f.hp < f.hpMax * 0.5);
+    const i = rm.options.indexOf(hurt ? 'heal' : 'forge');
+    pick = i >= 0 ? i : 0;
+  }
+  if (pick < 0) return;
+  const id = rm.options[pick];
+  w.rooms = null;
+  applyRoom(w, id);
+  if (id === 'treasure' || id === 'challenge') {
+    if (id === 'treasure') startChest(w, 'fight');
+    else resumeFight(w);
+  } else resumeFight(w);
+}
+
+function startBonusPhase(w: World, tier = 0): void {
+  w.chest = null;
   w.bonusChoices = [];
   for (const f of players(w)) {
     const pool = BONUSES.filter((b) => !f.bonuses.includes(b.id) || STACKABLE.has(b.id));
     const r = rng(w);
-    const options = rollBonuses(pool, 3, w.waveIndex + (w.mode === 'survival' && w.waveIndex % 5 === 4 ? 8 : 0), (lo, hi) => r.int(lo, hi));
+    const options = rollBonuses(pool, 3, w.waveIndex + tier * 5, (lo, hi) => r.int(lo, hi));
     commitRng(w, r);
     w.bonusChoices.push({ slot: f.slot, options, cursor: 0, chosen: f.controller === 'ai' ? 0 : -1 });
   }
@@ -385,8 +502,8 @@ function finishBonusPhase(w: World): void {
   }
   w.bonusChoices = [];
   w.locked = false;
-  setPhase(w, 'fight', 0);
-  w.events.push({ t: 'sound', id: 'go' });
+  if (w.afterChest === 'rooms' && w.mode !== 'duel' && (w.waveIndex + 1) % 2 === 0) startRooms(w);
+  else resumeFight(w);
 }
 
 export function applyBonus(w: World, f: Fighter, b: BonusId): void {
@@ -926,8 +1043,8 @@ export function step(w: World, inputs: number[]): void {
   // --- phases ---
   stepPhase(w, inputs);
 
-  const acting = w.phase === 'fight' || w.phase === 'waveClear' || w.phase === 'stageClear' || w.phase === 'roundEnd' || w.phase === 'matchEnd' || w.phase === 'gameOver';
-  const canAct = w.phase === 'fight';
+  const acting = w.phase === 'fight' || w.phase === 'waveClear' || w.phase === 'chest' || w.phase === 'stageClear' || w.phase === 'roundEnd' || w.phase === 'matchEnd' || w.phase === 'gameOver';
+  const canAct = w.phase === 'fight' || w.phase === 'chest';
 
   // --- combattants ---
   for (const f of w.fighters) {
@@ -942,7 +1059,7 @@ export function step(w: World, inputs: number[]): void {
   separate(w);
   stepShamans(w);
   // --- dangers, boss ---
-  if (canAct && w.mode !== 'duel') { stepHazards(w); stepBossRage(w); stepFixtures(w); stepBossZones(w); }
+  if (w.phase === 'fight' && w.mode !== 'duel') { stepHazards(w); stepBossRage(w); stepFixtures(w); stepBossZones(w); }
   // --- projectiles / objets ---
   stepProjectiles(w);
   stepItems(w);
@@ -992,8 +1109,14 @@ function stepPhase(w: World, inputs: number[]): void {
         if (last) {
           setPhase(w, 'stageClear', 300);
           w.events.push({ t: 'sound', id: 'stageclear' });
-        } else if (w.waveIndex % 1 === 0) startBonusPhase(w);
+        } else startChest(w, 'rooms');
       }
+      break;
+    case 'chest':
+      stepChest(w, inputs);
+      break;
+    case 'rooms':
+      stepRooms(w, inputs);
       break;
     case 'bonus': {
       let all = true;

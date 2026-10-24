@@ -1,4 +1,5 @@
 // Rendu principal : canvas 960x540 virtuel mis à l'échelle, ordre de profondeur, ombres, projectiles, objets.
+import { drawChestObj } from './chest';
 import { growthScale, drawItemsBack, drawItemsFront, drawOrbs } from './itemfx';
 import { stacks } from '../sim/bonuses';
 import { orbitPos } from '../sim/sim';
@@ -182,6 +183,7 @@ export class Renderer {
     for (const f of sorted) drawables.push({ z: f.z, draw: () => this.drawFighter(f, w, info) });
     for (const p of w.projectiles) drawables.push({ z: p.z, draw: () => this.drawProjectile(p) });
     for (const it of w.items) drawables.push({ z: it.z, draw: () => this.drawItem(it) });
+    if (w.chest) { const c = w.chest; drawables.push({ z: c.z, draw: () => { const q2 = project(this.cam, c.x, 0, c.z); drawChestObj(this.ctx, q2.sx, q2.sy, q2.s, c.tier, c.opening, this.time); } }); }
     for (const x of w.fixtures) if (x.kind !== 'current') drawables.push({ z: x.kind === 'rail' ? -999 : x.z - 1, draw: () => this.drawFixture(x, w) });
     for (const h of w.hazards) if (h.kind === 'barrel' || h.kind === 'laser') drawables.push({ z: h.kind === 'laser' ? 999 : h.z, draw: () => this.drawHazard(h, w) });
     drawables.sort((a, b) => a.z - b.z);

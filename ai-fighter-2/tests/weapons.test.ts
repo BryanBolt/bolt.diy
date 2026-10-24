@@ -93,7 +93,7 @@ describe('menus de fin de niveau', () => {
     w.phase = 'waveClear'; w.phaseTimer = 1;
     st(w, [IN.LIGHT]);
     let guard = 0;
-    while ((w.phase as string) !== 'bonus' && guard++ < 400) st(w, [IN.LIGHT]);
+    while ((w.phase as string) !== 'bonus' && guard++ < 4000) st(w, [IN.LIGHT]);
     expect(w.phase as string).toBe('bonus');
     // on martèle Attaque : rien n'est choisi pendant le verrou
     for (let i = 0; i < 20; i++) st(w, [i % 2 ? IN.LIGHT : 0]);

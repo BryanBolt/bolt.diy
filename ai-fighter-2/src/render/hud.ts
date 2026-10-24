@@ -7,7 +7,8 @@ import { BONUS_BY_ID, RARITY, activeSynergies, synergiesUnlockedBy, stacks } fro
 import type { Fx } from './fx';
 import { project, type Camera } from './camera';
 import { STAGES } from '../sim/stages';
-import { SHOP_ITEMS, WEAPONS } from '../sim/types';
+import { SHOP_ITEMS, WEAPONS, ROOMS } from '../sim/types';
+import { TIER_NAME } from './chest';
 import { REVIVE_FRAMES } from '../sim/constants';
 import { MINI_COUNTDOWN, MINI_SMASH_FRAMES, miniCursor } from '../sim/sim';
 
@@ -167,6 +168,8 @@ export function drawHud(ctx: CanvasRenderingContext2D, w: World, fx: Fx, cam: Ca
   if (fx.banner) drawBanner(ctx, fx.banner);
   // --- choix de bonus ---
   if (w.phase === 'bonus') drawBonusChoice(ctx, w, info, time);
+  if (w.phase === 'rooms') drawRooms(ctx, w, info);
+  if (w.phase === 'chest' && w.chest) drawChestPrompt(ctx, w, info);
   if (w.phase === 'shop') drawShop(ctx, w, info, time);
   if (w.phase === 'mini') drawMini(ctx, w, info, time);
   if (fx.alert) drawAlert(ctx, fx.alert, time);
@@ -409,6 +412,57 @@ function drawAlert(ctx: CanvasRenderingContext2D, a: { text: string; life: numbe
   ctx.fillStyle = blink ? '#ff5f5f' : '#ffd166';
   ctx.fillText(a.text, view.w / 2, 130);
   ctx.restore();
+  ctx.textAlign = 'left';
+}
+
+function drawChestPrompt(ctx: CanvasRenderingContext2D, w: World, info: HudInfo): void {
+  const c = w.chest!;
+  if (c.opening) return;
+  ctx.textAlign = 'center';
+  ctx.font = `900 22px ${FONT}`;
+  ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+  const txt = `${TIER_NAME[Math.min(3, c.tier)]} : approche-toi et frappe-le !`;
+  ctx.strokeText(txt, view.w / 2, 110); ctx.fillStyle = '#ffe98a'; ctx.fillText(txt, view.w / 2, 110);
+  ctx.font = `13px ${FONT}`; ctx.fillStyle = '#ddd';
+  ctx.fillText(`S'ouvre tout seul dans ${Math.max(0, Math.ceil(20 - c.wait / FPS))} s`, view.w / 2, 132);
+  void info;
+  ctx.textAlign = 'left';
+}
+
+function drawRooms(ctx: CanvasRenderingContext2D, w: World, info: HudInfo): void {
+  const rm = w.rooms;
+  if (!rm) return;
+  ctx.fillStyle = 'rgba(10,10,20,0.72)';
+  ctx.fillRect(0, 0, view.w, view.h);
+  ctx.textAlign = 'center';
+  ctx.font = `900 28px ${FONT}`;
+  ctx.fillStyle = '#ffd166';
+  ctx.fillText('CHOISIS UNE SALLE', view.w / 2, 80);
+  ctx.font = `13px ${FONT}`;
+  ctx.fillStyle = '#ccc';
+  ctx.fillText(w.frame - w.phaseFrame < 50 ? 'Patiente un instant…' : `← → choisir · Attaque valider (le premier qui valide décide) · ${Math.ceil(w.phaseTimer / FPS)} s`, view.w / 2, 104);
+  const cw = Math.min(280, (view.w - 120) / 3 - 14);
+  rm.options.forEach((id, i) => {
+    const r = ROOMS[id];
+    const x = view.w / 2 - (cw * 3 + 28) / 2 + i * (cw + 14), y = 140, h = 230;
+    const who = rm.cursors.filter((c) => c.cursor === i);
+    roundRect(ctx, x, y, cw, h, 14);
+    ctx.fillStyle = who.length ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.5)';
+    ctx.fill();
+    ctx.lineWidth = who.length ? 3 : 1.5;
+    ctx.strokeStyle = who.length ? '#ffd166' : 'rgba(255,255,255,0.3)';
+    ctx.stroke();
+    ctx.textAlign = 'center';
+    ctx.font = `64px ${FONT}`; ctx.fillStyle = '#fff';
+    ctx.fillText(r.icon, x + cw / 2, y + 90);
+    ctx.font = `bold 18px ${FONT}`; ctx.fillText(r.name, x + cw / 2, y + 128);
+    ctx.font = `13px ${FONT}`; ctx.fillStyle = '#ddd';
+    wrapText(ctx, r.desc, x + 22, y + 156, cw - 44, 16);
+    ctx.font = `bold 12px ${FONT}`; ctx.fillStyle = '#7de8ff';
+    ctx.textAlign = 'center';
+    ctx.fillText(who.map((c) => `P${c.slot + 1}`).join(' · '), x + cw / 2, y + h - 14);
+  });
+  void info;
   ctx.textAlign = 'left';
 }
 
