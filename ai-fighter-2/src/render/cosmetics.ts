@@ -53,6 +53,21 @@ export function drawHat(ctx: CanvasRenderingContext2D, hat: string, hx: number, 
       tri(ctx, [[-r * 0.9, -r * 0.5], [-r * 1.9, -r * 1.4], [-r * 1.2, -r * 0.2]], '#f2ead2', lw);
       tri(ctx, [[r * 0.9, -r * 0.5], [r * 1.9, -r * 1.4], [r * 1.2, -r * 0.2]], '#f2ead2', lw);
       break;
+    case 'chef':
+      tri(ctx, [[-r * 0.8, 0], [-r * 0.8, -r * 0.9], [r * 0.8, -r * 0.9], [r * 0.8, 0]], '#f4f4f4', lw);
+      ctx.fillStyle = '#f4f4f4'; ctx.strokeStyle = INK; ctx.lineWidth = lw;
+      for (const dx of [-0.6, 0, 0.6]) { ctx.beginPath(); ctx.arc(dx * r, -r * 1.2, r * 0.5, 0, 7); ctx.fill(); ctx.stroke(); }
+      break;
+    case 'pirate':
+      tri(ctx, [[-r * 1.5, 0], [-r * 0.9, -r * 1.1], [0, -r * 0.7], [r * 0.9, -r * 1.1], [r * 1.5, 0]], '#20242f', lw);
+      ctx.fillStyle = '#f2ead2'; ctx.beginPath(); ctx.arc(0, -r * 0.5, r * 0.22, 0, 7); ctx.fill();
+      break;
+    case 'cat':
+      tri(ctx, [[-r * 0.9, 0], [-r * 0.8, -r * 1.3], [-r * 0.1, -r * 0.2]], '#444a5c', lw);
+      tri(ctx, [[r * 0.9, 0], [r * 0.8, -r * 1.3], [r * 0.1, -r * 0.2]], '#444a5c', lw);
+      tri(ctx, [[-r * 0.7, -r * 0.2], [-r * 0.65, -r * 0.95], [-r * 0.25, -r * 0.3]], '#ff9ab8', 1);
+      tri(ctx, [[r * 0.7, -r * 0.2], [r * 0.65, -r * 0.95], [r * 0.25, -r * 0.3]], '#ff9ab8', 1);
+      break;
     case 'crown': {
       const pts: number[][] = [[-r * 0.9, 0], [-r * 0.9, -r * 1.1], [-r * 0.45, -r * 0.6], [0, -r * 1.3], [r * 0.45, -r * 0.6], [r * 0.9, -r * 1.1], [r * 0.9, 0]];
       tri(ctx, pts, '#ffcf3a', lw);
@@ -70,6 +85,8 @@ const AURA_COL: Record<string, string[]> = {
   shadow: ['#2a1a40', '#4b2a78', '#14081f'],
   rainbow: ['#ff5f5f', '#ffd24d', '#7dff9a', '#4fd8ff', '#b07cff'],
   gold: ['#ffd24d', '#fff1a0', '#e0a21a'],
+  hearts: ['#ff5f9a', '#ff8ab8', '#ffd0e0'],
+  matrix: ['#39ff6a', '#1aa84a', '#b8ffd0'],
 };
 
 /** Aura : particules qui tournent autour du corps ; plus denses quand le combattant bouge vite. */

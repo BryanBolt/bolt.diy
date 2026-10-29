@@ -36,6 +36,10 @@ export interface Profile {
   coins: number;
   unlockedChars: string[];
   playTimeFrames: number;
+  owned: string[]; // cosmétiques achetés
+  achv: string[]; // succès débloqués
+  streak: number; // jours de suite au défi du jour
+  lastDaily: string; // dernière date jouée (UTC)
 }
 
 const SETTINGS_KEY = 'aif2.settings.v1';
@@ -74,6 +78,10 @@ const DEFAULT_PROFILE: Profile = {
   coins: 0,
   unlockedChars: [],
   playTimeFrames: 0,
+  owned: [],
+  achv: [],
+  streak: 0,
+  lastDaily: '',
 };
 
 function read<T>(key: string, def: T): T {

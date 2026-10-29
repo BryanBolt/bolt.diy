@@ -29,3 +29,19 @@ describe('cosmétiques', () => {
     expect([f.hat, f.aura]).toEqual(['wizard', 'fire']);
   });
 });
+
+import { ACHIEVEMENTS, newlyUnlocked } from '../shared/achievements';
+describe('boutique et succès', () => {
+  it('un cosmétique payant n\'est débloqué qu\'une fois acheté', () => {
+    const cat = HATS.find((h) => h.id === 'cat')!;
+    expect(unlocked(cat, none)).toBe(false);
+    expect(unlocked(cat, { ...none, owned: ['cat'] })).toBe(true);
+  });
+  it('les succès se débloquent d\'après le profil, une seule fois', () => {
+    const p = { ...none, bestScore: 0, streak: 0, owned: [] as string[], totalKo: 120 };
+    const first = newlyUnlocked(p, []);
+    expect(first.map((a) => a.id)).toEqual(expect.arrayContaining(['ko10', 'ko100']));
+    expect(newlyUnlocked(p, first.map((a) => a.id))).toEqual([]);
+    expect(new Set(ACHIEVEMENTS.map((a) => a.id)).size).toBe(ACHIEVEMENTS.length);
+  });
+});

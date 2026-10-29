@@ -41,3 +41,22 @@ export function dailyHtml(top: DailyEntry[] | null, myBest: number): string {
   <div id="daily-board"><h3 style="margin:8px 0">🏆 Classement</h3>${dailyTableHtml(top)}</div>
   <div class="row" style="margin-top:14px"><button class="btn ghost" data-action="back">← Retour</button><button class="btn primary big" data-action="daily-go">⚔ Relever le défi</button></div>`;
 }
+
+import { HATS, AURAS } from '../../shared/cosmetics';
+import { ACHIEVEMENTS } from '../../shared/achievements';
+import type { Profile } from '../core/storage';
+
+/** Boutique de cosmétiques (pièces gagnées en jouant) + liste des succès. */
+export function shopHtml(p: Profile): string {
+  const item = (kind: 'hat' | 'aura', c: { id: string; name: string; icon: string; price?: number }) => {
+    const owned = p.owned.includes(c.id);
+    return `<div class="opt"><div class="lbl">${c.icon} ${esc(c.name)} <span class="small muted">${kind === 'hat' ? 'chapeau' : 'aura'}</span></div><div class="val">${owned ? '<span class="small muted">✔ acheté</span>' : `<button class="btn sm ${p.coins >= (c.price ?? 0) ? 'primary' : ''}" data-action="buy" data-id="${c.id}" ${p.coins >= (c.price ?? 0) ? '' : 'disabled'}>${c.price} 🪙</button>`}</div></div>`;
+  };
+  const prem = [...HATS.filter((h) => h.price).map((h) => item('hat', h)), ...AURAS.filter((a) => a.price).map((a) => item('aura', a))].join('');
+  const ach = ACHIEVEMENTS.map((a) => `<div class="opt" style="opacity:${p.achv.includes(a.id) ? 1 : 0.5}"><div class="lbl">${a.icon} ${esc(a.name)} <span class="small muted">${esc(a.desc)}</span></div><div class="val"><span class="small">${p.achv.includes(a.id) ? '✔' : `+${a.reward} 🪙`}</span></div></div>`).join('');
+  return `<h2 style="margin:0">🛍️ Boutique et succès</h2>
+  <div class="small muted" style="margin:6px 0 10px">Tu as <b style="color:#ffe14d">${p.coins} 🪙</b> · les pièces se gagnent à chaque partie et avec les succès. Série du défi du jour : <b>${p.streak}</b> 🔥</div>
+  <h3 style="margin:8px 0">Cosmétiques</h3>${prem}
+  <h3 style="margin:14px 0 8px">Succès (${p.achv.length}/${ACHIEVEMENTS.length})</h3>${ach}
+  <div class="row" style="margin-top:14px"><button class="btn ghost" data-action="back">← Retour</button></div>`;
+}

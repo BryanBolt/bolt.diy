@@ -1,6 +1,6 @@
 // Cosmétiques : chapeaux et auras/traînées débloqués par la progression. Purement visuels (hors simulation).
 
-export interface Progress { stageReached: number; campaignWins: number; duelWins: number; bestSurvival: number; totalKo: number }
+export interface Progress { stageReached: number; campaignWins: number; duelWins: number; bestSurvival: number; totalKo: number; owned?: string[] }
 
 export interface Cosmetic {
   id: string;
@@ -8,6 +8,7 @@ export interface Cosmetic {
   icon: string;
   hint: string; // comment le débloquer
   need?: (p: Progress) => boolean;
+  price?: number; // pièces (boutique) : débloqué à l'achat
 }
 
 export const HATS: Cosmetic[] = [
@@ -18,6 +19,9 @@ export const HATS: Cosmetic[] = [
   { id: 'halo', name: 'Auréole', icon: '😇', hint: '5 victoires en duel', need: (p) => p.duelWins >= 5 },
   { id: 'wizard', name: 'Chapeau de mage', icon: '🧙', hint: 'Survie : atteins la vague 8', need: (p) => p.bestSurvival >= 8 },
   { id: 'viking', name: 'Casque viking', icon: '🪓', hint: '200 K.O. au total', need: (p) => p.totalKo >= 200 },
+  { id: 'chef', name: 'Toque', icon: '👨‍🍳', hint: 'Boutique', price: 60 },
+  { id: 'pirate', name: 'Tricorne', icon: '🏴‍☠️', hint: 'Boutique', price: 90 },
+  { id: 'cat', name: 'Oreilles de chat', icon: '🐱', hint: 'Boutique', price: 120 },
   { id: 'crown', name: 'Couronne', icon: '👑', hint: 'Termine les 7 stages', need: (p) => p.stageReached >= 7 },
 ];
 
@@ -28,10 +32,13 @@ export const AURAS: Cosmetic[] = [
   { id: 'frost', name: 'Givre', icon: '❄️', hint: 'Termine 4 stages', need: (p) => p.stageReached >= 4 },
   { id: 'shadow', name: 'Ombre', icon: '🌑', hint: '3 victoires en duel', need: (p) => p.duelWins >= 3 },
   { id: 'rainbow', name: 'Arc-en-ciel', icon: '🌈', hint: 'Survie : atteins la vague 10', need: (p) => p.bestSurvival >= 10 },
+  { id: 'hearts', name: 'Cœurs', icon: '💖', hint: 'Boutique', price: 80 },
+  { id: 'matrix', name: 'Code vert', icon: '🟩', hint: 'Boutique', price: 140 },
   { id: 'gold', name: 'Or', icon: '🪙', hint: '300 K.O. au total', need: (p) => p.totalKo >= 300 },
 ];
 
 export function unlocked(c: Cosmetic, p: Progress): boolean {
+  if (c.price) return !!p.owned?.includes(c.id);
   return !c.need || c.need(p);
 }
 

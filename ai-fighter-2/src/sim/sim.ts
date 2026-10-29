@@ -56,6 +56,7 @@ export function createWorld(config: SimConfig, seed: number): World {
     hazards: [],
     fixtures: [],
     zones: [],
+    reinforced: false,
     mini: null,
     chest: null,
     rooms: null,
@@ -170,6 +171,8 @@ export function makeFighter(w: World, charId: string, name: string, team: number
     lives: C.LIVES,
     stats,
     bonuses: [],
+    affix: '',
+    perfect: 0,
     hat: '',
     aura: '',
     status: { burn: 0, burnDps: 0, frozen: 0, poison: 0, slow: 0, wet: 0 },
@@ -200,6 +203,18 @@ export function makeFighter(w: World, charId: string, name: string, team: number
     holdMode: 0,
   };
   return f;
+}
+
+const AFFIXES = ['armored', 'swift', 'volatile', 'vampire'];
+/** Ennemis d'élite : plus fréquents avec l'avancée, avec un défaut visible et une meilleure récompense. */
+function assignAffix(w: World, f: Fighter): void {
+  const p = progressIndex(w);
+  if (p < 2 || f.boss) return;
+  if (rand(w) >= Math.min(0.4, 0.08 + p * 0.03)) return;
+  const a = AFFIXES[randInt(w, 0, AFFIXES.length - 1)];
+  f.affix = a;
+  if (a === 'armored') { f.stats.defense *= 1.5; f.hpMax = Math.round(f.hpMax * 1.25); f.hp = f.hpMax; }
+  if (a === 'swift') f.stats.speed *= 1.3;
 }
 
 function makeEnemy(w: World, kind: EnemyKind, level: number, charId?: string, name?: string): Fighter {
@@ -327,6 +342,7 @@ function nextWave(w: World): void {
   if (w.challenge && !isBoss) { for (let i = 0; i < 3; i++) all.push({ kind: 'brute', level: spec[0].level + 1 }); w.challenge = false; w.events.push({ t: 'text', x: w.arenaL + C.VIEW_W / 2, y: 300, z: 140, text: '☠ SALLE DE DÉFI !', color: '#ff5f5f' }); }
   all.forEach((e, i) => {
     const enemy = e.kind === 'boss' ? makeEnemy(w, 'boss', e.level, e.charId, stage.boss.name) : makeEnemy(w, e.kind, e.level + (w.mode === 'survival' ? 0 : 0), e.charId);
+    if (e.kind !== 'boss') assignAffix(w, enemy);
     const side = i % 2 === 0 ? 1 : -1;
     enemy.x = side > 0 ? w.arenaR + 40 + i * 30 : w.arenaL - 40 - i * 30;
     enemy.z = clamp(60 + ((i * 71) % 170), C.Z_MIN, C.Z_MAX);
@@ -346,6 +362,7 @@ function nextWave(w: World): void {
   // danger de stage
   w.hazards = [];
   w.zones = [];
+  w.reinforced = false;
   w.bossCd = isBoss ? 260 : 0;
   w.bossWeak = 0;
   placeFixtures(w, stage);
@@ -369,6 +386,7 @@ function survivalWave(w: World, idx: number): { kind: EnemyKind; level: number }
   const out: { kind: EnemyKind; level: number }[] = [];
   for (let i = 0; i < Math.min(n, w.config.modifier === 'swarm' ? 10 : 7); i++) out.push({ kind: kinds[randInt(w, 0, Math.min(kinds.length - 1, 1 + Math.floor(idx / 2)))], level });
   if (idx > 0 && idx % 5 === 4) out.push({ kind: 'brute', level: level + 2 });
+  if (idx > 0 && idx % 10 === 9) out.push({ kind: 'boss', charId: ['tora', 'zed', 'vex', 'frost', 'blaze', 'gorr'][Math.floor(idx / 10) % 6], level: level + 1 } as { kind: EnemyKind; level: number });
   return out;
 }
 
@@ -378,7 +396,7 @@ function progressIndex(w: World): number {
   return Math.max(0, w.waveIndex) + (w.mode === 'campaign' ? w.stageIndex * 3 : 0);
 }
 
-function startChest(w: World, afterChest: 'rooms' | 'fight'): void {
+function startChest(w: World, afterChest: 'rooms' | 'fight' | 'stage'): void {
   const r = rng(w);
   const prog = progressIndex(w);
   let tier = Math.min(2, Math.floor(prog / 5)) + (w.mode === 'survival' && w.waveIndex % 5 === 4 ? 1 : 0) + w.chestBonus;
@@ -512,6 +530,7 @@ function finishBonusPhase(w: World): void {
   w.bonusChoices = [];
   w.locked = false;
   if (w.afterChest === 'rooms' && w.mode !== 'duel' && (w.waveIndex + 1) % 2 === 0) startRooms(w);
+  else if (w.afterChest === 'stage') { w.locked = false; setPhase(w, 'stageClear', 200); w.events.push({ t: 'sound', id: 'stageclear' }); }
   else resumeFight(w);
 }
 
@@ -1115,8 +1134,8 @@ function stepPhase(w: World, inputs: number[]): void {
       if (w.phaseTimer === 0) {
         const last = w.mode !== 'survival' && w.stage && w.waveIndex >= w.stage.waves.length;
         if (last) {
-          setPhase(w, 'stageClear', 300);
-          w.events.push({ t: 'sound', id: 'stageclear' });
+          w.chestBonus = 3;
+          startChest(w, 'stage');
         } else startChest(w, 'rooms');
       }
       break;
@@ -1217,8 +1236,28 @@ function stepCampaign(w: World): void {
   const es = enemies(w);
   // vagues
   if (w.locked) {
+    // second acte : quand il ne reste qu'un ennemi, des renforts surgissent des deux côtés
+    const live = es.filter((e) => e.state !== 'ko');
+    if (!w.reinforced && live.length === 1 && w.phase === 'fight' && !live[0].boss && progressIndex(w) >= 1 && w.mode !== 'duel') {
+      w.reinforced = true;
+      const base = live[0];
+      for (let i = 0; i < 2; i++) {
+        const m = makeEnemy(w, (['thug', 'ninja', 'brute'] as EnemyKind[])[randInt(w, 0, 2)], Math.max(1, base.level));
+        assignAffix(w, m);
+        m.x = i === 0 ? w.arenaL - 40 : w.arenaR + 40;
+        m.z = randInt(w, C.Z_MIN + 10, C.Z_MAX - 10);
+        m.facing = i === 0 ? 1 : -1;
+        m.invuln = 20;
+        w.fighters.push(m);
+        w.events.push({ t: 'spawn', id: m.id });
+      }
+      w.events.push({ t: 'text', x: w.arenaL + C.VIEW_W / 2, y: 290, z: 140, text: '⚠ RENFORTS !', color: '#ffb84d' });
+      w.events.push({ t: 'sound', id: 'wave' });
+    }
     if (es.length > 0 && es.every((e) => e.state === 'ko')) {
       w.locked = false;
+      w.slowmo = Math.max(w.slowmo, 42); // dernier ennemi : ralenti cinématique
+      w.events.push({ t: 'shake', power: 6 });
       const isBossWave = w.stage && w.mode !== 'survival' && w.waveIndex >= w.stage.waves.length;
       setPhase(w, 'waveClear', isBossWave ? 120 : 70);
       w.events.push({ t: 'sound', id: 'waveclear' });
@@ -1334,6 +1373,24 @@ function stepItemPowers(w: World, f: Fighter): void {
   if (rg && w.frame % 90 === 0 && f.hp < f.hpMax && f.hp > 0) f.hp = Math.min(f.hpMax, f.hp + rg);
 }
 
+/** Esquive parfaite : on évite une attaque au moment où elle devient active → ralenti, Ki, prochain coup ×1,5. */
+function checkPerfectDodge(w: World, f: Fighter): void {
+  if (f.perfect > 0 || f.controller !== 'player') return;
+  for (const e of w.fighters) {
+    if (e.team === f.team || e.state !== 'attack' || e.moveId === null || !alive(e)) continue;
+    if (Math.abs(e.x - f.x) > 120 || Math.abs(e.z - f.z) > 50) continue;
+    const mv = getChar(e.charId).moves[e.moveId];
+    if (!mv || e.stateFrame < mv.startup - 2 || e.stateFrame > mv.startup + mv.active) continue;
+    f.perfect = 70;
+    f.ki = Math.min(C.KI_MAX, f.ki + 18);
+    f.superMeter = Math.min(C.SUPER_MAX, f.superMeter + 12);
+    w.slowmo = Math.max(w.slowmo, 28);
+    w.events.push({ t: 'text', x: f.x, y: f.y + 150, z: f.z, text: 'ESQUIVE PARFAITE !', color: '#7dffb0' });
+    w.events.push({ t: 'sound', id: 'parry', x: f.x });
+    return;
+  }
+}
+
 function hasSyn(f: Fighter, id: string): boolean {
   return f.bonuses.length > 1 && activeSynergies(f.bonuses).some((sy) => sy.id === id);
 }
@@ -1375,6 +1432,7 @@ function stepFighter(w: World, f: Fighter, inp: number, acting: boolean): void {
   }
 
   if (f.bonuses.length && f.state !== 'ko' && f.team === 0) stepItemPowers(w, f);
+  if (f.perfect > 0) f.perfect--;
   if (f.status.slow > 0) f.status.slow--;
   if (f.status.wet > 0) f.status.wet--;
   if (w.stage?.theme === 'abyss' && f.state !== 'ko') f.status.wet = Math.max(f.status.wet, 60); // sous l'eau, tout le monde est trempé
@@ -1576,7 +1634,7 @@ function stepFighter(w: World, f: Fighter, inp: number, acting: boolean): void {
       return;
     case 'dodge': {
       const total = hasBonus(f, 'speed') ? C.DODGE_FRAMES + 4 : C.DODGE_FRAMES;
-      if (f.stateFrame >= C.DODGE_INVULN[0] && f.stateFrame <= C.DODGE_INVULN[1]) f.invuln = Math.max(f.invuln, 1);
+      if (f.stateFrame >= C.DODGE_INVULN[0] && f.stateFrame <= C.DODGE_INVULN[1]) { f.invuln = Math.max(f.invuln, 1); checkPerfectDodge(w, f); }
       physics(w, f);
       if (f.stateFrame >= total) setState(f, 'idle');
       return;
@@ -2382,6 +2440,7 @@ function resolveHit(w: World, a: Fighter, t: Fighter, m0: MoveDef, proj?: Projec
   t.superMeter = Math.min(C.SUPER_MAX, t.superMeter + dmg * 0.3 * (hasBonus(t, 'superflow') ? 2 : 1));
   t.ki = Math.min(C.KI_MAX, t.ki + 2);
   if (hasBonus(a, 'lifesteal')) a.hp = Math.min(a.hpMax, a.hp + stacks(a.bonuses, 'lifesteal'));
+  if (a.affix === 'vampire') a.hp = Math.min(a.hpMax, a.hp + 3);
   if (hasBonus(t, 'thorns') && !proj) damageRaw(w, a, Math.round(dmg * 0.25 * Math.min(3, stacks(t.bonuses, 'thorns'))), t.id);
   if (m.heal) a.hp = Math.min(a.hpMax, a.hp + m.heal);
   // statuts
@@ -2492,6 +2551,7 @@ function computeDamage(w: World, a: Fighter, t: Fighter, m: MoveDef, proj?: Proj
   if (!proj && a.chargeBonus) base *= 1 + a.chargeBonus / 56;
   if (!proj) { const mw = meleeOf(a, m); if (mw) base *= mw.dmg; }
   if (w.bossWeak > 0 && t.ai?.kind === 'boss') base *= 1.8;
+  if (a.perfect > 0) base *= 1.5;
   if (hasBonus(a, 'berserk') && a.hp < a.hpMax * (hasSyn(a, 'bloodlust') ? 0.6 : 0.35)) base *= 1.5;
   if (hasSyn(a, 'thermal') && (t.status.burn > 0 || t.state === 'frozen')) base *= 1.3;
   if (hasSyn(t, 'fortress')) base *= 0.85;
@@ -2541,11 +2601,12 @@ function knockOut(w: World, t: Fighter, a: Fighter | null, dir: number, m: MoveD
   if (a) {
     a.kills++;
     if (hasBonus(a, 'lifesteal')) a.hp = Math.min(a.hpMax, a.hp + 10 * stacks(a.bonuses, 'lifesteal'));
+    if (t.affix === 'volatile') { spawnShock(w, t, 0, 90, 14, t); w.events.push({ t: 'boom', x: t.x, y: t.y + 30, z: t.z, elem: 'fire', r: 80 }); }
     if (hasBonus(a, 'explode')) { const ch = hasSyn(a, 'chain'); spawnShock(w, t, 0, ch ? 120 : 80, ch ? 24 : 16, a); }
     if (t.team !== 0 && a.team === 0) {
       const lvl = Math.max(1, t.level);
       w.score += 100 * lvl * (t.ai?.kind === 'boss' ? 10 : 1);
-      const coins = (t.ai?.kind === 'boss' ? 25 : 5) * (hasBonus(a, 'midas') ? 3 : 1);
+      const coins = (t.ai?.kind === 'boss' ? 25 : t.affix ? 12 : 5) * (hasBonus(a, 'midas') ? 3 : 1);
       w.coins += coins;
       w.events.push({ t: 'text', x: t.x, y: t.y + 120, z: t.z, text: `+${coins} 🪙`, color: '#ffe14d' });
     }

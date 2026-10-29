@@ -257,6 +257,8 @@ export interface Fighter {
   lives: number;
   stats: CharStats;
   bonuses: BonusId[];
+  affix: string; // élite : armored · swift · volatile · vampire
+  perfect: number; // fenêtre après une esquive parfaite (dégâts ×1,5)
   hat: string; // cosmétiques (rendu seulement)
   aura: string;
   status: StatusEffects;
@@ -527,11 +529,12 @@ export interface World {
   hazards: Hazard[];
   fixtures: Fixture[];
   zones: Zone[];
+  reinforced: boolean; // renforts déjà arrivés dans la vague
   chest: Chest | null;
   rooms: RoomsState | null;
   chestBonus: number; // rareté ajoutée au prochain coffre (salle au trésor, défi)
   challenge: boolean;
-  afterChest: 'rooms' | 'fight';
+  afterChest: 'rooms' | 'fight' | 'stage';
   mini: MiniState | null;
   bossCd: number; // frames avant la prochaine attaque de zone
   bossWeak: number; // fenêtre de point faible (dégâts ×1,8) restante

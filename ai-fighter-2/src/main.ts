@@ -21,7 +21,8 @@ import type { LobbyCard } from './ui/screens';
 import { HATS, AURAS, cycleCosmetic } from '../shared/cosmetics';
 import { createReplayBar, uploadReplay, downloadReplay, replayLink, SPEEDS, type ReplayBar } from './ui/replay';
 import type { ReplayFile } from '../shared/replay';
-import { dailyHtml, dailyTableHtml, fetchDaily, submitDaily } from './ui/daily';
+import { dailyHtml, dailyTableHtml, fetchDaily, submitDaily, shopHtml } from './ui/daily';
+import { newlyUnlocked } from '../shared/achievements';
 import { dailyOf, todayUtc } from '../shared/daily';
 import type { HudInfo } from './render/hud';
 import type { InputDevice, KeyMap, PadMap } from './input/devices';
@@ -30,7 +31,7 @@ import { drawQr } from './ui/qr';
 import { VoiceChat } from './net/voice';
 import { VIEW_W } from './sim/constants';
 
-const VERSION = '2.3.1';
+const VERSION = '2.4.0';
 (window as unknown as { __AIF2_VERSION: string }).__AIF2_VERSION = VERSION;
 
 type AppState = 'menu' | 'local-lobby' | 'online' | 'online-lobby' | 'options' | 'howto' | 'game';
@@ -152,6 +153,7 @@ function goMenu(): void {
     else if (a === 'howto') goHowTo(settings().lastChar);
     else if (a === 'options') goOptions();
     else if (a === 'daily') void goDaily();
+    else if (a === 'shop') goShop();
     else if (a === 'install') void installApp();
   });
 }
@@ -417,6 +419,36 @@ function startLocalGame(): void {
   const config = buildConfig(localCards, localOptions);
   const slots = localCards.map((c) => c.slot);
   startGame(config, localOptions.daily ? dailyOf(todayUtc()).seed : (Math.random() * 0xffffffff) >>> 0, slots, slots, 0, null);
+}
+
+function checkAchievements(): void {
+  const p = loadProfile();
+  const nu = newlyUnlocked(p, p.achv);
+  if (!nu.length) return;
+  saveProfile({ achv: [...p.achv, ...nu.map((a) => a.id)], coins: p.coins + nu.reduce((s, a) => s + a.reward, 0) });
+  nu.forEach((a, i) => setTimeout(() => S.toast(`🏅 Succès : ${a.icon} ${a.name} (+${a.reward} 🪙)`, 5000), i * 1200));
+}
+
+function goShop(): void {
+  state = 'menu';
+  const el = S.show(shopHtml(loadProfile()), 'wide');
+  el.addEventListener('click', (e) => {
+    const a = actionOf(e);
+    const d = dataOf(e);
+    synth.unlock();
+    if (a === 'back') goMenu();
+    else if (a === 'buy') {
+      const c = [...HATS, ...AURAS].find((x) => x.id === d.id);
+      const p = loadProfile();
+      if (c?.price && p.coins >= c.price && !p.owned.includes(c.id)) {
+        saveProfile({ coins: p.coins - c.price, owned: [...p.owned, c.id] });
+        synth.play('buy');
+        S.toast(`${c.icon} ${c.name} acheté ! Équipe-le dans le salon.`, 4000);
+        checkAchievements();
+        goShop();
+      }
+    }
+  });
 }
 
 async function goDaily(): Promise<void> {
@@ -1020,10 +1052,12 @@ function handleEvents(events: SimEvent[]): void {
         const prev = Number(localStorage.getItem(key) ?? 0);
         if (w.score > prev) { try { localStorage.setItem(key, String(w.score)); } catch { /* ignore */ } }
         const me = w.fighters.find((f) => f.slot === session!.localSlots[0]);
+        { const p = loadProfile(); const y = todayUtc(new Date(Date.now() - 86_400_000)); if (p.lastDaily !== date) saveProfile({ lastDaily: date, streak: p.lastDaily === y ? p.streak + 1 : 1 }); }
         void submitDaily(date, settings().name || 'Anonyme', w.score, w.survivalWave, me?.charId ?? '').then((r) => { if (r) S.toast(`📅 Défi du jour : ${w.score} pts · ${r.rank > 0 ? 'rang ' + r.rank : 'classé'}`, 6000); });
       }
       if (e.phase === 'matchEnd' || e.phase === 'gameOver') {
         const best = Math.max(profile.bestScore, w.score);
+        if (w.mode !== 'training' && !replaying) { const earned = Math.floor(w.coins * 0.4 + w.score / 400); if (earned > 0) { patch.coins = profile.coins + earned; setTimeout(() => S.toast(`+${earned} 🪙 pour la boutique`, 4000), 800); } }
         patch.bestScore = best;
         changed = true;
         if (w.mode === 'survival') patch.bestSurvival = Math.max(profile.bestSurvival, w.survivalWave);
@@ -1036,7 +1070,7 @@ function handleEvents(events: SimEvent[]): void {
       if (e.phase === 'intro' && w.mode !== 'duel' && w.stage) synth.startMusic(w.stage.theme);
     }
   }
-  if (changed && !replaying) saveProfile(patch);
+  if (changed && !replaying) { saveProfile(patch); checkAchievements(); }
 }
 
 function requestLandscape(): void {

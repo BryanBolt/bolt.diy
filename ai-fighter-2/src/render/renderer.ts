@@ -486,6 +486,22 @@ export class Renderer {
       for (const k of ['hip', ...RIG_KEYS] as const) { (rig[k] as P).x -= sx; (rig[k] as P).y -= sy; }
     }
     if (f.state !== 'ko') drawItemsBack(ctx, f, sx, sy, s * bs, this.time);
+    if (f.affix && f.state !== 'ko') {
+      const AF: Record<string, [string, string, string]> = { armored: ['#9aa7b8', '🛡️', 'BLINDÉ'], swift: ['#7de8ff', '💨', 'RAPIDE'], volatile: ['#ff8a3d', '💣', 'EXPLOSIF'], vampire: ['#ff4a6a', '🩸', 'VAMPIRE'] };
+      const a = AF[f.affix];
+      if (a) {
+        const pulse = 0.6 + Math.sin(this.time * 0.2 + f.id) * 0.3;
+        ctx.save();
+        ctx.globalAlpha = pulse; ctx.strokeStyle = a[0]; ctx.lineWidth = 3.5 * s;
+        ctx.beginPath(); ctx.ellipse(sx, sy + 2, 36 * s * bs, 12 * s * bs, 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha = 1; ctx.textAlign = 'center';
+        ctx.font = `${Math.round(15 * s)}px system-ui, sans-serif`;
+        ctx.fillText(a[1], sx, sy - 142 * s * bs);
+        ctx.font = `800 ${Math.max(9, Math.round(10 * s))}px system-ui, sans-serif`;
+        ctx.lineWidth = 3; ctx.strokeStyle = '#06101e'; ctx.strokeText(a[2], sx, sy - 128 * s * bs); ctx.fillStyle = a[0]; ctx.fillText(a[2], sx, sy - 128 * s * bs);
+        ctx.restore();
+      }
+    }
     if (f.aura && f.state !== 'ko') drawAura(ctx, f.aura, sx, sy, s * bs, this.time, f.id * 1.7, Math.abs(f.vx));
     if (w.mode === 'duel' && w.config.teams && f.state !== 'ko') {
       // anneau d'équipe sous les pieds : bleu / rouge

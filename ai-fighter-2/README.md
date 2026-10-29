@@ -128,6 +128,15 @@ Toutes les touches sont remappables dans **Options**.
 - **Application installable** (PWA) : bouton « Installer l'application », jeu complet en cache dès la 1re visite (solo et local hors ligne).
 - **Tactile** : gestes (toucher = attaque, glisser ↑ saut / ↓ garde / ↔ lourd, appui long = Ki, 2 doigts = Super) et **mode une main** (Options).
 
+### v2.4 : design et rétention
+
+- **Élites** (dès la 3ᵉ vague de campagne) : ennemis *Blindé*, *Rapide*, *Explosif* ou *Vampire*, repérables à leur anneau et leur étiquette, récompense ×2,4.
+- **Renforts** : quand il ne reste qu'un ennemi, deux autres surgissent des bords (second acte de chaque vague).
+- **Esquive parfaite** : esquiver une attaque à l'instant où elle devient active donne ralenti, Ki, Super et un prochain coup ×1,5.
+- **Ralenti cinématique** sur le dernier ennemi d'une vague.
+- **Boss** : coffre légendaire garanti à sa défaite ; en survie, un boss toutes les 10 vagues.
+- **Boutique et succès** : les pièces des parties s'accumulent ; 5 cosmétiques payants (toque, tricorne, oreilles de chat, auras Cœurs et Code vert) ; 15 succès avec récompenses ; série de jours du défi quotidien.
+
 ### Audit v2.3.1
 
 Quatre revues (sécurité/réseau, UX/accessibilité, équilibrage/performance, marché) ont conduit à : serveur durci (requêtes malformées, messages trop gros, validation des options/personnages/frames, limite de débit `RATE_PER_S`, plafond de connexions par IP, en-têtes de sécurité, XSS des rediffusions), filtre de pseudos et de chat, page `legal.html` (confidentialité, âge, crédits), balises OpenGraph, zoom autorisé, carte de première partie, pause automatique en arrière-plan, rôles ARIA, cibles tactiles de 44 px, rareté des coffres liée à l'avancée en campagne, plafonds de cumul des objets, relances de bonus à prix croissant, rééquilibrage de Tora/Gorr/Zed/Vex, transformation plus courte, rendu limité à 60 images/s, décor hors écran ignoré. **Restent à faire** : traduction anglaise, boutique de cosmétiques avec les pièces, succès et quêtes, tutoriel guidé, export du profil, TURN dédié (`ICE_SERVERS`), stockage persistant des classements.
