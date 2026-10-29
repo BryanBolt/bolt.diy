@@ -13,7 +13,7 @@ import { KEYMAP_P1, KEYMAP_P2, keyLabel, PAD_BUTTON_NAMES, PADMAP_DEFAULT, type 
 export const ui = document.getElementById('ui') as HTMLDivElement;
 
 export function show(html: string, cls = ''): HTMLElement {
-  ui.innerHTML = `<div class="screen ${cls}">${html}</div>`;
+  ui.innerHTML = `<div class="screen ${cls}" role="dialog" aria-modal="true">${html}</div>`;
   document.body.classList.add('ui-open');
   return ui.firstElementChild as HTMLElement;
 }
@@ -291,8 +291,8 @@ export function menuHtml(profile: Profile, hasTouch: boolean, version: string, n
     </div>
     ${resume.online || resume.local ? `<div class="resume">${resume.online ? `<button class="btn primary big" data-action="resume-online">↩ Reprendre la partie en ligne <span class="sub">salon ${esc(resume.online)} · tes coéquipiers t'attendent, une IA joue à ta place</span></button>` : ''}${resume.local ? `<button class="btn primary big" data-action="resume-local">↩ Reprendre la partie locale <span class="sub">${esc(resume.local)} · reprise là où tu t'étais arrêté</span></button>` : ''}</div>` : ''}
     <div class="grid menu" style="margin-top:18px">
-      <button class="btn menu-item big ${noNet ? '' : 'primary'}" data-action="solo-open"><span class="ico">🔗</span>Partie solo ouverte<span class="sub">${noNet ? 'Nécessite la version avec serveur' : 'Joue seul tout de suite : tes amis te rejoignent en cours de route avec un lien'}</span></button>
-      <button class="btn menu-item big" data-action="local"><span class="ico">🎮</span>Jouer en local<span class="sub">Solo ou jusqu'à 4 sur cet écran : claviers, manettes${hasTouch ? ', tactile' : ''}</span></button>
+      <button class="btn menu-item big ${noNet ? '' : ''}" data-action="solo-open"><span class="ico">🔗</span>Partie solo ouverte<span class="sub">${noNet ? 'Nécessite la version avec serveur' : 'Joue seul tout de suite : tes amis te rejoignent en cours de route avec un lien'}</span></button>
+      <button class="btn menu-item big primary" data-action="local"><span class="ico">🎮</span>Jouer en local<span class="sub">Solo ou jusqu'à 4 sur cet écran : claviers, manettes${hasTouch ? ', tactile' : ''}</span></button>
       <button class="btn menu-item big ${noNet ? '' : 'primary'}" data-action="online"><span class="ico">📡</span>Jouer en ligne<span class="sub">${noNet ? 'Indisponible sur cette page hébergée : il faut la version avec serveur' : 'Chacun sur son téléphone / PC, avec un code de salon'}</span></button>
       <button class="btn menu-item" data-action="daily"><span class="ico">📅</span>Défi du jour<span class="sub">Même partie pour tous, un modificateur par jour, classement en ligne</span></button>
       <button class="btn menu-item" data-action="howto"><span class="ico">📖</span>Comment jouer<span class="sub">Commandes, système de combat, liste des coups</span></button>
@@ -300,7 +300,7 @@ export function menuHtml(profile: Profile, hasTouch: boolean, version: string, n
       ${pwa.install ? `<button class="btn menu-item" data-action="install"><span class="ico">📲</span>Installer l'application<span class="sub">${pwa.install === 'ios' ? 'Sur iPhone / iPad : Partager ⎋ puis « Sur l\'écran d\'accueil »' : 'Icône sur ton écran d\'accueil, plein écran, et jeu hors ligne'}</span></button>` : ''}
       <button class="btn menu-item" data-action="options"><span class="ico">⚙️</span>Options<span class="sub">Son, commandes, tactile, profil</span></button>
     </div>
-    <p class="small muted" style="margin:14px 0 0">v${version} · Les parties se jouent en lockstep déterministe : aucune triche possible par l'hôte, tout le monde voit la même chose.</p>`;
+    <p class="small muted" style="margin:14px 0 0">v${version} · <a href="./legal.html" target="_blank" rel="noopener" style="color:inherit">Légal, confidentialité et crédits</a> · Âge conseillé : 12+ (chat 13+)</p>`;
 }
 
 export function roomsHtml(rooms: PublicRoom[] | null, error = ''): string {

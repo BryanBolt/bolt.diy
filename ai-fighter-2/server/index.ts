@@ -15,6 +15,7 @@ import { randomUUID } from 'node:crypto';
 import { todayUtc, isDateString, type DailyEntry } from '../shared/daily';
 import { validReplay, type ReplayFile } from '../shared/replay';
 import { validHat, validAura } from '../shared/cosmetics';
+import { isProfane } from '../shared/moderation';
 
 const PORT = Number(process.env.PORT ?? 8787);
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -163,7 +164,7 @@ function joinRunning(c: Client, room: Room, slot: number, name: unknown, charId:
 
 function cleanName(s: unknown, fallback: string): string {
   const v = String(s ?? '').replace(/[^\p{L}\p{N} _.'-]/gu, '').trim().slice(0, 14);
-  return v || fallback;
+  return v && !isProfane(v) ? v : fallback;
 }
 /** `voluntary` : le joueur a choisi de partir (sa place n'est pas gardée) ; sinon coupure réseau (place réservée). */
 function leaveRoom(c: Client, voluntary = true): void {
@@ -387,7 +388,7 @@ function handle(c: Client, msg: ClientMsg): void {
     case 'chat': {
       const room = c.room;
       if (!room) return;
-      broadcast(room, { t: 'chat', slot: c.slot, text: String(msg.text ?? '').slice(0, 120) });
+      broadcast(room, { t: 'chat', slot: c.slot, text: isProfane(String(msg.text ?? '')) ? '***' : String(msg.text ?? '').slice(0, 120) });
       return;
     }
     default:

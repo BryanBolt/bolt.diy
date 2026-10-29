@@ -2,13 +2,21 @@
 <html lang="fr">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#0b0d1a" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="description" content="AI Fighter 2 : beat'em up stickman jouable à 4, en local ou en ligne, au clavier, à la manette ou au tactile." />
     <title>AI Fighter 2</title>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="AI Fighter 2 : beat'em up stickman jusqu'à 4 joueurs" />
+    <meta property="og:description" content="Un lien, un code, on se tape dessus : coop et versus en ligne, rogue-lite, boss, défi du jour. Gratuit, sans compte, sur téléphone ou PC." />
+    <meta property="og:image" content="./icon-512.png" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="AI Fighter 2" />
+    <meta name="twitter:description" content="Beat'em up stickman jusqu'à 4 joueurs, en ligne ou sur un même écran. Gratuit, sans compte." />
+    <meta name="robots" content="index, follow" />
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="icon" href="./icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="./icon-192.png" />
@@ -18,7 +26,7 @@
     <canvas id="game"></canvas>
     <canvas id="menubg"></canvas>
     <div id="ui"></div>
-    <div id="toast"></div>
+    <div id="toast" role="status" aria-live="polite"></div>
     <script type="module" src="./src/main.ts"></script>
   </body>
 </html>

@@ -838,6 +838,7 @@ function startGame(config: SimConfig, seed: number, localSlots: number[], allSlo
   for (const p of config.players) names.set(p.slot, p.name);
   hud.localSlots = localSlots;
   hud.online = !!n;
+  if (!replay && localSlots.length) showIntroCard(localSlots.some((s) => input.deviceFor(s)?.kind === 'touch'));
   demo?.dispose();
   demo = null;
   session = new Session({ config, seed, localSlots, allSlots, delay, input, net: n ?? undefined, replay });
@@ -896,6 +897,17 @@ async function shareReplay(file: ReplayFile | null, mode: { id?: string } | null
   const link = replayLink(id);
   if (navigator.share) { navigator.share({ title: 'AI Fighter 2 — rediffusion', text: file.title, url: link }).catch(() => {}); return; }
   try { await navigator.clipboard.writeText(link); S.toast('Lien de la rediffusion copié !', 4000); } catch { S.toast(link, 8000); }
+}
+
+/** Première partie : petite carte des commandes (une seule fois). */
+function showIntroCard(touch: boolean): void {
+  try { if (localStorage.getItem('aif2.intro')) return; localStorage.setItem('aif2.intro', '1'); } catch { return; }
+  const el = document.createElement('div');
+  el.className = 'introcard';
+  el.innerHTML = `<b>Bienvenue !</b> ${touch ? 'Joystick à gauche pour bouger · <b>A</b> attaque · <b>B</b> coup lourd · <b>X</b> saut · <b>Y</b> garde · <b>Ki</b> maintenu = charger l\'énergie.' : 'Bouger : <kbd>Z Q S D</kbd> · Attaque <kbd>J</kbd> · Lourd <kbd>K</kbd> · Saut <kbd>Espace</kbd> · Garde <kbd>L</kbd> · Ki (maintenir) <kbd>I</kbd>.'} Bats les ennemis, puis ouvre le coffre !<button type="button">J'ai compris</button>`;
+  el.querySelector('button')!.addEventListener('click', () => el.remove());
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 25000);
 }
 
 function endSession(): void {
@@ -1136,7 +1148,7 @@ function loop(now: number): void {
 // sauvegarde quand la page se cache ou se ferme ; reconnexion quand elle revient
 window.addEventListener('pagehide', () => autosaveLocal());
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) autosaveLocal();
+  if (document.hidden) { autosaveLocal(); if (state === 'game' && !gameOnline && session && !session.world.paused && session.localSlots.length) session.queue(session.localSlots[0], IN.PAUSE); }
   else if (state === 'game' && gameOnline && (!net || !net.connectedFlag) && !reconnecting) void autoReconnect();
 });
 

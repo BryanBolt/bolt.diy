@@ -4,7 +4,7 @@
   "description": "Beat'em up stickman jouable à 4, en local ou en ligne : clavier, manette, tactile.",
   "start_url": "./",
   "scope": "./",
-  "display": "fullscreen",
+  "display": "standalone",
   "orientation": "landscape",
   "background_color": "#0b0d1a",
   "theme_color": "#0b0d1a",

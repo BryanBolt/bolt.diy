@@ -196,7 +196,7 @@ export function drawHud(ctx: CanvasRenderingContext2D, w: World, fx: Fx, cam: Ca
   }
   if (info.showDebug) {
     ctx.fillStyle = 'rgba(255,255,255,0.7)';
-    ctx.font = `11px ${FONT}`;
+    ctx.font = `12px ${FONT}`;
     ctx.textAlign = 'right';
     ctx.fillText(`${info.fps} fps${info.online ? `  ·  ping ${Math.round(info.ping)} ms` : ''}  ·  f${w.frame}`, view.w - 12, view.h - 8);
     ctx.textAlign = 'left';
@@ -212,7 +212,7 @@ function drawTrainingPad(ctx: CanvasRenderingContext2D, w: World, info: HudInfo)
   ctx.fillStyle = 'rgba(0,0,0,0.55)';
   roundRect(ctx, 20, y - 20, 330, 70, 10);
   ctx.fill();
-  ctx.font = `bold 11px ${FONT}`;
+  ctx.font = `bold 12px ${FONT}`;
   ctx.fillStyle = '#9aa3c7';
   ctx.fillText('ENTRÉES (relatives au regard)', 30, y - 5);
   ctx.font = `bold 20px ${FONT}`;
@@ -287,7 +287,7 @@ function drawPlayerPanel(ctx: CanvasRenderingContext2D, f: Fighter, x: number, y
   }
   // bonus actifs
   if (f.bonuses.length) {
-    ctx.font = `11px ${FONT}`;
+    ctx.font = `12px ${FONT}`;
     const icons = f.bonuses.slice(-8).map((b) => BONUS_BY_ID[b]?.icon ?? '•').join(' ');
     ctx.fillText(icons, x + 46 + Math.min(f.lives, 3) * 10 + (world.mode === 'duel' ? 0 : 8), y + 50);
     const syn = activeSynergies(f.bonuses);
@@ -295,12 +295,12 @@ function drawPlayerPanel(ctx: CanvasRenderingContext2D, f: Fighter, x: number, y
   }
   if (f.weapon > 0 && f.weaponKind && !ko) {
     const wp = WEAPONS[f.weaponKind];
-    ctx.font = `bold 11px ${FONT}`;
+    ctx.font = `bold 12px ${FONT}`;
     ctx.fillStyle = '#ffd166';
     ctx.fillText(`${wp.icon} ${wp.name} ${f.weapon}`, x + 46 + (w - 50) * 0.58, y + 62);
   }
   if (full && !ko) {
-    ctx.font = `bold 10px ${FONT}`;
+    ctx.font = `bold 12px ${FONT}`;
     ctx.fillStyle = '#ffd166';
     ctx.fillText('SUPER PRÊT', x + 46 + (w - 50) * 0.58, y + 50 + (f.bonuses.length ? 0 : 0) - (f.bonuses.length ? -0 : 0) );
   }
@@ -382,7 +382,7 @@ function drawBonusChoice(ctx: CanvasRenderingContext2D, w: World, info: HudInfo,
       ctx.font = `12px ${FONT}`;
       ctx.fillStyle = '#ddd';
       wrapText(ctx, b.desc, x + 52, y + 46, cw - 64, 14);
-      ctx.font = `bold 10px ${FONT}`;
+      ctx.font = `bold 12px ${FONT}`;
       ctx.fillStyle = rar.color;
       ctx.fillText(rar.label.toUpperCase() + (own ? `  ·  ×${own + 1}` : ''), x + 52, y + 12);
       if (syn.length) {
@@ -575,7 +575,7 @@ function drawShop(ctx: CanvasRenderingContext2D, w: World, info: HudInfo, time: 
       ctx.fillText(it.icon, x + 10, y + 30);
       ctx.font = `bold 13px ${FONT}`;
       ctx.fillText(it.name, x + 42, y + 22);
-      ctx.font = `11px ${FONT}`;
+      ctx.font = `12px ${FONT}`;
       ctx.fillStyle = '#ddd';
       wrapText(ctx, it.desc, x + 42, y + 38, cw - 50, 13);
       ctx.font = `bold 12px ${FONT}`;

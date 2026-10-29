@@ -337,3 +337,8 @@ kbd { border-radius: 2px; background: rgba(123, 228, 255, 0.12); border-color: v
 #touch.onehand .t-super { right: 8px; bottom: 8px; }
 #touch.onehand .t-stick { display: none; }
 #touch.onehand .t-stick.on { display: block; }
+
+/* ---- accessibilité et première partie ---- */
+@media (pointer: coarse) { .btn.sm, .opt .val .btn { min-height: 44px; min-width: 44px; } .dot { width: 30px; height: 30px; } }
+.introcard { position: fixed; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 30; max-width: min(640px, 94vw); background: rgba(6,16,30,0.9); border: 1px solid #2c5a86; border-radius: 12px; padding: 10px 14px; font-size: 14px; line-height: 1.5; color: #eaf6ff; }
+.introcard button { display: block; margin: 8px 0 0 auto; background: #1d6fb8; color: #fff; border: 0; border-radius: 8px; padding: 8px 14px; min-height: 40px; font: inherit; cursor: pointer; }

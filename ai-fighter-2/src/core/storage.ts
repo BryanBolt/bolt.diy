@@ -55,7 +55,7 @@ const DEFAULT_SETTINGS: Settings = {
   touchOneHand: false,
   showHitboxes: false,
   name: '',
-  reduceFx: false,
+  reduceFx: typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches,
   serverUrl: '',
   lastChar: 'kai',
   lastColor: 0,
