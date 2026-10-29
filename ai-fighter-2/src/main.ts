@@ -30,7 +30,7 @@ import { drawQr } from './ui/qr';
 import { VoiceChat } from './net/voice';
 import { VIEW_W } from './sim/constants';
 
-const VERSION = '2.3.0';
+const VERSION = '2.3.1';
 (window as unknown as { __AIF2_VERSION: string }).__AIF2_VERSION = VERSION;
 
 type AppState = 'menu' | 'local-lobby' | 'online' | 'online-lobby' | 'options' | 'howto' | 'game';
@@ -904,7 +904,7 @@ function showIntroCard(touch: boolean): void {
   try { if (localStorage.getItem('aif2.intro')) return; localStorage.setItem('aif2.intro', '1'); } catch { return; }
   const el = document.createElement('div');
   el.className = 'introcard';
-  el.innerHTML = `<b>Bienvenue !</b> ${touch ? 'Joystick à gauche pour bouger · <b>A</b> attaque · <b>B</b> coup lourd · <b>X</b> saut · <b>Y</b> garde · <b>Ki</b> maintenu = charger l\'énergie.' : 'Bouger : <kbd>Z Q S D</kbd> · Attaque <kbd>J</kbd> · Lourd <kbd>K</kbd> · Saut <kbd>Espace</kbd> · Garde <kbd>L</kbd> · Ki (maintenir) <kbd>I</kbd>.'} Bats les ennemis, puis ouvre le coffre !<button type="button">J'ai compris</button>`;
+  el.innerHTML = `<b>Bienvenue !</b> ${touch ? 'Joystick à gauche pour bouger · <b>A</b> attaque · <b>B</b> coup lourd · <b>X</b> saut · <b>Y</b> garde · <b>Ki</b> maintenu = charger l\'énergie.' : 'Bouger : <kbd>W A S D</kbd> ou flèches · Attaque <kbd>J</kbd> · Lourd <kbd>K</kbd> · Saut <kbd>Espace</kbd> · Garde <kbd>U</kbd> · Ki (maintenir) <kbd>I</kbd>.'} Bats les ennemis, puis ouvre le coffre !<button type="button">J'ai compris</button>`;
   el.querySelector('button')!.addEventListener('click', () => el.remove());
   document.body.appendChild(el);
   setTimeout(() => el.remove(), 25000);
@@ -1068,8 +1068,13 @@ function updateRotateHint(): void {
 // ---------------------------------------------------------------------------
 
 let lastFrameTime = 0;
+let lastTick = 0;
+let menuSkip = 0;
 function loop(now: number): void {
   requestAnimationFrame(loop);
+  if (now - lastTick < 15) return; // écrans 120 Hz : on ne rend pas plus de 60 images/s (batterie)
+  lastTick = now;
+  if ((state !== 'game' || !session) && hasTouch && (menuSkip++ & 1)) return; // menus sur mobile : 30 images/s
   const inRoom = !noNet && (state === 'online-lobby' || (state === 'game' && gameOnline));
   voiceBox.style.display = inRoom ? 'flex' : 'none';
   voice.setTalking(voiceHeld || keyTalk || padTalk());

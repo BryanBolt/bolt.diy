@@ -128,6 +128,10 @@ Toutes les touches sont remappables dans **Options**.
 - **Application installable** (PWA) : bouton « Installer l'application », jeu complet en cache dès la 1re visite (solo et local hors ligne).
 - **Tactile** : gestes (toucher = attaque, glisser ↑ saut / ↓ garde / ↔ lourd, appui long = Ki, 2 doigts = Super) et **mode une main** (Options).
 
+### Audit v2.3.1
+
+Quatre revues (sécurité/réseau, UX/accessibilité, équilibrage/performance, marché) ont conduit à : serveur durci (requêtes malformées, messages trop gros, validation des options/personnages/frames, limite de débit `RATE_PER_S`, plafond de connexions par IP, en-têtes de sécurité, XSS des rediffusions), filtre de pseudos et de chat, page `legal.html` (confidentialité, âge, crédits), balises OpenGraph, zoom autorisé, carte de première partie, pause automatique en arrière-plan, rôles ARIA, cibles tactiles de 44 px, rareté des coffres liée à l'avancée en campagne, plafonds de cumul des objets, relances de bonus à prix croissant, rééquilibrage de Tora/Gorr/Zed/Vex, transformation plus courte, rendu limité à 60 images/s, décor hors écran ignoré. **Restent à faire** : traduction anglaise, boutique de cosmétiques avec les pièces, succès et quêtes, tutoriel guidé, export du profil, TURN dédié (`ICE_SERVERS`), stockage persistant des classements.
+
 ## Les héros
 
 Kai (karaté équilibré), Tora (muay-thaï, armure, brise-garde), Zed (ninja, kunaïs, téléportation), Vex (fouet à longue allonge, lasso),

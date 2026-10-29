@@ -49,7 +49,7 @@ export class Renderer {
   }
 
   resize(): void {
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const dpr = Math.min(window.matchMedia?.('(pointer: coarse)').matches ? 1.5 : 2, window.devicePixelRatio || 1);
     const w = window.innerWidth;
     const h = window.innerHeight;
     this.canvas.width = Math.round(w * dpr);

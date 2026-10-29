@@ -269,6 +269,7 @@ export class Fx {
         if (p.y < 0 && p.kind !== 'ring') { p.y = 0; p.vy = -p.vy * 0.3; p.vx *= 0.7; }
         p.rot += 0.2;
       }
+      if (this.particles.length > 320) this.particles.splice(0, this.particles.length - 320);
       this.particles = this.particles.filter((p) => p.life < p.max);
       for (const im of this.impacts) im.life--;
       for (const c of this.cracks) c.life--;

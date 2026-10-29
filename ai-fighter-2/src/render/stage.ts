@@ -85,7 +85,7 @@ export function drawStage(ctx: CanvasRenderingContext2D, themeId: string, camX: 
   // couche lointaine (parallaxe 0.25)
   ctx.save();
   ctx.translate(-camX * 0.25, 0);
-  for (const p of props.far) drawFar(ctx, t, p, time);
+  { const lo = camX * 0.25 - 200, hi = camX * 0.25 + VW + 200; for (const p of props.far) if (p.x + p.w * 1.4 > lo && p.x - p.w < hi) drawFar(ctx, t, p, time); }
   ctx.restore();
   if (t.kind === 'abyss') drawAbyssLife(ctx, camX, time);
   // horizon lumineux
@@ -99,7 +99,7 @@ export function drawStage(ctx: CanvasRenderingContext2D, themeId: string, camX: 
   // couche moyenne (parallaxe 0.6)
   ctx.save();
   ctx.translate(-camX * 0.6, 0);
-  for (const p of props.mid) drawMid(ctx, t, p, time);
+  { const lo = camX * 0.6 - 200, hi = camX * 0.6 + VW + 200; for (const p of props.mid) if (p.x + p.w * 1.4 > lo && p.x - p.w < hi) drawMid(ctx, t, p, time); }
   ctx.restore();
   // sol
   const fg = ctx.createLinearGradient(0, FLOOR_TOP, 0, VB);
