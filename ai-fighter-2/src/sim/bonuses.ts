@@ -46,6 +46,13 @@ export const BONUS_BY_ID: Record<string, BonusDef> = Object.fromEntries(BONUSES.
 /** Bonus cumulables : reprendre le même augmente son effet. */
 export const STACKABLE = new Set<string>(['power', 'speed', 'vitality', 'crit', 'lifesteal', 'thorns', 'kiflow', 'superflow', 'orbital', 'tears', 'growth', 'regen', 'armor', 'guard']);
 
+/** Plafond de cumul : au-delà, l'objet n'est plus proposé (évite les builds cassés). */
+export const STACK_CAP: Record<string, number> = { power: 5, vitality: 5, lifesteal: 4, regen: 4, orbital: 4, tears: 4, thorns: 3, crit: 3, kiflow: 4, superflow: 3, speed: 5, growth: 5, armor: 3, guard: 3 };
+export function canTake(bonuses: readonly BonusId[], id: BonusId): boolean {
+  const n = stacks(bonuses, id);
+  return STACKABLE.has(id) ? n < (STACK_CAP[id] ?? 3) : n === 0;
+}
+
 export interface Synergy { id: string; name: string; needs: [BonusId, BonusId]; desc: string }
 export const SYNERGIES: Synergy[] = [
   { id: 'thermal', name: 'Choc thermique', needs: ['burn', 'frost'], desc: '+30 % de dégâts sur cible brûlée ou gelée' },

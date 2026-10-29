@@ -124,7 +124,7 @@ function seat(c: Client, room: Room, slot: number, name: unknown, charId: unknow
   c.hat = validHat(hat);
   c.aura = validAura(aura);
   c.name = cleanName(name, slot === 0 ? 'Hôte' : `Joueur ${slot + 1}`);
-  c.charId = String(charId ?? 'kai').slice(0, 16);
+  c.charId = validChar(charId);
   c.color = freeColor(room, Number(color) | 0);
   c.ready = false;
   c.slot = slot;
@@ -141,7 +141,7 @@ function joinRunning(c: Client, room: Room, slot: number, name: unknown, charId:
   c.hat = validHat(hat);
   c.aura = validAura(aura);
   c.name = cleanName(name, `Joueur ${slot + 1}`);
-  c.charId = String(charId ?? 'kai').slice(0, 16);
+  c.charId = validChar(charId);
   c.color = freeColor(room, Number(color) | 0);
   c.ready = false;
   c.slot = slot;
@@ -160,6 +160,42 @@ function joinRunning(c: Client, room: Room, slot: number, name: unknown, charId:
   broadcast(room, { t: 'rejoin', slot, from, join: ev.join }, c);
   broadcast(room, { t: 'lobby', state: lobbyState(room) });
   console.log(`[${room.code}] ${c.name} rejoint la partie en cours (slot ${slot}) à la frame ${from}`);
+}
+
+function cleanCtx(v: unknown): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  if (!v || typeof v !== 'object') return out;
+  for (const [k, x] of Object.entries(v as Record<string, unknown>).slice(0, 20)) if (/^[\w.-]{1,24}$/.test(k) && (typeof x === 'string' || typeof x === 'number' || typeof x === 'boolean')) out[k] = typeof x === 'string' ? x.slice(0, 80) : x;
+  return out;
+}
+function clampInt(v: unknown, lo: number, hi: number): number {
+  const n = Math.floor(Number(v));
+  return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : lo;
+}
+const CHAR_IDS = new Set(['kai', 'tora', 'zed', 'vex', 'orion', 'blaze', 'frost', 'shade', 'gorr', 'nova']);
+function validChar(v: unknown): string { const s = String(v ?? ''); return CHAR_IDS.has(s) ? s : 'kai'; }
+function sanitizeOptions(cur: LobbyOptions, o: Partial<LobbyOptions> | undefined): LobbyOptions {
+  const n = { ...cur };
+  if (!o || typeof o !== 'object') return n;
+  if (['campaign', 'duel', 'survival', 'training'].includes(String(o.mode))) n.mode = o.mode as LobbyOptions['mode'];
+  if (o.difficulty !== undefined) n.difficulty = clampInt(o.difficulty, 0, 3) as 0 | 1 | 2 | 3;
+  if (o.rounds !== undefined) n.rounds = ([1, 3, 5].includes(Number(o.rounds)) ? Number(o.rounds) : 3) as 1 | 3 | 5;
+  if (o.bots !== undefined) n.bots = clampInt(o.bots, 0, 3);
+  if (o.stage !== undefined) n.stage = clampInt(o.stage, 0, 6);
+  if (o.teams !== undefined) n.teams = !!o.teams;
+  if (o.isPublic !== undefined) n.isPublic = !!o.isPublic;
+  if (o.gravity !== undefined) n.gravity = clampInt(o.gravity, 0, 2) as 0 | 1 | 2;
+  return n;
+}
+const RATE_PER_S = Number(process.env.RATE_PER_S ?? 240);
+/** Limite de débit par connexion : 240 messages/s en moyenne (le jeu en envoie ~65), rafales jusqu'à 400. */
+function rateOk(c: Client & { tokens?: number; tokAt?: number }): boolean {
+  const now = Date.now();
+  const t = Math.min(400, (c.tokens ?? 400) + ((now - (c.tokAt ?? now)) / 1000) * RATE_PER_S);
+  c.tokAt = now;
+  if (t < 1) { c.tokens = t; return false; }
+  c.tokens = t - 1;
+  return true;
 }
 
 function cleanName(s: unknown, fallback: string): string {
@@ -295,8 +331,8 @@ function handle(c: Client, msg: ClientMsg): void {
     case 'lobby': {
       const room = c.room;
       if (!room) return;
-      if (msg.charId !== undefined) c.charId = String(msg.charId).slice(0, 16);
-      if (msg.color !== undefined) c.color = Number(msg.color) | 0;
+      if (msg.charId !== undefined) c.charId = validChar(msg.charId);
+      if (msg.color !== undefined) c.color = clampInt(msg.color, 0, 11);
       if (msg.ready !== undefined) c.ready = !!msg.ready;
       if (msg.hat !== undefined) c.hat = validHat(msg.hat);
       if (msg.aura !== undefined) c.aura = validAura(msg.aura);
@@ -308,7 +344,7 @@ function handle(c: Client, msg: ClientMsg): void {
     case 'options': {
       const room = c.room;
       if (!room || host(room) !== c) return;
-      room.options = { ...room.options, ...msg.options };
+      room.options = sanitizeOptions(room.options, msg.options);
       broadcast(room, { t: 'lobby', state: lobbyState(room) });
       return;
     }
@@ -334,7 +370,8 @@ function handle(c: Client, msg: ClientMsg): void {
       const room = c.room;
       if (!room || !room.inGame) return;
       if (!Array.isArray(msg.bits) || msg.bits.length > 8) return;
-      const f = Number(msg.f) | 0;
+      const f = Number(msg.f);
+      if (!Number.isInteger(f) || f < 0 || f > room.maxFrame + 600) return;
       const bits = msg.bits.map((b) => Number(b) | 0);
       if (bits.some((b) => b !== 0)) {
         c.lastActive = Date.now();
@@ -358,7 +395,8 @@ function handle(c: Client, msg: ClientMsg): void {
     case 'hash': {
       const room = c.room;
       if (!room || !room.inGame) return;
-      const f = Number(msg.f) | 0;
+      const f = Number(msg.f);
+      if (!Number.isInteger(f) || f < 0 || f > room.maxFrame + 600 || room.hashes.size > 200) return;
       let m = room.hashes.get(f);
       if (!m) { m = new Map(); room.hashes.set(f, m); }
       m.set(c.slot, Number(msg.h) >>> 0);
@@ -432,7 +470,7 @@ async function forwardIdea(idea: Idea): Promise<void> {
   const hook = process.env.IDEAS_WEBHOOK;
   if (hook) {
     try {
-      await fetch(hook, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ content: `💡 **${idea.category}** — ${idea.name || 'anonyme'}\n${idea.text}`.slice(0, 1900), text: idea.text, ...idea }) });
+      await fetch(hook, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ content: `💡 **${idea.category}** — ${idea.name || 'anonyme'}\n${idea.text}`.replace(/@/g, '@\u200b').slice(0, 1900), allowed_mentions: { parse: [] }, text: idea.text, ...idea }) });
     } catch (e) { console.warn('webhook idées : échec', (e as Error).message); }
   }
   const tok = process.env.GITHUB_TOKEN, repo = process.env.GITHUB_REPO;
@@ -455,7 +493,7 @@ async function handleIdeas(req: import('node:http').IncomingMessage, res: import
       const body = JSON.parse(await readBody(req)) as Partial<Idea> & { ctx?: Record<string, unknown> };
       const text = String(body.text ?? '').replace(/\s+/g, ' ').trim().slice(0, 1200);
       if (text.length < 5) { res.writeHead(400, cors); res.end(JSON.stringify({ ok: false, error: 'idée trop courte' })); return true; }
-      const idea: Idea = { id: randomUUID().slice(0, 8), ts: now, text, category: String(body.category ?? 'Autre').slice(0, 24), name: cleanName(body.name, ''), ctx: (body.ctx && typeof body.ctx === 'object' ? body.ctx : {}) as Record<string, unknown> };
+      const idea: Idea = { id: randomUUID().slice(0, 8), ts: now, text, category: String(body.category ?? 'Autre').slice(0, 24), name: cleanName(body.name, ''), ctx: cleanCtx(body.ctx) };
       recent.push(now); ideaRate.set(fwd, recent);
       ideasMem.push(idea);
       try { await mkdir(dirname(IDEAS_FILE), { recursive: true }); await appendFile(IDEAS_FILE, JSON.stringify(idea) + '\n'); } catch (e) { console.warn('écriture idées impossible', (e as Error).message); }
@@ -574,7 +612,7 @@ async function handleReplay(req: import('node:http').IncomingMessage, res: impor
     try {
       const r = JSON.parse(await readBody(req, 400_000)) as ReplayFile;
       if (!validReplay(r)) { res.writeHead(400, cors); res.end('{"ok":false,"error":"rediffusion invalide"}'); return true; }
-      const clean: ReplayFile = { v: 1, title: String(r.title ?? '').slice(0, 60), ts: now, config: r.config, seed: r.seed >>> 0, slots: r.slots, events: r.events, frames: r.frames, hl: r.hl.slice(0, 60).map((h) => ({ f: Number(h.f) | 0, label: String(h.label).slice(0, 40) })) };
+      const clean: ReplayFile = { v: 1, title: String(r.title ?? '').slice(0, 60), ts: now, config: r.config, seed: r.seed >>> 0, slots: r.slots, events: r.events, frames: r.frames, hl: r.hl.slice(0, 60).map((h) => ({ f: Math.max(0, Math.min(r.frames, Number(h.f) | 0)), label: String(h.label).replace(/[<>"'&`]/g, '').slice(0, 40) })) };
       const id = makeRoomCode(Math.random) + makeRoomCode(Math.random).slice(0, 1);
       recent.push(now); replayRate.set(ip, recent);
       replayPut(id, clean);
@@ -586,8 +624,15 @@ async function handleReplay(req: import('node:http').IncomingMessage, res: impor
   return false;
 }
 
-const http = createServer(async (req, res) => {
+const http = createServer((req, res) => {
+  handleHttp(req, res).catch(() => { try { if (!res.headersSent) res.writeHead(400); res.end(); } catch { /* ignore */ } });
+});
+
+async function handleHttp(req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse): Promise<void> {
   const url = new URL(req.url ?? '/', 'http://x');
+  res.setHeader('x-content-type-options', 'nosniff');
+  res.setHeader('x-frame-options', 'SAMEORIGIN');
+  res.setHeader('referrer-policy', 'strict-origin-when-cross-origin');
   if (await handleIdeas(req, res, url)) return;
   if (await handleDaily(req, res, url)) return;
   if (await handleReplay(req, res, url)) return;
@@ -602,8 +647,9 @@ const http = createServer(async (req, res) => {
     return;
   }
   let p = decodeURIComponent(url.pathname);
-  if (p.includes('..')) { res.writeHead(400); res.end(); return; }
+  if (p.includes('..') || p.includes('\0')) { res.writeHead(400); res.end(); return; }
   let file = join(DIST, p);
+  if (!resolve(file).startsWith(DIST)) { res.writeHead(400); res.end(); return; }
   try {
     const st = await stat(file);
     if (st.isDirectory()) file = join(file, 'index.html');
@@ -619,14 +665,20 @@ const http = createServer(async (req, res) => {
     res.writeHead(404);
     res.end('404');
   }
-});
+}
+
+process.on('uncaughtException', (e) => console.error('exception non gérée', e));
+process.on('unhandledRejection', (e) => console.error('promesse rejetée', e));
 
 const wss = new WebSocketServer({ server: http, path: '/ws', maxPayload: 8 * 1024 });
 wss.on('connection', (ws, req) => {
   const fwd = String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim();
   const c: Client = { ip: fwd || req.socket.remoteAddress || '', lastActive: Date.now(), afk: false, ws, room: null, slot: -1, name: '', charId: 'kai', color: 0, team: -1, hat: '', aura: '', ready: false, rtt: 0, lastFrame: -1, alive: true, token: randomUUID() };
+  if ([...clients].filter((x) => x.ip === c.ip).length >= 12) { ws.close(); return; }
   clients.add(c);
+  ws.on('error', () => { /* message trop gros, flux coupé : la fermeture nettoie */ });
   ws.on('message', (data) => {
+    if (!rateOk(c)) return;
     let msg: ClientMsg;
     try {
       msg = JSON.parse(data.toString());
@@ -649,6 +701,8 @@ wss.on('connection', (ws, req) => {
 
 // ping applicatif (latence) + détection de connexions mortes
 setInterval(() => {
+  const cut = Date.now() - 3_600_000;
+  for (const m of [ideaRate, dailyRate, replayRate]) for (const [k, v] of m) if (!v.length || v[v.length - 1] < cut) m.delete(k);
   for (const c of clients) {
     if (!c.alive) { c.ws.terminate(); continue; }
     c.alive = false;

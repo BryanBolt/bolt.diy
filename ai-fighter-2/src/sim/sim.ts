@@ -7,7 +7,7 @@
 import { Rng, clamp, approach, q, sign } from '../core/math';
 import { getChar, ENEMY_CHAR, ENEMY_NAMES } from './chars';
 import { STAGES, SURVIVAL_STAGE, DUEL_STAGES } from './stages';
-import { BONUSES, STACKABLE, stacks, activeSynergies, rollBonuses } from './bonuses';
+import { BONUSES, stacks, activeSynergies, rollBonuses, canTake } from './bonuses';
 import { aiInput } from './ai';
 import * as C from './constants';
 import { IN } from './types';
@@ -15,6 +15,7 @@ import { SHOP_ITEMS, WEAPONS } from './types';
 import { readCommand, dirMaskOf, pushHistory } from './commands';
 import { FORMS, FORM_FRAMES } from './forms';
 import type { World, Fighter, SimConfig, MoveDef, Projectile, Item, BonusId, EnemyKind, StageDef, AiState, CharDef, SimEvent, Phase, FState, Hazard, ProjectileDef, WeaponKind, MiniKind, MiniPlayer, RoomId } from './types';
+import { REROLL_COSTS } from './types';
 
 // ---------------------------------------------------------------------------
 // Création
@@ -284,6 +285,8 @@ function startStage(w: World, stage: StageDef): void {
   w.items = [];
   w.hazards = [];
   w.fixtures = [];
+  w.challenge = false;
+  w.chestBonus = 0;
   for (const f of players(w)) {
     if (f.state === 'ko') {
       f.lives = Math.max(f.lives, 1);
@@ -370,9 +373,15 @@ function survivalWave(w: World, idx: number): { kind: EnemyKind; level: number }
 }
 
 
+/** Avancement global (campagne : stages × 3 vagues + vague ; survie : vague). */
+function progressIndex(w: World): number {
+  return Math.max(0, w.waveIndex) + (w.mode === 'campaign' ? w.stageIndex * 3 : 0);
+}
+
 function startChest(w: World, afterChest: 'rooms' | 'fight'): void {
   const r = rng(w);
-  let tier = Math.min(2, Math.floor(Math.max(0, w.waveIndex) / 3)) + (w.mode === 'survival' && w.waveIndex % 5 === 4 ? 1 : 0) + w.chestBonus;
+  const prog = progressIndex(w);
+  let tier = Math.min(2, Math.floor(prog / 5)) + (w.mode === 'survival' && w.waveIndex % 5 === 4 ? 1 : 0) + w.chestBonus;
   if (r.int(0, 99) < 18) tier++;
   commitRng(w, r);
   w.chestBonus = 0;
@@ -435,7 +444,7 @@ function applyRoom(w: World, id: RoomId): void {
       break;
     case 'forge':
       for (const f of ps) {
-        const own = f.bonuses.filter((b) => STACKABLE.has(b));
+        const own = f.bonuses.filter((b) => canTake(f.bonuses, b));
         const r = rng(w);
         const b: BonusId = own.length ? own[r.int(0, own.length - 1)] : 'power';
         commitRng(w, r);
@@ -443,8 +452,8 @@ function applyRoom(w: World, id: RoomId): void {
         say(f, `FORGE : ${BONUSES.find((x) => x.id === b)?.name ?? ''}`, '#ffb830');
       }
       break;
-    case 'gold': w.coins += 45; w.score += 200; break;
-    case 'treasure': w.chestBonus = 2; break;
+    case 'gold': w.coins += 70; w.score += 200; break;
+    case 'treasure': w.chestBonus = 1; break;
     case 'challenge': w.challenge = true; w.chestBonus = 2; break;
   }
 }
@@ -483,18 +492,18 @@ function startBonusPhase(w: World, tier = 0): void {
   w.chest = null;
   w.bonusChoices = [];
   for (const f of players(w)) {
-    const pool = BONUSES.filter((b) => !f.bonuses.includes(b.id) || STACKABLE.has(b.id));
+    const pool = BONUSES.filter((b) => canTake(f.bonuses, b.id));
     const r = rng(w);
-    const options = rollBonuses(pool, 3, w.waveIndex + tier * 5, (lo, hi) => r.int(lo, hi));
+    const options = rollBonuses(pool, 3, progressIndex(w) + tier * 5, (lo, hi) => r.int(lo, hi));
     commitRng(w, r);
-    w.bonusChoices.push({ slot: f.slot, options, cursor: 0, chosen: f.controller === 'ai' ? 0 : -1 });
+    w.bonusChoices.push({ slot: f.slot, fid: f.id, rerolls: 0, options, cursor: 0, chosen: f.controller === 'ai' ? 0 : -1 });
   }
   setPhase(w, 'bonus', 40 * C.FPS);
 }
 
 function finishBonusPhase(w: World): void {
   for (const bc of w.bonusChoices) {
-    const f = w.fighters.find((x) => x.slot === bc.slot && x.team === 0);
+    const f = w.fighters.find((x) => x.slot === bc.slot && x.team === 0 && (bc.fid === undefined || x.id === bc.fid));
     if (!f) continue;
     const chosen = bc.options[bc.chosen < 0 ? 0 : bc.chosen];
     applyBonus(w, f, chosen);
@@ -789,8 +798,7 @@ function stepFixtures(w: World): void {
         case 'stall':
           x.used = true;
           fixtureHit(w, f, 12, FIXTURE_NAME.stall, '#ffb870');
-          for (let i = 0; i < 3; i++) w.items.push({ id: w.nextId++, kind: 'coin', x: x.x + (i - 1) * 26, y: 40, z: x.z, vy: 6, vx: (i - 1) * 2, life: 900 });
-          w.items.push({ id: w.nextId++, kind: 'heal', x: x.x, y: 40, z: x.z + 10, vy: 7, life: 900 });
+          for (let i = 0; i < 2; i++) w.items.push({ id: w.nextId++, kind: 'coin', x: x.x + (i - 0.5) * 30, y: 40, z: x.z, vy: 6, vx: (i - 0.5) * 3, life: 900 });
           break;
         case 'rail':
           x.cd = 300;
@@ -803,7 +811,7 @@ function stepFixtures(w: World): void {
           const boss = f.ai?.kind === 'boss' || f.boss;
           if (!boss && f.team !== 0) {
             fixtureHit(w, f, 9999, FIXTURE_NAME.window, '#aeeaff');
-            w.coins += 15; w.score += 200;
+            w.coins += 6; w.score += 150;
             w.slowmo = Math.max(w.slowmo, 35);
           } else fixtureHit(w, f, boss ? 30 : 16, FIXTURE_NAME.window, '#aeeaff');
           w.events.push({ t: 'sound', id: 'cratebreak', x: x.x });
@@ -1131,12 +1139,14 @@ function stepPhase(w: World, inputs: number[]): void {
         if (pressed & IN.RIGHT) { bc.cursor = (bc.cursor + 1) % 3; w.events.push({ t: 'sound', id: 'ui' }); }
         if (pressed & (IN.LIGHT | IN.CONFIRM)) { bc.chosen = bc.cursor; w.events.push({ t: 'sound', id: 'confirm' }); }
         else if (pressed & IN.HEAVY) {
-          // relance des 3 propositions (25 pièces)
-          if (w.coins >= 25) {
-            w.coins -= 25;
-            const pool = BONUSES.filter((b) => (!f.bonuses.includes(b.id) || STACKABLE.has(b.id)) && !bc.options.includes(b.id));
+          // relance des 3 propositions (prix croissant, 4 maximum)
+          const cost = REROLL_COSTS[bc.rerolls ?? 0];
+          if (cost !== undefined && w.coins >= cost) {
+            w.coins -= cost;
+            bc.rerolls = (bc.rerolls ?? 0) + 1;
+            const pool = BONUSES.filter((b) => canTake(f.bonuses, b.id) && !bc.options.includes(b.id));
             const r = rng(w);
-            const next = rollBonuses(pool, 3, w.waveIndex, (lo, hi) => r.int(lo, hi));
+            const next = rollBonuses(pool, 3, progressIndex(w), (lo, hi) => r.int(lo, hi));
             commitRng(w, r);
             while (next.length < 3) next.push(bc.options[next.length]);
             bc.options = next;
@@ -1300,12 +1310,12 @@ export function orbitPos(f: Fighter, frame: number, i: number, n: number): { x: 
 
 function stepItemPowers(w: World, f: Fighter): void {
   const orbs = stacks(f.bonuses, 'orbital');
-  if (orbs && w.frame % 12 === 0) {
+  if (orbs && w.frame % 24 === 0) {
     for (let i = 0; i < orbs; i++) {
       const p = orbitPos(f, w.frame, i, orbs);
       for (const e of w.fighters) {
         if (e.team === f.team || !alive(e) || e.invuln > 0 || Math.abs(e.x - p.x) > 30 || Math.abs(e.z - p.z) > 34 || e.y > 90) continue;
-        damageRaw(w, e, Math.max(1, Math.round(4 * f.stats.power / e.stats.defense)), f.id);
+        damageRaw(w, e, Math.max(1, Math.round(3 * f.stats.power / e.stats.defense)), f.id);
         if (hasSyn(f, 'cosmos')) { e.status.burn = Math.max(e.status.burn, 80); e.status.burnDps = Math.max(e.status.burnDps, 1); }
         w.events.push({ t: 'hit', x: e.x, y: e.y + 60, z: e.z, power: 0.5, blocked: false, crit: false, dir: e.x >= f.x ? 1 : -1, attacker: f.id, target: e.id });
       }
@@ -2445,7 +2455,7 @@ function resolveHit(w: World, a: Fighter, t: Fighter, m0: MoveDef, proj?: Projec
     return;
   }
   // gel
-  if (m.freezeTarget || (heavyish && hasBonus(a, 'frost') && rand(w) < 0.5)) {
+  if ((m.freezeTarget || (heavyish && hasBonus(a, 'frost') && rand(w) < 0.5)) && a.comboHits <= 1) {
     if (!airborne(t)) {
       t.status.frozen = m.freezeTarget ?? 60;
       setState(t, 'frozen');

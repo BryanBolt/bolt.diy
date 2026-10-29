@@ -177,17 +177,17 @@ export const ROSTER: CharDef[] = [
   }),
   defineChar({
     id: 'tora', name: 'Tora', title: 'Le tigre de Bangkok', desc: 'Lent mais dévastateur. Coups lourds blindés qui brisent la garde.',
-    color: 1, stats: { speed: 0.86, power: 1.3, defense: 1.2, hpMax: 150, jump: 0.9, reach: 4 }, moves: toraMoves,
+    color: 1, stats: { speed: 0.86, power: 1.2, defense: 1.2, hpMax: 140, jump: 0.9, reach: 4 }, moves: toraMoves,
     skeleton: { thickness: 6.5, headR: 12, accessory: 'bands', torso: 0.94, legs: 0.9, arms: 1.12, trim: 'gloves belt', stance: 'boxer' },
   }),
   defineChar({
     id: 'zed', name: 'Zed', title: 'L\'ombre furtive', desc: 'Très rapide, fragile. Kunaïs en éventail et Pas de l\'ombre derrière la cible.',
-    color: 2, stats: { speed: 1.22, power: 0.82, defense: 0.85, hpMax: 95, jump: 1.15, reach: 0 }, moves: zedMoves,
+    color: 2, stats: { speed: 1.22, power: 0.9, defense: 0.88, hpMax: 105, jump: 1.15, reach: 0 }, moves: zedMoves,
     skeleton: { thickness: 4.2, headR: 10, accessory: 'scarf', legs: 1.1, trim: 'boots', stance: 'ninja' },
   }),
   defineChar({
     id: 'vex', name: 'Vex', title: 'La dompteuse', desc: 'Fouet d\'énergie à grande allonge. Le Lasso ramène l\'ennemi à toi.',
-    color: 3, stats: { speed: 0.98, power: 0.92, defense: 0.95, hpMax: 110, jump: 1, reach: 18 }, moves: vexMoves,
+    color: 3, stats: { speed: 0.98, power: 1.0, defense: 0.95, hpMax: 115, jump: 1, reach: 18 }, moves: vexMoves,
     skeleton: { thickness: 4.6, accessory: 'ponytail', legs: 1.08, trim: 'gloves boots', stance: 'whip' },
   }),
   defineChar({
@@ -212,7 +212,7 @@ export const ROSTER: CharDef[] = [
   }),
   defineChar({
     id: 'gorr', name: 'Gorr', title: 'Le colosse', desc: 'Énorme. Tout fait mal. Débloqué en finissant le stage 3.',
-    color: 8, stats: { speed: 0.78, power: 1.5, defense: 1.4, hpMax: 190, jump: 0.8, reach: 10 }, moves: gorrMoves,
+    color: 8, stats: { speed: 0.78, power: 1.35, defense: 1.3, hpMax: 170, jump: 0.8, reach: 10 }, moves: gorrMoves,
     unlock: { kind: 'stage', value: 3 }, skeleton: { scale: 1.2, thickness: 8, headR: 13, accessory: 'horns', torso: 0.96, arms: 1.06, trim: 'gloves belt', stance: 'boxer' },
   }),
   defineChar({

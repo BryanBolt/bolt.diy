@@ -7,7 +7,7 @@ import { BONUS_BY_ID, RARITY, activeSynergies, synergiesUnlockedBy, stacks } fro
 import type { Fx } from './fx';
 import { project, type Camera } from './camera';
 import { STAGES } from '../sim/stages';
-import { SHOP_ITEMS, WEAPONS, ROOMS } from '../sim/types';
+import { SHOP_ITEMS, WEAPONS, ROOMS, REROLL_COSTS } from '../sim/types';
 import { TIER_NAME } from './chest';
 import { REVIVE_FRAMES } from '../sim/constants';
 import { MINI_COUNTDOWN, MINI_SMASH_FRAMES, miniCursor } from '../sim/sim';
@@ -348,7 +348,7 @@ function drawBonusChoice(ctx: CanvasRenderingContext2D, w: World, info: HudInfo,
   ctx.fillText('CHOISIS UN BONUS', view.w / 2, 90);
   ctx.font = `13px ${FONT}`;
   ctx.fillStyle = '#ccc';
-  ctx.fillText(w.frame - w.phaseFrame < 50 ? 'Patiente un instant…' : `← → choisir · Attaque valider · Lourd relancer (25 🪙, tu as ${w.coins})  ·  ${Math.ceil(w.phaseTimer / FPS)} s`, view.w / 2, 112);
+  ctx.fillText(w.frame - w.phaseFrame < 50 ? 'Patiente un instant…' : `← → choisir · Attaque valider · Lourd relancer (${REROLL_COSTS[w.bonusChoices[0]?.rerolls ?? 0] ?? '—'} 🪙, tu as ${w.coins})  ·  ${Math.ceil(w.phaseTimer / FPS)} s`, view.w / 2, 112);
   const rows = w.bonusChoices;
   const rowH = Math.min(120, 380 / Math.max(1, rows.length));
   rows.forEach((bc, ri) => {

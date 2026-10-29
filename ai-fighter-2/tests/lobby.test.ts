@@ -29,6 +29,25 @@ beforeAll(async () => {
 afterAll(() => { server?.kill(); });
 
 describe('salons publics', () => {
+  it('serveur robuste : requête malformée, message trop gros, options hors liste', async () => {
+    expect((await fetch(`http://localhost:${PORT}/%`)).status).toBe(400);
+    const { WebSocket } = await import('ws');
+    const raw = new WebSocket(url);
+    await new Promise((r) => raw.on('open', r));
+    raw.on('error', () => {});
+    raw.send('x'.repeat(20000));
+    await sleep(300);
+    expect((await fetch(`http://localhost:${PORT}/health`)).ok).toBe(true);
+    const a = await client();
+    const j = waitFor(a, 'joined');
+    a.send({ t: 'create', name: 'Opt', charId: 'pirate', color: 99 });
+    await j;
+    const got = new Promise<string>((res) => { a.on('lobby', (m) => { const st = (m as Extract<ServerMsg, { t: 'lobby' }>).state; if (st.options.bots === 3) res(`${st.options.mode}|${st.players[0].charId}|${st.players[0].color}`); }); setTimeout(() => res('timeout'), 3000); });
+    a.send({ t: 'options', options: { mode: 'x', bots: 9999 } as never });
+    expect(await got).toMatch(/^(campaign|duel|survival|training)\|kai\|\d+$/);
+    a.close();
+  });
+
   it('cosmétiques : relayés dans le salon, valeurs inconnues rejetées', async () => {
     const a = await client();
     const j = waitFor(a, 'joined');

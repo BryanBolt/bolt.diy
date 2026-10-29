@@ -470,8 +470,12 @@ export const ROOMS: Record<RoomId, { name: string; icon: string; desc: string }>
   challenge: { name: 'Salle de défi', icon: '☠️', desc: 'Vague plus dure, mais coffre légendaire en récompense' },
 };
 
+export const REROLL_COSTS = [25, 40, 60, 90];
+
 export interface BonusChoice {
   slot: number;
+  fid?: number; // id du combattant (les bots n'ont pas de slot)
+  rerolls?: number;
   options: BonusId[];
   cursor: number;
   chosen: number; // -1 tant que non validé

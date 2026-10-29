@@ -2,7 +2,7 @@
 export type Elem = 'none' | 'fire' | 'ice' | 'poison' | 'shock';
 export interface FormDef { name: string; color: string; power: number; speed: number; defense: number; reach: number; elem: Elem }
 
-export const FORM_FRAMES = 15 * 60;
+export const FORM_FRAMES = 10 * 60;
 
 export const FORMS: Record<string, FormDef> = {
   kai: { name: 'Éveil du dragon', color: '#ffd84a', power: 1.35, speed: 1.15, defense: 1, reach: 0, elem: 'none' },

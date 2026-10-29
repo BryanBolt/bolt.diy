@@ -41,7 +41,7 @@ export function createReplayBar(file: ReplayFile, on: {
 }): ReplayBar {
   const el = document.createElement('div');
   el.id = 'replaybar';
-  const hl = file.hl.map((h, i) => `<button type="button" class="hl" data-i="${i}" title="${h.label}">⭐ ${(h.f / 60).toFixed(0)} s</button>`).join('');
+  const hl = file.hl.map((h, i) => `<button type="button" class="hl" data-i="${i}" title="${String(h.label).replace(/[<>&"']/g, '')}">⭐ ${(Number(h.f) / 60 | 0)} s</button>`).join('');
   el.innerHTML = `<div class="rrow"><button type="button" data-a="back5">⏪ 5 s</button><button type="button" data-a="toggle" class="main">⏸</button><button type="button" data-a="fwd5">5 s ⏩</button><button type="button" data-a="speed">×1</button><input type="range" min="0" max="${file.frames}" value="0" step="1"><span class="t">0:00</span><button type="button" data-a="share">🔗</button><button type="button" data-a="quit">✕</button></div>${hl ? `<div class="rrow hls">${hl}</div>` : ''}`;
   document.body.appendChild(el);
   const range = el.querySelector('input') as HTMLInputElement;

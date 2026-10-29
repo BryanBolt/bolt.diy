@@ -40,7 +40,7 @@ function waitFor<T extends ServerMsg['t']>(net: NetClient, type: T, ms = 5000): 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 beforeAll(async () => {
-  server = spawn(process.execPath, ['--import', 'tsx', 'server/index.ts'], { env: { ...process.env, PORT: String(PORT), AFK_MS: '2500', IDEAS_KEY: 'secret', IDEAS_FILE: '/tmp/aif2-test-ideas-' + PORT + '.jsonl' }, stdio: 'ignore' });
+  server = spawn(process.execPath, ['--import', 'tsx', 'server/index.ts'], { env: { ...process.env, RATE_PER_S: '100000', PORT: String(PORT), AFK_MS: '2500', IDEAS_KEY: 'secret', IDEAS_FILE: '/tmp/aif2-test-ideas-' + PORT + '.jsonl' }, stdio: 'ignore' });
   for (let i = 0; i < 60; i++) {
     try { const r = await fetch(`http://localhost:${PORT}/health`); if (r.ok) return; } catch { /* pas encore prêt */ }
     await sleep(150);
